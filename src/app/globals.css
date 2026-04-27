@@ -1,7 +1,23 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================================
+   THEME: Spike OS Engine
+   Merged from:
+   - shadcn/ui b0 preset (Radix base + Lucide icons)
+   - Day 1 Spike design tokens (teal/navy/heebo from spikeai.co.il landing)
+   ============================================================================ */
 
 @theme inline {
+  /* Hebrew typography */
   --font-heebo: var(--font-heebo);
+  --font-sans: var(--font-heebo);
+  --font-heading: var(--font-heebo);
+
+  /* Spike brand palette */
   --color-ink-bg: #07111A;
   --color-ink-bg2: #0B1A22;
   --color-ink-text: #E8EBFF;
@@ -13,17 +29,155 @@
   --color-cyan-300: #5BD0F2;
   --color-navy-950: #0a1f2c;
   --color-blush: #FFA4B5;
+
+  /* shadcn tokens (mapped to CSS variables in :root / .dark below) */
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-html {
-  scroll-behavior: smooth;
+/* ============================================================================
+   :root = ALWAYS DARK for Spike Engine.
+   No light theme — the app is dark-first by design (Apple-clean dashboard).
+   ============================================================================ */
+
+:root {
+  --background: #07111A;
+  --foreground: #E8EBFF;
+  --card: #0B1A22;
+  --card-foreground: #E8EBFF;
+  --popover: #0B1A22;
+  --popover-foreground: #E8EBFF;
+
+  --primary: #22D3B0;
+  --primary-foreground: #07111A;
+
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: #E8EBFF;
+
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.65 0 0);
+
+  --accent: #5BD0F2;
+  --accent-foreground: #07111A;
+
+  --destructive: #FFA4B5;
+
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: #22D3B0;
+
+  /* Charts — Spike palette */
+  --chart-1: #22D3B0;   /* teal-400 */
+  --chart-2: #5BD0F2;   /* cyan-300 */
+  --chart-3: #FFA4B5;   /* blush */
+  --chart-4: #5EEAD4;   /* teal-300 */
+  --chart-5: #0F766E;   /* teal-700 */
+
+  --radius: 0.625rem;
+
+  --sidebar: #0B1A22;
+  --sidebar-foreground: #E8EBFF;
+  --sidebar-primary: #22D3B0;
+  --sidebar-primary-foreground: #07111A;
+  --sidebar-accent: oklch(1 0 0 / 6%);
+  --sidebar-accent-foreground: #E8EBFF;
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: #22D3B0;
 }
 
-body {
-  background: #07111A;
-  color: #E8EBFF;
-  font-family: var(--font-heebo), sans-serif;
+/* .dark mirrors :root for now (single dark theme). If we add light later,
+   :root becomes light and .dark keeps these values. */
+
+.dark {
+  --background: #07111A;
+  --foreground: #E8EBFF;
+  --card: #0B1A22;
+  --card-foreground: #E8EBFF;
+  --popover: #0B1A22;
+  --popover-foreground: #E8EBFF;
+  --primary: #22D3B0;
+  --primary-foreground: #07111A;
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: #E8EBFF;
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.65 0 0);
+  --accent: #5BD0F2;
+  --accent-foreground: #07111A;
+  --destructive: #FFA4B5;
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: #22D3B0;
+  --chart-1: #22D3B0;
+  --chart-2: #5BD0F2;
+  --chart-3: #FFA4B5;
+  --chart-4: #5EEAD4;
+  --chart-5: #0F766E;
+  --sidebar: #0B1A22;
+  --sidebar-foreground: #E8EBFF;
+  --sidebar-primary: #22D3B0;
+  --sidebar-primary-foreground: #07111A;
+  --sidebar-accent: oklch(1 0 0 / 6%);
+  --sidebar-accent-foreground: #E8EBFF;
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: #22D3B0;
 }
+
+/* ============================================================================
+   BASE STYLES
+   ============================================================================ */
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+    font-family: var(--font-heebo), system-ui, sans-serif;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* ============================================================================
+   SPIKE BRAND ANIMATIONS
+   ============================================================================ */
 
 @keyframes spike-float {
   0%, 100% { transform: translateY(-12px); }
@@ -36,21 +190,17 @@ body {
 }
 
 @keyframes spike-pulse {
-  0%, 100% { transform: scale(1); opacity: 0.8; }
-  50%      { transform: scale(1.05); opacity: 1; }
+  0%, 100% { transform: scale(1);    opacity: 0.8; }
+  50%      { transform: scale(1.05); opacity: 1;   }
 }
 
-.animate-spike-float {
-  animation: spike-float 4s ease-in-out infinite;
-}
+.animate-spike-float { animation: spike-float 4s ease-in-out infinite; }
+.animate-spike-glow  { animation: spike-glow  3s ease-in-out infinite; }
+.animate-spike-pulse { animation: spike-pulse 3s ease-in-out infinite; }
 
-.animate-spike-glow {
-  animation: spike-glow 3s ease-in-out infinite;
-}
-
-.animate-spike-pulse {
-  animation: spike-pulse 3s ease-in-out infinite;
-}
+/* ============================================================================
+   SPIKE BRAND UTILITIES
+   ============================================================================ */
 
 ::selection {
   background: #22D3B0;
@@ -72,6 +222,6 @@ body {
 }
 
 .glass-card:hover {
-  border-color: rgba(20, 184, 166, 0.4);
+  border-color: rgba(34, 211, 176, 0.4);
   transform: translateY(-4px);
 }

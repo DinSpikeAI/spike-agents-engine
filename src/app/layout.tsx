@@ -1,71 +1,40 @@
-import type { Metadata, Viewport } from "next";
+// src/app/layout.tsx
+//
+// Root layout for Spike Engine. Server Component (loads fonts, sets metadata).
+//
+// RTL strategy:
+//   1. <html lang="he" dir="rtl"> — base RTL for the document tree
+//   2. <DirectionProvider> (client wrapper) — Radix portal components
+//      (Dialog, Popover, DropdownMenu, Select, Tooltip) inherit RTL.
+//      Without it, portals render in document.body OUTSIDE our dir="rtl"
+//      tree and behave as LTR.
+//
+// We use a thin client wrapper for DirectionProvider because Radix uses
+// React Context, which requires "use client". Layout itself stays on the
+// server so we can load Heebo and compute metadata server-side.
+
+import type { Metadata } from "next";
 import { Heebo } from "next/font/google";
+
+import { DirectionProvider } from "@/components/providers/direction-provider";
 import "./globals.css";
 
 const heebo = Heebo({
-  variable: "--font-heebo",
   subsets: ["hebrew", "latin"],
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-heebo",
   display: "swap",
 });
 
-const SITE_URL = "https://app.spikeai.co.il";
-const SITE_NAME = "Spike AI Agents";
-const SITE_TITLE = "Spike AI Agents — לוח בקרה";
-const SITE_DESCRIPTION =
-  "הצוות שלך של סוכני AI עובד 24/7. כאן תקבל דוחות, תאשר טיוטות, ותראה מה הסוכנים עשו עבורך.";
-
 export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
-  title: SITE_TITLE,
-  description: SITE_DESCRIPTION,
-  applicationName: SITE_NAME,
-  authors: [{ name: SITE_NAME }],
-  creator: SITE_NAME,
-  publisher: SITE_NAME,
-  keywords: [
-    "Spike AI",
-    "סוכני AI",
-    "ניהול עסק",
-    "אוטומציה",
-    "דשבורד",
-  ],
+  title: "Spike Engine",
+  description: "9 סוכני AI שעובדים בשבילך מאחורי הקלעים",
   openGraph: {
-    type: "website",
+    title: "Spike — סוכני AI לעסק שלך",
+    description: "הצוות שלך של 9 סוכני AI עובד 24/7. אתה רק מאשר.",
     locale: "he_IL",
-    url: SITE_URL,
-    siteName: SITE_NAME,
-    title: SITE_TITLE,
-    description: SITE_DESCRIPTION,
+    type: "website",
   },
-  icons: {
-    icon: [
-      { url: "/favicon.ico" },
-      { url: "/spike-mascot.png", type: "image/png" },
-    ],
-    apple: [{ url: "/spike-mascot.png" }],
-    shortcut: ["/favicon.ico"],
-  },
-  alternates: {
-    canonical: SITE_URL,
-  },
-  robots: {
-    index: false,
-    follow: false,
-  },
-  category: "technology",
-  formatDetection: {
-    telephone: false,
-    email: false,
-    address: false,
-  },
-};
-
-export const viewport: Viewport = {
-  themeColor: "#07111A",
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 5,
 };
 
 export default function RootLayout({
@@ -74,12 +43,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="he" dir="rtl">
-      <body
-        className={`${heebo.variable} antialiased min-h-screen`}
-        style={{ fontFamily: "var(--font-heebo)" }}
-      >
-        {children}
+    <html lang="he" dir="rtl" className={`${heebo.variable} dark`}>
+      <body className="antialiased">
+        <DirectionProvider>{children}</DirectionProvider>
       </body>
     </html>
   );

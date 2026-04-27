@@ -1,8 +1,9 @@
 // src/lib/supabase/client.ts
 //
-// Browser-side Supabase client.
-// Use this in Client Components (files with "use client").
+// Browser-side Supabase client for use in Client Components.
 // Reads cookies from document.cookie. Respects RLS via the publishable key.
+//
+// Use this in any file that starts with "use client".
 
 import { createBrowserClient } from "@supabase/ssr";
 
