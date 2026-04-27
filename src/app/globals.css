@@ -1,26 +1,77 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-heebo: var(--font-heebo);
+  --color-ink-bg: #07111A;
+  --color-ink-bg2: #0B1A22;
+  --color-ink-text: #E8EBFF;
+  --color-teal-50: #F0FDFA;
+  --color-teal-300: #5EEAD4;
+  --color-teal-400: #22D3B0;
+  --color-teal-500: #14B8A6;
+  --color-teal-700: #0F766E;
+  --color-cyan-300: #5BD0F2;
+  --color-navy-950: #0a1f2c;
+  --color-blush: #FFA4B5;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #07111A;
+  color: #E8EBFF;
+  font-family: var(--font-heebo), sans-serif;
+}
+
+@keyframes spike-float {
+  0%, 100% { transform: translateY(-12px); }
+  50%      { transform: translateY(12px); }
+}
+
+@keyframes spike-glow {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 0.7; }
+}
+
+@keyframes spike-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50%      { transform: scale(1.05); opacity: 1; }
+}
+
+.animate-spike-float {
+  animation: spike-float 4s ease-in-out infinite;
+}
+
+.animate-spike-glow {
+  animation: spike-glow 3s ease-in-out infinite;
+}
+
+.animate-spike-pulse {
+  animation: spike-pulse 3s ease-in-out infinite;
+}
+
+::selection {
+  background: #22D3B0;
+  color: #07111A;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #22D3B0 0%, #5BD0F2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: border-color 0.3s ease, transform 0.3s ease;
+}
+
+.glass-card:hover {
+  border-color: rgba(20, 184, 166, 0.4);
+  transform: translateY(-4px);
 }
