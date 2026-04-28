@@ -1,21 +1,20 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/dashboard/sidebar";
-import { DashboardHeader } from "@/components/dashboard/header";
+import { Topbar } from "@/components/dashboard/topbar";
+import { KpiStrip } from "@/components/dashboard/kpi-strip";
+import { ApprovalBanner } from "@/components/dashboard/approval-banner";
 import { WhatsAppFab } from "@/components/dashboard/whatsapp-fab";
 import { RunMorningButton } from "@/components/dashboard/run-morning-button";
+import { AGENT_LIST } from "@/lib/agents/config";
 
-const AGENTS = [
-  { id: "morning", emoji: "☀️", name: "סוכן בוקר", description: "דוח יומי עם פעילות אתמול ויעדים להיום", schedule: "07:00 כל יום" },
-  { id: "reviews", emoji: "⭐", name: "סוכן ביקורות", description: "תגובות לביקורות Google ו-Instagram", schedule: "כל שעתיים" },
-  { id: "social", emoji: "📱", name: "סוכן רשתות", description: "פוסטים מקוריים בעברית לרשתות החברתיות", schedule: "3 פוסטים ביום" },
-  { id: "manager", emoji: "🧠", name: "סוכן מנהל", description: "סיכום אסטרטגי יומי - החלטות, סיכונים, הזדמנויות", schedule: "19:00 כל יום" },
-  { id: "watcher", emoji: "🎯", name: "סוכן מעקב", description: "התראות בזמן אמת על אירועים חשובים", schedule: "כל 15 דקות" },
-  { id: "cleanup", emoji: "🧹", name: "סוכן ניקיון", description: "ניקוי לידים מתים, כפילויות, ופעולות חסרות", schedule: "יום ראשון 09:00" },
-  { id: "sales", emoji: "💰", name: "סוכן מכירות", description: "מעקב פולואפים והמשכים בעסקאות", schedule: "א-ה 10:00" },
-  { id: "inventory", emoji: "📦", name: "סוכן מלאי", description: "תחזית ביקוש וההזמנות", schedule: "08:00 כל יום" },
-  { id: "hot_leads", emoji: "🔥", name: "סוכן לידים חמים", description: "דירוג חכם של לידים לפי בשלות", schedule: "כל 30 דקות" },
-];
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 11) return "בוקר טוב";
+  if (hour >= 11 && hour < 16) return "אחר צהריים טובים";
+  if (hour >= 16 && hour < 19) return "ערב טוב";
+  return "ערב טוב";
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -26,47 +25,141 @@ export default async function DashboardPage() {
   }
 
   const userEmail = user.email ?? "";
+  const userName = userEmail.split("@")[0] || "Din";
+  const greeting = getGreeting();
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100" dir="rtl">
+    <div
+      className="relative min-h-screen"
+      dir="rtl"
+      style={{ background: "var(--spike-bg)", color: "var(--spike-text)" }}
+    >
       <Sidebar userEmail={userEmail} />
-      <div className="md:mr-60">
-        <DashboardHeader />
 
-        <main className="mx-auto max-w-7xl p-6">
-          {/* Day 3 banner */}
-          <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-            ⚠️ <strong>Day 3 - Mock mode.</strong> סוכן הבוקר ניתן להפעלה ידנית. שאר הסוכנים יחוברו ב-Day 4-7.
+      {/* Main content area, offset by sidebar on desktop */}
+      <div className="md:mr-[248px]">
+        <main
+          className="spike-scroll mx-auto max-w-[1400px] px-6 pb-20 pt-8 md:px-10"
+          style={{ position: "relative", zIndex: 1 }}
+        >
+          <Topbar
+            greeting={greeting}
+            userName={userName}
+            activeAgents={9}
+            pendingApprovals={4}
+            lastUpdate="לפני 12 דק׳"
+          />
+
+          <KpiStrip
+            pendingApprovals={4}
+            todaysActions={23}
+            todaysActionsDelta="▲ 8% מאתמול"
+            todaysActionsUp={true}
+            todaysActionsSparkline={[15, 12, 14, 8, 10, 4, 6]}
+            weeklySavings={1840}
+            monthlySpend={0}
+            monthlyCap={50}
+          />
+
+          <ApprovalBanner
+            count={4}
+            summary="3 תגובות לביקורות, 1 פוסט אינסטגרם · בדיקה של 30 שניות"
+          />
+
+          {/* Day 3 Mock notice */}
+          <div
+            className="mb-6 rounded-xl px-4 py-3 text-sm"
+            style={{
+              background: "rgba(252, 211, 77, 0.05)",
+              border: "1px solid rgba(252, 211, 77, 0.15)",
+              color: "var(--spike-text-dim)",
+            }}
+          >
+            ⚠️ <strong style={{ color: "var(--spike-amber)" }}>Day 3 - Mock mode.</strong>{" "}
+            סוכן הבוקר ניתן להפעלה ידנית. שאר הסוכנים יחוברו ב-Day 4-7.
           </div>
 
           {/* Run Morning Agent CTA */}
-          <div className="mb-8 rounded-xl border border-teal-500/30 bg-gradient-to-br from-teal-500/10 to-cyan-500/5 p-6">
-            <h2 className="mb-2 text-xl font-bold text-teal-300">☀️ נסו את סוכן הבוקר</h2>
-            <p className="mb-4 text-sm text-slate-300">
+          <div
+            className="mb-8 rounded-xl px-6 py-5"
+            style={{
+              background: "linear-gradient(135deg, rgba(34, 211, 176, 0.06), rgba(91, 208, 242, 0.03))",
+              border: "1px solid rgba(34, 211, 176, 0.2)",
+            }}
+          >
+            <h2
+              className="mb-2 text-xl font-bold"
+              style={{ color: "var(--spike-teal-light)" }}
+            >
+              ☀️ נסו את סוכן הבוקר
+            </h2>
+            <p
+              className="mb-4 text-sm"
+              style={{ color: "var(--spike-text-dim)" }}
+            >
               לחצו כדי להריץ את הסוכן עכשיו ולקבל briefing מדומה (Day 3 mock data).
             </p>
             <RunMorningButton />
           </div>
 
-          {/* Agents grid */}
-          <h2 className="mb-4 text-lg font-semibold text-slate-200">הסוכנים שלך</h2>
+          {/* Agents grid - placeholder, will be replaced in Stage 3 */}
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="flex items-center gap-2.5 text-lg font-semibold text-white">
+              הסוכנים שלך
+              <span
+                className="inline-flex size-6 items-center justify-center rounded-full text-xs font-bold"
+                style={{
+                  background: "rgba(34, 211, 176, 0.12)",
+                  color: "var(--spike-teal-light)",
+                }}
+              >
+                9
+              </span>
+            </h2>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {AGENTS.map((agent) => (
+            {AGENT_LIST.map((agent) => (
               <div
                 key={agent.id}
-                className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 transition-all hover:border-slate-700"
+                className="rounded-xl p-5 transition-all hover:-translate-y-0.5"
+                style={{
+                  background: "linear-gradient(180deg, var(--spike-surface), var(--spike-bg-2))",
+                  border: "1px solid var(--spike-border)",
+                }}
               >
                 <div className="mb-3 flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">{agent.emoji}</span>
-                    <h3 className="font-semibold text-slate-100">{agent.name}</h3>
+                    <div
+                      className="flex size-11 flex-shrink-0 items-center justify-center rounded-xl text-xl"
+                      style={{ background: agent.gradient }}
+                    >
+                      {agent.emoji}
+                    </div>
+                    <h3 className="font-bold text-white">{agent.name}</h3>
                   </div>
-                  <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
+                  <span
+                    className="rounded-full px-2.5 py-0.5 text-[10px] font-medium"
+                    style={{
+                      background: "rgba(148, 163, 184, 0.08)",
+                      color: "var(--spike-text-mute)",
+                    }}
+                  >
                     מחכה
                   </span>
                 </div>
-                <p className="mb-3 text-sm text-slate-400">{agent.description}</p>
-                <div className="text-xs text-slate-500">⏰ {agent.schedule}</div>
+                <p
+                  className="mb-3 text-sm leading-relaxed"
+                  style={{ color: "var(--spike-text-dim)" }}
+                >
+                  {agent.description}
+                </p>
+                <div
+                  className="text-xs"
+                  style={{ color: "var(--spike-text-mute)" }}
+                >
+                  ⏰ {agent.schedule}
+                </div>
               </div>
             ))}
           </div>
