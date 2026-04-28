@@ -17,6 +17,8 @@ import type { Metadata } from "next";
 import { Heebo } from "next/font/google";
 
 import { DirectionProvider } from "@/components/providers/direction-provider";
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const heebo = Heebo({
@@ -45,7 +47,10 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl" className={`${heebo.variable} dark`}>
       <body className="antialiased">
-        <DirectionProvider>{children}</DirectionProvider>
+        <DirectionProvider>
+          <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
+        </DirectionProvider>
+        <Toaster richColors position="top-center" dir="rtl" />
       </body>
     </html>
   );
