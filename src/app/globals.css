@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -225,3 +226,51 @@
   border-color: rgba(34, 211, 176, 0.4);
   transform: translateY(-4px);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Day 4 — Visual Rebuild Additions
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --spike-bg: #060B12;
+  --spike-bg-2: #0A1119;
+  --spike-surface: #0E1722;
+  --spike-surface-2: #131F2C;
+  --spike-border: rgba(148, 163, 184, 0.08);
+  --spike-border-strong: rgba(148, 163, 184, 0.14);
+  --spike-text: #E2E8F0;
+  --spike-text-dim: #94A3B8;
+  --spike-text-mute: #64748B;
+  --spike-teal: #22D3B0;
+  --spike-teal-light: #5EEAD4;
+  --spike-teal-deep: #14B8A6;
+  --spike-cyan: #5BD0F2;
+  --spike-amber: #FCD34D;
+  --spike-warm: #C9A06B;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 800px 400px at 80% 0%, rgba(34, 211, 176, 0.04), transparent 60%),
+    radial-gradient(ellipse 600px 400px at 0% 100%, rgba(91, 208, 242, 0.025), transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes spike-livepulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 176, 0.55); }
+  70% { box-shadow: 0 0 0 6px rgba(34, 211, 176, 0); }
+}
+.spike-pulse-dot {
+  animation: spike-livepulse 2s ease-in-out infinite;
+}
+
+.spike-scroll::-webkit-scrollbar { width: 8px; }
+.spike-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.1);
+  border-radius: 4px;
+}
+.spike-scroll::-webkit-scrollbar-track { background: transparent; }
