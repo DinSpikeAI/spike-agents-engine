@@ -1,41 +1,21 @@
-// src/app/dashboard/page.tsx
-//
-// v0.5 Dashboard - app shell layout (sidebar + header + content).
-// Server Component: fetches user, redirects to login if no session.
-
-import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { WhatsAppFab } from "@/components/dashboard/whatsapp-fab";
-import { signOut } from "./actions";
-
-export const metadata = {
-  title: "סקירה - Spike",
-};
+import { RunMorningButton } from "@/components/dashboard/run-morning-button";
 
 const AGENTS = [
-  { id: "morning", emoji: "☀️", name: "סוכן בוקר", schedule: "07:00 כל יום", description: "דוח יומי עם פעילות אתמול ויעדים להיום" },
-  { id: "reviews", emoji: "⭐", name: "סוכן ביקורות", schedule: "כל שעתיים", description: "תגובות לביקורות Google ו-Instagram" },
-  { id: "social", emoji: "📱", name: "סוכן רשתות", schedule: "3 פוסטים ביום", description: "פוסטים מקוריים בעברית לרשתות החברתיות" },
-  { id: "manager", emoji: "🧠", name: "סוכן מנהל", schedule: "19:00 כל יום", description: "סיכום אסטרטגי יומי - החלטות, סיכונים, הזדמנויות" },
-  { id: "watcher", emoji: "🎯", name: "סוכן מעקב", schedule: "כל 15 דקות", description: "התראות בזמן אמת על אירועים חשובים" },
-  { id: "cleanup", emoji: "🧹", name: "סוכן ניקיון", schedule: "יום ראשון 09:00", description: "ניקוי לידים מתים, כפילויות, ופעולות חסרות" },
-  { id: "sales", emoji: "💰", name: "סוכן מכירות", schedule: "א-ה 10:00", description: "מעקב פולואפים והמשכים בעסקאות" },
-  { id: "inventory", emoji: "📦", name: "סוכן מלאי", schedule: "08:00 כל יום", description: "תחזית ביקוש וההזמנות" },
-  { id: "hot_leads", emoji: "🔥", name: "סוכן לידים חמים", schedule: "כל 30 דקות", description: "דירוג חכם של לידים לפי בשלות" },
+  { id: "morning", emoji: "☀️", name: "סוכן בוקר", description: "דוח יומי עם פעילות אתמול ויעדים להיום", schedule: "07:00 כל יום" },
+  { id: "reviews", emoji: "⭐", name: "סוכן ביקורות", description: "תגובות לביקורות Google ו-Instagram", schedule: "כל שעתיים" },
+  { id: "social", emoji: "📱", name: "סוכן רשתות", description: "פוסטים מקוריים בעברית לרשתות החברתיות", schedule: "3 פוסטים ביום" },
+  { id: "manager", emoji: "🧠", name: "סוכן מנהל", description: "סיכום אסטרטגי יומי - החלטות, סיכונים, הזדמנויות", schedule: "19:00 כל יום" },
+  { id: "watcher", emoji: "🎯", name: "סוכן מעקב", description: "התראות בזמן אמת על אירועים חשובים", schedule: "כל 15 דקות" },
+  { id: "cleanup", emoji: "🧹", name: "סוכן ניקיון", description: "ניקוי לידים מתים, כפילויות, ופעולות חסרות", schedule: "יום ראשון 09:00" },
+  { id: "sales", emoji: "💰", name: "סוכן מכירות", description: "מעקב פולואפים והמשכים בעסקאות", schedule: "א-ה 10:00" },
+  { id: "inventory", emoji: "📦", name: "סוכן מלאי", description: "תחזית ביקוש וההזמנות", schedule: "08:00 כל יום" },
+  { id: "hot_leads", emoji: "🔥", name: "סוכן לידים חמים", description: "דירוג חכם של לידים לפי בשלות", schedule: "כל 30 דקות" },
 ];
-
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour >= 5 && hour < 11) return "בוקר טוב";
-  if (hour >= 11 && hour < 16) return "צהריים טובים";
-  if (hour >= 16 && hour < 19) return "אחר צהריים טובים";
-  return "ערב טוב";
-}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -45,99 +25,55 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const userName = user.email?.split("@")[0] || "אורח";
-  const greeting = getGreeting();
+  const userEmail = user.email ?? "";
 
   return (
-    <div className="min-h-screen">
-      {/* Sidebar */}
-      <Sidebar userEmail={user.email || ""} />
+    <div className="min-h-screen bg-slate-950 text-slate-100" dir="rtl">
+      <Sidebar userEmail={userEmail} />
+      <div className="md:mr-60">
+        <DashboardHeader />
 
-      {/* Main content - margin to account for fixed sidebar on desktop */}
-      <main className="lg:me-64">
-        <div className="p-4 md:p-8 max-w-7xl mx-auto">
-          {/* Mobile header bar */}
-          <div className="lg:hidden flex items-center justify-between mb-6">
-            <Sidebar userEmail={user.email || ""} />
-            <span className="text-lg font-bold bg-gradient-to-r from-[#22D3B0] to-[#5BD0F2] bg-clip-text text-transparent">
-              Spike Engine
-            </span>
+        <main className="mx-auto max-w-7xl p-6">
+          {/* Day 3 banner */}
+          <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+            ⚠️ <strong>Day 3 - Mock mode.</strong> סוכן הבוקר ניתן להפעלה ידנית. שאר הסוכנים יחוברו ב-Day 4-7.
           </div>
 
-          {/* Greeting */}
-          <div className="mb-6">
-            <h1 className="text-2xl md:text-3xl font-bold mb-1">
-              {greeting},{" "}
-              <span className="bg-gradient-to-r from-[#22D3B0] to-[#5BD0F2] bg-clip-text text-transparent">
-                {userName}
-              </span>
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              הסוכנים שלך עובדים מאחורי הקלעים
+          {/* Run Morning Agent CTA */}
+          <div className="mb-8 rounded-xl border border-teal-500/30 bg-gradient-to-br from-teal-500/10 to-cyan-500/5 p-6">
+            <h2 className="mb-2 text-xl font-bold text-teal-300">☀️ נסו את סוכן הבוקר</h2>
+            <p className="mb-4 text-sm text-slate-300">
+              לחצו כדי להריץ את הסוכן עכשיו ולקבל briefing מדומה (Day 3 mock data).
             </p>
+            <RunMorningButton />
           </div>
 
-          {/* KPI Header */}
-          <DashboardHeader />
-
-          {/* Day 2.5 banner */}
-          <div className="mb-6 p-4 rounded-lg border border-amber-500/30 bg-amber-500/5">
-            <p className="text-sm text-amber-200">
-              ⚠️ <strong>Day 2.5 - בפיתוח.</strong> הסוכנים עוד לא רצים. הדאשבורד placeholder. נחבר אותם החל מ-Day 3.
-            </p>
+          {/* Agents grid */}
+          <h2 className="mb-4 text-lg font-semibold text-slate-200">הסוכנים שלך</h2>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {AGENTS.map((agent) => (
+              <div
+                key={agent.id}
+                className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 transition-all hover:border-slate-700"
+              >
+                <div className="mb-3 flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{agent.emoji}</span>
+                    <h3 className="font-semibold text-slate-100">{agent.name}</h3>
+                  </div>
+                  <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
+                    מחכה
+                  </span>
+                </div>
+                <p className="mb-3 text-sm text-slate-400">{agent.description}</p>
+                <div className="text-xs text-slate-500">⏰ {agent.schedule}</div>
+              </div>
+            ))}
           </div>
+        </main>
 
-          {/* Agent grid */}
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-4">הסוכנים שלך</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {AGENTS.map((agent) => (
-                <Card
-                  key={agent.id}
-                  className="hover:border-primary/40 transition-all hover:shadow-lg hover:-translate-y-0.5"
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <CardTitle className="flex items-center gap-3 text-base">
-                        <span className="text-3xl">{agent.emoji}</span>
-                        <span>{agent.name}</span>
-                      </CardTitle>
-                      <Badge
-                        variant="outline"
-                        className="text-xs border-slate-500/30 text-slate-300"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 me-1.5"></span>
-                        מחכה
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
-                      {agent.description}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      ⏰ {agent.schedule}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-          {/* Sign out at bottom */}
-          <div className="mt-12 pt-6 border-t border-border flex items-center justify-between">
-            <p className="text-xs text-muted-foreground" dir="ltr">
-              app.spikeai.co.il · Day 2.5 of 14
-            </p>
-            <form action={signOut}>
-              <Button variant="ghost" size="sm" type="submit">התנתק</Button>
-            </form>
-          </div>
-        </div>
-      </main>
-
-      {/* WhatsApp FAB */}
-      <WhatsAppFab />
+        <WhatsAppFab />
+      </div>
     </div>
   );
 }
