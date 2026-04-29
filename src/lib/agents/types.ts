@@ -64,8 +64,6 @@ export interface RunResult<T = unknown> {
 // ─────────────────────────────────────────────────────────────
 // Morning Agent specific output
 // ─────────────────────────────────────────────────────────────
-//
-// Shape MUST match MORNING_AGENT_OUTPUT_SCHEMA in ./morning/schema.ts.
 
 export interface MorningAgentOutput {
   greeting: string;
@@ -88,8 +86,6 @@ export interface MorningAgentOutput {
 //
 // Severity is assigned by CODE (NOT by LLM). The LLM only classifies
 // category; ./watcher/hierarchy.ts maps category → severity.
-// Final alerts are sorted: severity asc (critical first), then
-// occurredAt desc (newest first within same tier).
 
 export interface WatcherAlert {
   category: WatcherCategory;
@@ -98,25 +94,84 @@ export interface WatcherAlert {
   title: string;
   /** Hebrew context — why it matters + suggested action (max ~200 chars). */
   context: string;
-  /** Hebrew label for the data source (e.g. "Google Reviews"). */
+  /** Hebrew label for the data source (e.g., "Google Reviews"). */
   source: string;
   /** ISO timestamp or human-readable Hebrew like "לפני 12 דקות". */
   occurredAt: string;
 }
 
 export interface WatcherAgentOutput {
-  /** Sorted by severity, then by occurredAt desc within tier. */
   alerts: WatcherAlert[];
-  /** Hebrew summary of what was scanned this run. */
   scanSummary: string;
-  /** Data sources that were checked, e.g. ["Google", "Instagram", "Calendar"]. */
   scannedSources: string[];
-  /** Total alerts found this run. */
   totalCount: number;
 }
 
 // ─────────────────────────────────────────────────────────────
-// Generic agent output (placeholder for non-Morning agents)
+// Reviews Agent — Day 8
+// ─────────────────────────────────────────────────────────────
+//
+// Input: a single review from a customer (Google Reviews / Yelp / etc.).
+// Output: a draft reply + classification of the review tone.
+//
+// IMPORTANT: ReviewsAgentOutput contains both classification (so the
+// owner sees what the agent thought of the review) AND a Hebrew draft
+// reply (the actual deliverable). The defamation guard checks the
+// reply against the original review text.
+
+export type ReviewSentiment = "positive" | "neutral" | "negative" | "very_negative";
+
+export type ReviewIntent =
+  | "praise"          // 5★ thank-you, no complaint
+  | "minor_complaint" // 3-4★, specific issue
+  | "major_complaint" // 1-2★, dissatisfaction
+  | "abusive"         // hostile language, defamation against the business
+  | "spam_or_fake";   // looks fake or spam
+
+export interface MockReview {
+  id: string;
+  reviewerName: string;
+  rating: number; // 1..5
+  text: string;
+  occurredAt: string; // ISO
+}
+
+export interface ReviewsAgentInput {
+  reviews: MockReview[];
+}
+
+export interface ReviewDraft {
+  /** Foreign key to the source review (mock ID for now, real Google ID later). */
+  reviewId: string;
+  /** Reviewer's name as displayed (preserved — not scrubbed). */
+  reviewerName: string;
+  /** 1..5 stars from the source. */
+  rating: number;
+  /** Original text of the review (after PII scrub) for owner reference. */
+  reviewTextDisplay: string;
+  /** Agent's classification of the review tone. */
+  sentiment: ReviewSentiment;
+  /** Agent's classification of intent (drives default tone). */
+  intent: ReviewIntent;
+  /** The Hebrew draft reply. */
+  draftText: string;
+  /** Brief Hebrew rationale shown to owner ("למה אני מציע את זה"). */
+  rationale: string;
+  /** Whether the reply suggests offline contact (typical for negative reviews). */
+  suggestsOfflineContact: boolean;
+}
+
+export interface ReviewsAgentOutput {
+  /** One draft per review. Empty array if no reviews to handle. */
+  drafts: ReviewDraft[];
+  /** Hebrew summary for owner. */
+  summary: string;
+  /** Total reviews processed this run. */
+  totalProcessed: number;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Generic agent output (placeholder for not-yet-implemented agents)
 // ─────────────────────────────────────────────────────────────
 
 export interface GenericAgentOutput {
@@ -129,8 +184,6 @@ export interface GenericAgentOutput {
 // ─────────────────────────────────────────────────────────────
 
 export interface MockBehavior {
-  /** Force a specific outcome (for testing edge cases) */
   forceStatus?: RunStatus;
-  /** Simulate delay in milliseconds */
   delayMs?: number;
 }

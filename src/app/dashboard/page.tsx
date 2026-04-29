@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Topbar } from "@/components/dashboard/topbar";
@@ -7,7 +8,11 @@ import { ApprovalBanner } from "@/components/dashboard/approval-banner";
 import { WhatsAppFab } from "@/components/dashboard/whatsapp-fab";
 import { RunMorningButton } from "@/components/dashboard/run-morning-button";
 import { RunWatcherButton } from "@/components/dashboard/run-watcher-button";
+import { RunReviewsButton } from "@/components/dashboard/run-reviews-button";
 import { AgentGrid } from "@/components/dashboard/agent-grid";
+import { listPendingDrafts } from "@/app/dashboard/actions";
+
+export const dynamic = "force-dynamic";
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -29,6 +34,14 @@ export default async function DashboardPage() {
   const userName = userEmail.split("@")[0] || "Din";
   const greeting = getGreeting();
 
+  // Real pending count from drafts table
+  const draftsResult = await listPendingDrafts();
+  const pendingCount = draftsResult.success ? (draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0) : 0;
+  const pendingSummary =
+    pendingCount > 0
+      ? `${pendingCount} ${pendingCount === 1 ? "טיוטה" : "טיוטות"} מחכות לסקירה`
+      : "אין טיוטות מחכות";
+
   return (
     <div
       className="relative min-h-screen"
@@ -46,12 +59,12 @@ export default async function DashboardPage() {
             greeting={greeting}
             userName={userName}
             activeAgents={9}
-            pendingApprovals={4}
+            pendingApprovals={pendingCount}
             lastUpdate="לפני 12 דק׳"
           />
 
           <KpiStrip
-            pendingApprovals={4}
+            pendingApprovals={pendingCount}
             todaysActions={23}
             todaysActionsDelta="▲ 8% מאתמול"
             todaysActionsUp={true}
@@ -61,10 +74,12 @@ export default async function DashboardPage() {
             monthlyCap={50}
           />
 
-          <ApprovalBanner
-            count={4}
-            summary="3 תגובות לביקורות, 1 פוסט אינסטגרם · בדיקה של 30 שניות"
-          />
+          {/* Approval banner — now clickable, navigates to /dashboard/approvals */}
+          {pendingCount > 0 && (
+            <Link href="/dashboard/approvals" className="block hover:opacity-90 transition-opacity">
+              <ApprovalBanner count={pendingCount} summary={pendingSummary} />
+            </Link>
+          )}
 
           {/* Morning Agent CTA — Day 5 (real Anthropic) */}
           <div
@@ -92,7 +107,7 @@ export default async function DashboardPage() {
 
           {/* Watcher Agent CTA — Day 6 */}
           <div
-            className="mb-8 rounded-xl px-6 py-5"
+            className="mb-4 rounded-xl px-6 py-5"
             style={{
               background:
                 "linear-gradient(135deg, rgba(91, 208, 242, 0.06), rgba(34, 211, 176, 0.03))",
@@ -112,6 +127,31 @@ export default async function DashboardPage() {
               סורק את כל מקורות הנתונים ומחזיר התראות ממוינות לפי דחיפות.
             </p>
             <RunWatcherButton />
+          </div>
+
+          {/* Reviews Agent CTA — Day 8 */}
+          <div
+            className="mb-8 rounded-xl px-6 py-5"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(255, 164, 181, 0.06), rgba(252, 211, 77, 0.03))",
+              border: "1px solid rgba(255, 164, 181, 0.2)",
+            }}
+          >
+            <h2
+              className="mb-2 text-xl font-bold"
+              style={{ color: "#FFA4B5" }}
+            >
+              ✍️ סוכן ביקורות
+            </h2>
+            <p
+              className="mb-4 text-sm"
+              style={{ color: "var(--spike-text-dim)" }}
+            >
+              כותב טיוטות תגובה לביקורות. כל טיוטה עוברת בדיקת לשון הרע ומחכה
+              לאישורך לפני שליחה.
+            </p>
+            <RunReviewsButton />
           </div>
 
           {/* Agents grid with filters + drawer */}
