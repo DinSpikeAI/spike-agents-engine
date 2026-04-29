@@ -9,6 +9,7 @@ import { WhatsAppFab } from "@/components/dashboard/whatsapp-fab";
 import { RunMorningButton } from "@/components/dashboard/run-morning-button";
 import { RunWatcherButton } from "@/components/dashboard/run-watcher-button";
 import { RunReviewsButton } from "@/components/dashboard/run-reviews-button";
+import { RunHotLeadsButton } from "@/components/dashboard/run-hot-leads-button";
 import { AgentGrid } from "@/components/dashboard/agent-grid";
 import { listPendingDrafts } from "@/app/dashboard/actions";
 
@@ -34,9 +35,10 @@ export default async function DashboardPage() {
   const userName = userEmail.split("@")[0] || "Din";
   const greeting = getGreeting();
 
-  // Real pending count from drafts table
   const draftsResult = await listPendingDrafts();
-  const pendingCount = draftsResult.success ? (draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0) : 0;
+  const pendingCount = draftsResult.success
+    ? (draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0)
+    : 0;
   const pendingSummary =
     pendingCount > 0
       ? `${pendingCount} ${pendingCount === 1 ? "טיוטה" : "טיוטות"} מחכות לסקירה`
@@ -74,14 +76,13 @@ export default async function DashboardPage() {
             monthlyCap={50}
           />
 
-          {/* Approval banner — now clickable, navigates to /dashboard/approvals */}
           {pendingCount > 0 && (
             <Link href="/dashboard/approvals" className="block hover:opacity-90 transition-opacity">
               <ApprovalBanner count={pendingCount} summary={pendingSummary} />
             </Link>
           )}
 
-          {/* Morning Agent CTA — Day 5 (real Anthropic) */}
+          {/* Morning Agent — Day 5 */}
           <div
             className="mb-4 rounded-xl px-6 py-5"
             style={{
@@ -90,22 +91,16 @@ export default async function DashboardPage() {
               border: "1px solid rgba(34, 211, 176, 0.2)",
             }}
           >
-            <h2
-              className="mb-2 text-xl font-bold"
-              style={{ color: "var(--spike-teal-light)" }}
-            >
+            <h2 className="mb-2 text-xl font-bold" style={{ color: "var(--spike-teal-light)" }}>
               ☀️ סוכן הבוקר
             </h2>
-            <p
-              className="mb-4 text-sm"
-              style={{ color: "var(--spike-text-dim)" }}
-            >
+            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
               לחצו כדי לקבל briefing יומי בעברית עם תובנות, לוז ויעדים.
             </p>
             <RunMorningButton />
           </div>
 
-          {/* Watcher Agent CTA — Day 6 */}
+          {/* Watcher Agent — Day 6 */}
           <div
             className="mb-4 rounded-xl px-6 py-5"
             style={{
@@ -114,47 +109,52 @@ export default async function DashboardPage() {
               border: "1px solid rgba(91, 208, 242, 0.2)",
             }}
           >
-            <h2
-              className="mb-2 text-xl font-bold"
-              style={{ color: "var(--spike-cyan)" }}
-            >
+            <h2 className="mb-2 text-xl font-bold" style={{ color: "var(--spike-cyan)" }}>
               🎯 סוכן מעקב
             </h2>
-            <p
-              className="mb-4 text-sm"
-              style={{ color: "var(--spike-text-dim)" }}
-            >
+            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
               סורק את כל מקורות הנתונים ומחזיר התראות ממוינות לפי דחיפות.
             </p>
             <RunWatcherButton />
           </div>
 
-          {/* Reviews Agent CTA — Day 8 */}
+          {/* Reviews Agent — Day 8 */}
           <div
-            className="mb-8 rounded-xl px-6 py-5"
+            className="mb-4 rounded-xl px-6 py-5"
             style={{
               background:
                 "linear-gradient(135deg, rgba(255, 164, 181, 0.06), rgba(252, 211, 77, 0.03))",
               border: "1px solid rgba(255, 164, 181, 0.2)",
             }}
           >
-            <h2
-              className="mb-2 text-xl font-bold"
-              style={{ color: "#FFA4B5" }}
-            >
+            <h2 className="mb-2 text-xl font-bold" style={{ color: "#FFA4B5" }}>
               ✍️ סוכן ביקורות
             </h2>
-            <p
-              className="mb-4 text-sm"
-              style={{ color: "var(--spike-text-dim)" }}
-            >
-              כותב טיוטות תגובה לביקורות. כל טיוטה עוברת בדיקת לשון הרע ומחכה
-              לאישורך לפני שליחה.
+            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
+              כותב טיוטות תגובה לביקורות. כל טיוטה עוברת בדיקת לשון הרע ומחכה לאישורך לפני שליחה.
             </p>
             <RunReviewsButton />
           </div>
 
-          {/* Agents grid with filters + drawer */}
+          {/* Hot Leads Agent — Day 9 */}
+          <div
+            className="mb-8 rounded-xl px-6 py-5"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(249, 115, 22, 0.08), rgba(239, 68, 68, 0.04))",
+              border: "1px solid rgba(249, 115, 22, 0.25)",
+            }}
+          >
+            <h2 className="mb-2 text-xl font-bold" style={{ color: "#FB923C" }}>
+              🔥 סוכן לידים חמים
+            </h2>
+            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
+              מסווג פניות נכנסות ל-buckets לפי פוטנציאל סגירה. רואה רק התנהגות —
+              לא שמות ולא דמוגרפיה (הגנת אפליה).
+            </p>
+            <RunHotLeadsButton />
+          </div>
+
           <AgentGrid />
         </main>
 

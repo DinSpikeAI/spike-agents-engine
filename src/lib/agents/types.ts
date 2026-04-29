@@ -83,20 +83,13 @@ export interface MorningAgentOutput {
 // ─────────────────────────────────────────────────────────────
 // Watcher Agent specific output
 // ─────────────────────────────────────────────────────────────
-//
-// Severity is assigned by CODE (NOT by LLM). The LLM only classifies
-// category; ./watcher/hierarchy.ts maps category → severity.
 
 export interface WatcherAlert {
   category: WatcherCategory;
   severity: WatcherSeverity;
-  /** Hebrew title — what happened (max ~80 chars). */
   title: string;
-  /** Hebrew context — why it matters + suggested action (max ~200 chars). */
   context: string;
-  /** Hebrew label for the data source (e.g., "Google Reviews"). */
   source: string;
-  /** ISO timestamp or human-readable Hebrew like "לפני 12 דקות". */
   occurredAt: string;
 }
 
@@ -110,30 +103,22 @@ export interface WatcherAgentOutput {
 // ─────────────────────────────────────────────────────────────
 // Reviews Agent — Day 8
 // ─────────────────────────────────────────────────────────────
-//
-// Input: a single review from a customer (Google Reviews / Yelp / etc.).
-// Output: a draft reply + classification of the review tone.
-//
-// IMPORTANT: ReviewsAgentOutput contains both classification (so the
-// owner sees what the agent thought of the review) AND a Hebrew draft
-// reply (the actual deliverable). The defamation guard checks the
-// reply against the original review text.
 
 export type ReviewSentiment = "positive" | "neutral" | "negative" | "very_negative";
 
 export type ReviewIntent =
-  | "praise"          // 5★ thank-you, no complaint
-  | "minor_complaint" // 3-4★, specific issue
-  | "major_complaint" // 1-2★, dissatisfaction
-  | "abusive"         // hostile language, defamation against the business
-  | "spam_or_fake";   // looks fake or spam
+  | "praise"
+  | "minor_complaint"
+  | "major_complaint"
+  | "abusive"
+  | "spam_or_fake";
 
 export interface MockReview {
   id: string;
   reviewerName: string;
-  rating: number; // 1..5
+  rating: number;
   text: string;
-  occurredAt: string; // ISO
+  occurredAt: string;
 }
 
 export interface ReviewsAgentInput {
@@ -141,32 +126,98 @@ export interface ReviewsAgentInput {
 }
 
 export interface ReviewDraft {
-  /** Foreign key to the source review (mock ID for now, real Google ID later). */
   reviewId: string;
-  /** Reviewer's name as displayed (preserved — not scrubbed). */
   reviewerName: string;
-  /** 1..5 stars from the source. */
   rating: number;
-  /** Original text of the review (after PII scrub) for owner reference. */
   reviewTextDisplay: string;
-  /** Agent's classification of the review tone. */
   sentiment: ReviewSentiment;
-  /** Agent's classification of intent (drives default tone). */
   intent: ReviewIntent;
-  /** The Hebrew draft reply. */
   draftText: string;
-  /** Brief Hebrew rationale shown to owner ("למה אני מציע את זה"). */
   rationale: string;
-  /** Whether the reply suggests offline contact (typical for negative reviews). */
   suggestsOfflineContact: boolean;
 }
 
 export interface ReviewsAgentOutput {
-  /** One draft per review. Empty array if no reviews to handle. */
   drafts: ReviewDraft[];
-  /** Hebrew summary for owner. */
   summary: string;
-  /** Total reviews processed this run. */
+  totalProcessed: number;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Hot Leads Agent — Day 9
+// ─────────────────────────────────────────────────────────────
+//
+// Classification, not drafting. Output is a bucket per inbound lead.
+//
+// Bucketed enum (NOT 0-100 score) is mandatory: small models like
+// Haiku 4.5 cluster around 50/70/85 in freeform numeric output. The
+// bucket enum forces the model to commit to a discrete category,
+// which improves both consistency and explainability.
+//
+// CRITICAL BIAS FIREWALL:
+//   - The LLM receives ONLY behavior features (response_time, message
+//     length, intent keywords, urgency signals, product mention, budget mention).
+//   - Names, demographics, and source handles are STRIPPED before the
+//     LLM call. They are stored in the leads table for the owner UI but
+//     never enter the prompt.
+
+export type LeadBucket =
+  | "cold"             // No real intent — just browsing or generic question
+  | "warm"             // Genuine interest but no urgency or specifics
+  | "hot"              // Specific product + budget OR specific timeframe
+  | "blazing"          // All signals: specific product + budget + urgency
+  | "spam_or_unclear"; // Bot, scam, or genuinely unclear
+
+export type LeadSource =
+  | "whatsapp"
+  | "instagram_dm"
+  | "website_form"
+  | "email"
+  | "phone_call_transcript";
+
+export interface MockLead {
+  id: string;
+  source: LeadSource;
+  /** Display name shown to owner. NOT passed to LLM. */
+  displayName: string;
+  /** Source handle (e.g., @username, hashed phone). NOT passed to LLM. */
+  sourceHandle: string;
+  /** The raw message text. PII is scrubbed before LLM but not the substance. */
+  rawMessage: string;
+  receivedAt: string; // ISO
+}
+
+/**
+ * Behavior features extracted by code. These are what the LLM sees.
+ * NO name, NO demographic, NO source handle — only behavior.
+ */
+export interface LeadFeatures {
+  source: LeadSource;             // channel context (legitimate signal)
+  responseTimeMinutes: number | null; // how long since their first contact (if known)
+  messageLengthTokens: number;
+  intentKeywordsCount: number;    // count of intent words (קונה, מעוניין, רוצה, צריך)
+  urgencySignalsCount: number;    // count of urgency words (דחוף, היום, עכשיו, מהר)
+  hasSpecificProduct: boolean;    // mentions a specific product/service
+  mentionedBudget: boolean;       // mentions price/budget
+  questionCount: number;          // how many questions asked (proxy for engagement)
+}
+
+export interface LeadClassification {
+  leadId: string;
+  bucket: LeadBucket;
+  /** Hebrew reason shown to owner (~1 sentence). */
+  reason: string;
+  /** Hebrew suggested next step. */
+  suggestedAction: string;
+}
+
+export interface HotLeadsAgentInput {
+  leads: MockLead[];
+}
+
+export interface HotLeadsAgentOutput {
+  classifications: LeadClassification[];
+  summary: string;
   totalProcessed: number;
 }
 
