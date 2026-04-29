@@ -68,6 +68,91 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 // ─────────────────────────────────────────────────────────────
+// Contact link logic — turns the handle into a tappable action
+// based on the channel. Owner taps → their phone/mail/IG opens
+// with the recipient pre-filled. We do NOT auto-call/auto-send;
+// the owner still presses "send" themselves.
+// ─────────────────────────────────────────────────────────────
+
+interface ContactAction {
+  href: string;
+  display: string;
+  icon: string;
+  label: string;
+}
+
+function buildContactAction(
+  source: string,
+  handle: string | null
+): ContactAction | null {
+  if (!handle) return null;
+
+  switch (source) {
+    case "whatsapp":
+    case "phone_call_transcript": {
+      // Israeli mobile normalization: 0501234567 → 972501234567
+      const digits = handle.replace(/\D/g, "");
+      const intl = digits.startsWith("972")
+        ? digits
+        : digits.startsWith("0")
+        ? `972${digits.slice(1)}`
+        : digits;
+      // Pretty display: 050-123-4567
+      const local = digits.startsWith("972") ? `0${digits.slice(3)}` : digits;
+      const display =
+        local.length === 10
+          ? `${local.slice(0, 3)}-${local.slice(3, 6)}-${local.slice(6)}`
+          : handle;
+      return {
+        href: source === "whatsapp" ? `https://wa.me/${intl}` : `tel:+${intl}`,
+        display,
+        icon: source === "whatsapp" ? "💬" : "📞",
+        label: source === "whatsapp" ? "פתח WhatsApp" : "חייג",
+      };
+    }
+
+    case "email": {
+      return {
+        href: `mailto:${handle}`,
+        display: handle,
+        icon: "✉️",
+        label: "שלח email",
+      };
+    }
+
+    case "instagram_dm": {
+      const username = handle.replace(/^@/, "");
+      return {
+        href: `https://instagram.com/${username}`,
+        display: `@${username}`,
+        icon: "📷",
+        label: "פתח Instagram",
+      };
+    }
+
+    case "website_form":
+      // Website forms usually leave an email; treat as email if it looks like one.
+      if (handle.includes("@")) {
+        return {
+          href: `mailto:${handle}`,
+          display: handle,
+          icon: "✉️",
+          label: "שלח email",
+        };
+      }
+      return {
+        href: "#",
+        display: handle,
+        icon: "🌐",
+        label: "פרטי קשר",
+      };
+
+    default:
+      return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // Single lead card
 // ─────────────────────────────────────────────────────────────
 
@@ -100,6 +185,8 @@ function LeadCard({
   const hasProduct = !!features.hasSpecificProduct;
   const hasBudget = !!features.mentionedBudget;
 
+  const contact = buildContactAction(lead.source, lead.source_handle);
+
   return (
     <div
       className="rounded-xl p-4"
@@ -114,9 +201,25 @@ function LeadCard({
         <span>{ageLabel}</span>
       </div>
 
-      {/* Display name */}
-      <div className="mb-2 text-sm font-bold text-slate-100">
-        {lead.display_name ?? "אנונימי"}
+      {/* Display name + clickable contact */}
+      <div className="mb-3">
+        <div className="text-sm font-bold text-slate-100">
+          {lead.display_name ?? "אנונימי"}
+        </div>
+        {contact && (
+          <a
+            href={contact.href}
+            target={contact.href.startsWith("http") ? "_blank" : undefined}
+            rel={contact.href.startsWith("http") ? "noopener noreferrer" : undefined}
+            className="mt-1 inline-flex items-center gap-1 rounded bg-slate-800/60 px-2 py-0.5 text-xs text-slate-200 hover:bg-slate-700"
+            dir="ltr"
+            style={{ direction: "ltr", unicodeBidi: "embed" }}
+            title={contact.label}
+          >
+            <span>{contact.icon}</span>
+            <span>{contact.display}</span>
+          </a>
+        )}
       </div>
 
       {/* Message preview */}
@@ -220,7 +323,6 @@ export function LeadsBoard({ leads }: { leads: ClassifiedLead[] }) {
     });
   };
 
-  // Group leads by bucket
   const grouped: Record<LeadBucket, ClassifiedLead[]> = {
     blazing: [],
     hot: [],
@@ -233,12 +335,10 @@ export function LeadsBoard({ leads }: { leads: ClassifiedLead[] }) {
     grouped[bucket].push(lead);
   }
 
-  // Active buckets: blazing → cold (spam handled separately)
   const activeBuckets: LeadBucket[] = ["blazing", "hot", "warm", "cold"];
 
   return (
     <div className="space-y-6">
-      {/* 4-column board */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {activeBuckets.map((bucket) => {
           const config = BUCKET_CONFIG[bucket];
@@ -282,7 +382,6 @@ export function LeadsBoard({ leads }: { leads: ClassifiedLead[] }) {
         })}
       </div>
 
-      {/* Spam row (collapsible if exists) */}
       {grouped.spam_or_unclear.length > 0 && (
         <details className="rounded-xl border border-slate-700 bg-slate-900/50 p-4">
           <summary className="cursor-pointer text-sm font-medium text-slate-400 hover:text-slate-200">
