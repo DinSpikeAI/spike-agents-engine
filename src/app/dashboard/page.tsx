@@ -6,6 +6,7 @@ import { KpiStrip } from "@/components/dashboard/kpi-strip";
 import { ApprovalBanner } from "@/components/dashboard/approval-banner";
 import { WhatsAppFab } from "@/components/dashboard/whatsapp-fab";
 import { RunMorningButton } from "@/components/dashboard/run-morning-button";
+import { RunWatcherButton } from "@/components/dashboard/run-watcher-button";
 import { AgentGrid } from "@/components/dashboard/agent-grid";
 
 function getGreeting(): string {
@@ -65,24 +66,12 @@ export default async function DashboardPage() {
             summary="3 תגובות לביקורות, 1 פוסט אינסטגרם · בדיקה של 30 שניות"
           />
 
-          {/* Day 3 Mock notice */}
+          {/* Morning Agent CTA — Day 5 (real Anthropic) */}
           <div
-            className="mb-6 rounded-xl px-4 py-3 text-sm"
+            className="mb-4 rounded-xl px-6 py-5"
             style={{
-              background: "rgba(252, 211, 77, 0.05)",
-              border: "1px solid rgba(252, 211, 77, 0.15)",
-              color: "var(--spike-text-dim)",
-            }}
-          >
-            ⚠️ <strong style={{ color: "var(--spike-amber)" }}>Day 4 Stage 3.</strong>{" "}
-            סוכן הבוקר ניתן להפעלה ידנית. מצבי הסוכנים והתיבות placeholder עד Day 5+.
-          </div>
-
-          {/* Run Morning Agent CTA */}
-          <div
-            className="mb-8 rounded-xl px-6 py-5"
-            style={{
-              background: "linear-gradient(135deg, rgba(34, 211, 176, 0.06), rgba(91, 208, 242, 0.03))",
+              background:
+                "linear-gradient(135deg, rgba(34, 211, 176, 0.06), rgba(91, 208, 242, 0.03))",
               border: "1px solid rgba(34, 211, 176, 0.2)",
             }}
           >
@@ -90,15 +79,39 @@ export default async function DashboardPage() {
               className="mb-2 text-xl font-bold"
               style={{ color: "var(--spike-teal-light)" }}
             >
-              ☀️ נסו את סוכן הבוקר
+              ☀️ סוכן הבוקר
             </h2>
             <p
               className="mb-4 text-sm"
               style={{ color: "var(--spike-text-dim)" }}
             >
-              לחצו כדי להריץ את הסוכן עכשיו ולקבל briefing מדומה (Day 3 mock data).
+              לחצו כדי לקבל briefing יומי בעברית עם תובנות, לוז ויעדים.
             </p>
             <RunMorningButton />
+          </div>
+
+          {/* Watcher Agent CTA — Day 6 */}
+          <div
+            className="mb-8 rounded-xl px-6 py-5"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(91, 208, 242, 0.06), rgba(34, 211, 176, 0.03))",
+              border: "1px solid rgba(91, 208, 242, 0.2)",
+            }}
+          >
+            <h2
+              className="mb-2 text-xl font-bold"
+              style={{ color: "var(--spike-cyan)" }}
+            >
+              🎯 סוכן מעקב
+            </h2>
+            <p
+              className="mb-4 text-sm"
+              style={{ color: "var(--spike-text-dim)" }}
+            >
+              סורק את כל מקורות הנתונים ומחזיר התראות ממוינות לפי דחיפות.
+            </p>
+            <RunWatcherButton />
           </div>
 
           {/* Agents grid with filters + drawer */}

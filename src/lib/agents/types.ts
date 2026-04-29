@@ -5,6 +5,8 @@
  * Built once, used 9 times.
  */
 
+import type { WatcherCategory, WatcherSeverity } from "./watcher/hierarchy";
+
 // ─────────────────────────────────────────────────────────────
 // Agent identity
 // ─────────────────────────────────────────────────────────────
@@ -64,28 +66,53 @@ export interface RunResult<T = unknown> {
 // ─────────────────────────────────────────────────────────────
 //
 // Shape MUST match MORNING_AGENT_OUTPUT_SCHEMA in ./morning/schema.ts.
-// If you change this, update the schema in the same commit.
 
 export interface MorningAgentOutput {
-  /** "בוקר טוב, [שם]" — agent always greets as morning regardless of trigger time */
   greeting: string;
-  /** One-sentence headline for today */
   headline: string;
   yesterdayMetrics: {
     revenue: number | null;
     revenueChangePercent: number | null;
     sameWeekdayCompare: string | null;
   };
-  /** 2-3 items completed yesterday by the agents */
   thingsCompleted: string[];
-  /** Count of items waiting for owner approval */
   thingsNeedingApproval: number;
-  /** 1-3 actionable insights */
   insights: string[];
-  /** Today's schedule, time-prefixed strings */
   todaysSchedule: string[];
-  /** One specific action for today */
   callToAction: string;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Watcher Agent specific output
+// ─────────────────────────────────────────────────────────────
+//
+// Severity is assigned by CODE (NOT by LLM). The LLM only classifies
+// category; ./watcher/hierarchy.ts maps category → severity.
+// Final alerts are sorted: severity asc (critical first), then
+// occurredAt desc (newest first within same tier).
+
+export interface WatcherAlert {
+  category: WatcherCategory;
+  severity: WatcherSeverity;
+  /** Hebrew title — what happened (max ~80 chars). */
+  title: string;
+  /** Hebrew context — why it matters + suggested action (max ~200 chars). */
+  context: string;
+  /** Hebrew label for the data source (e.g. "Google Reviews"). */
+  source: string;
+  /** ISO timestamp or human-readable Hebrew like "לפני 12 דקות". */
+  occurredAt: string;
+}
+
+export interface WatcherAgentOutput {
+  /** Sorted by severity, then by occurredAt desc within tier. */
+  alerts: WatcherAlert[];
+  /** Hebrew summary of what was scanned this run. */
+  scanSummary: string;
+  /** Data sources that were checked, e.g. ["Google", "Instagram", "Calendar"]. */
+  scannedSources: string[];
+  /** Total alerts found this run. */
+  totalCount: number;
 }
 
 // ─────────────────────────────────────────────────────────────

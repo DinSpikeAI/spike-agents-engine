@@ -5,6 +5,8 @@
  * Built once, used 9 times.
  *
  * Day 5+ status: real Anthropic calls via injected `executor`.
+ * Day 6+:        executor can return status: "no_op" for safe halt
+ *                (Watcher pattern — nothing to report, retry next interval).
  * Mock path remains for tests and `is_mocked: true` runs.
  *
  * Uses ADMIN client (service_role) — bypasses RLS.
@@ -23,8 +25,14 @@ import type {
   MockBehavior,
 } from "./types";
 
-// Executor type — injected by each agent with its real Anthropic call
-export type AgentExecutor<TOutput> = () => Promise<{ output: TOutput; usage: AnthropicUsageForCost }>;
+// Executor type — injected by each agent with its real Anthropic call.
+// Optional `status`: lets the executor signal a clean no-op (e.g. Watcher
+// found nothing to report). Defaults to "succeeded" if omitted.
+export type AgentExecutor<TOutput> = () => Promise<{
+  output: TOutput;
+  usage: AnthropicUsageForCost;
+  status?: "succeeded" | "no_op";
+}>;
 
 // ═══════════════════════════════════════════════════════════════
 // CORE: runAgent()
@@ -62,23 +70,25 @@ export async function runAgent<TOutput = unknown>(
   }
 
   // ─── Step 3: reserve_spend (MOCK — just log) ──────────────
-  // Day 4: await supabase.rpc('reserve_spend', { ... })
+  // Day 8+: await supabase.rpc('reserve_spend', { ... })
   console.log(
     `[runAgent MOCK] Reserved ₪${costEstimateIls.toFixed(4)} for ${input.agentId} (run ${runId.slice(0, 8)})`
   );
 
-  // ─── Step 4: Execute (MOCK in Day 3) ──────────────────────
+  // ─── Step 4: Execute ──────────────────────────────────────
   let output: TOutput | null = null;
   let status: RunStatus = "succeeded";
   let errorMessage: string | undefined;
-
   let usage: AnthropicUsageForCost | undefined;
+
   try {
     if (executor) {
       const result = await executor();
       output = result.output;
       usage = result.usage;
-      status = "succeeded";
+      // Executor may report no_op (Watcher: nothing to alert about).
+      // Default to succeeded if not specified.
+      status = result.status ?? "succeeded";
     } else {
       const result = await mockExecute<TOutput>(input.agentId, mockBehavior);
       output = result.output;
@@ -91,13 +101,15 @@ export async function runAgent<TOutput = unknown>(
   }
 
   // ─── Step 5: settle_spend (MOCK — just log) ───────────────
+  // No-op runs still cost tokens (LLM had to think to decide nothing).
+  // Only failed runs are zero-cost (we refund the reservation).
   const costActualIls = (() => {
-    if (status !== "succeeded") return 0;
+    if (status === "failed") return 0;
     if (usage) return calculateCostIls(input.model, usage);
     return costEstimateIls * 0.85; // mock fallback
   })();
   console.log(
-    `[runAgent MOCK] Settled ₪${costActualIls.toFixed(4)} for run ${runId.slice(0, 8)}`
+    `[runAgent MOCK] Settled ₪${costActualIls.toFixed(4)} for run ${runId.slice(0, 8)} (status: ${status})`
   );
 
   // ─── Step 6: Update agent_runs row ────────────────────────
