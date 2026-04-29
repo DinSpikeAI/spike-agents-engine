@@ -18,7 +18,6 @@ export async function runMorningAgent(
   triggerSource: "manual" | "scheduled" | "webhook" = "manual",
   context?: Partial<MorningPromptContext>
 ): Promise<RunResult<MorningAgentOutput>> {
-
   const promptContext: MorningPromptContext = {
     ownerName: context?.ownerName ?? "בעל העסק",
     businessName: context?.businessName ?? "העסק שלי",
@@ -32,9 +31,16 @@ export async function runMorningAgent(
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 1024,
-      system: MORNING_AGENT_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildMorningUserMessage(promptContext) }],
-      // @ts-expect-error — output_config is GA but not yet in SDK types
+      system: [
+        {
+          type: "text",
+          text: MORNING_AGENT_SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral", ttl: "1h" },
+        },
+      ],
+      messages: [
+        { role: "user", content: buildMorningUserMessage(promptContext) },
+      ],
       output_config: {
         format: {
           type: "json_schema",
@@ -43,9 +49,9 @@ export async function runMorningAgent(
       },
     });
 
+    // Extract text from content blocks. Skip thinking blocks (no .text field).
     const text = response.content
-      .filter((b): b is { type: "text"; text: string } => b.type === "text")
-      .map((b) => b.text)
+      .map((b) => (b.type === "text" ? b.text : ""))
       .join("");
 
     const output = JSON.parse(text) as MorningAgentOutput;
@@ -55,14 +61,18 @@ export async function runMorningAgent(
       usage: {
         input_tokens: response.usage.input_tokens,
         output_tokens: response.usage.output_tokens,
-        cache_read_input_tokens: (response.usage as any).cache_read_input_tokens ?? 0,
-        cache_creation_input_tokens: (response.usage as any).cache_creation_input_tokens ?? 0,
+        cache_read_input_tokens:
+          (response.usage as { cache_read_input_tokens?: number })
+            .cache_read_input_tokens ?? 0,
+        cache_creation_input_tokens:
+          (response.usage as { cache_creation_input_tokens?: number })
+            .cache_creation_input_tokens ?? 0,
       },
     };
   };
 
   return runAgent<MorningAgentOutput>(
-    { tenantId, agentId: "morning", triggerSource },
+    { tenantId, agentId: "morning", triggerSource, model: MODEL },
     undefined,
     executor
   );

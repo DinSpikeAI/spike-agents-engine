@@ -60,7 +60,7 @@ export function RunMorningButton() {
                 </h2>
                 {isMocked && (
                   <span className="mt-1 inline-block rounded-md bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-300">
-                    🧪 Mock data — Day 3
+                    🧪 Mock data
                   </span>
                 )}
               </div>
@@ -79,7 +79,7 @@ export function RunMorningButton() {
             </p>
 
             {/* Yesterday metrics */}
-            {output.yesterdayMetrics?.revenue !== undefined && (
+            {output.yesterdayMetrics.revenue != null && (
               <div className="mb-4 rounded-lg bg-slate-800/50 p-4">
                 <h3 className="mb-2 text-sm font-medium text-slate-400">
                   אתמול
@@ -96,13 +96,13 @@ export function RunMorningButton() {
             )}
 
             {/* Things completed */}
-            {output.thingsCompleted?.length > 0 && (
+            {output.thingsCompleted.length > 0 && (
               <div className="mb-4">
                 <h3 className="mb-2 text-sm font-medium text-slate-400">
                   ✅ מה הסוכנים סיימו
                 </h3>
                 <ul className="space-y-1">
-                  {(Array.isArray(output.thingsCompleted) ? output.thingsCompleted : output.thingsCompleted.split("\n").filter(Boolean)).map((item, i) => (
+                  {output.thingsCompleted.map((item, i) => (
                     <li key={i} className="text-sm text-slate-200">
                       • {item}
                     </li>
@@ -112,13 +112,13 @@ export function RunMorningButton() {
             )}
 
             {/* Insights */}
-            {output.insights?.length > 0 && (
+            {output.insights.length > 0 && (
               <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
                 <h3 className="mb-2 text-sm font-medium text-amber-300">
                   💡 תובנות חכמות
                 </h3>
                 <ul className="space-y-2">
-                  {(Array.isArray(output.insights) ? output.insights : output.insights.split("\n").filter(Boolean)).map((item, i) => (
+                  {output.insights.map((item, i) => (
                     <li key={i} className="text-sm text-slate-200">
                       {item}
                     </li>
@@ -128,13 +128,13 @@ export function RunMorningButton() {
             )}
 
             {/* Today's schedule */}
-            {output.todaysSchedule?.length > 0 && (
+            {output.todaysSchedule.length > 0 && (
               <div className="mb-4">
                 <h3 className="mb-2 text-sm font-medium text-slate-400">
                   📅 לוח הזמנים היום
                 </h3>
                 <ul className="space-y-1">
-                  {(Array.isArray(output.todaysSchedule) ? output.todaysSchedule : output.todaysSchedule.split("\n").filter(Boolean)).map((item, i) => (
+                  {output.todaysSchedule.map((item, i) => (
                     <li key={i} className="text-sm text-slate-200">
                       {item}
                     </li>

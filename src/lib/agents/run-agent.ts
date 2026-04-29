@@ -1,16 +1,15 @@
 /**
- * Spike Engine — Agent Runner (Mock Infrastructure)
+ * Spike Engine — Agent Runner (shared infrastructure)
  *
  * This is the SHARED runtime for all 9 agents.
  * Built once, used 9 times.
  *
- * ⚠️ DAY 3 STATUS: Mock implementation. Returns canned output.
- *    Day 4 will replace `mockExecute()` with `anthropic.messages.create()`.
+ * Day 5+ status: real Anthropic calls via injected `executor`.
+ * Mock path remains for tests and `is_mocked: true` runs.
  *
  * Uses ADMIN client (service_role) — bypasses RLS.
  * Rationale: agent_runs writes always come from server context
  * (server actions, schedulers, webhooks) — never from user JWT context.
- * In production this same flow runs via QStash/cron with service_role.
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -94,7 +93,7 @@ export async function runAgent<TOutput = unknown>(
   // ─── Step 5: settle_spend (MOCK — just log) ───────────────
   const costActualIls = (() => {
     if (status !== "succeeded") return 0;
-    if (usage) return calculateCostIls(input.model ?? "claude-haiku-4-5", usage);
+    if (usage) return calculateCostIls(input.model, usage);
     return costEstimateIls * 0.85; // mock fallback
   })();
   console.log(

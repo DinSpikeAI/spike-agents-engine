@@ -3,8 +3,6 @@
  *
  * These types define the contract shared by all 9 agents.
  * Built once, used 9 times.
- *
- * NOTE: This is the MOCK phase (Day 3). Anthropic SDK integration comes Day 4.
  */
 
 // ─────────────────────────────────────────────────────────────
@@ -41,6 +39,8 @@ export interface RunInput {
   tenantId: string;
   agentId: AgentId;
   triggerSource: "manual" | "scheduled" | "webhook";
+  /** Model used for cost calculation. Each agent declares its own. */
+  model: AgentModel;
 }
 
 export interface RunResult<T = unknown> {
@@ -48,38 +48,48 @@ export interface RunResult<T = unknown> {
   status: RunStatus;
   output: T | null;
   error?: string;
-  costEstimateIls: number;     // Pre-call estimate in ILS
-  costActualIls: number | null; // Post-call actual (null if mocked)
+  costEstimateIls: number;
+  costActualIls: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
   cacheReadTokens: number | null;
   cacheWriteTokens: number | null;
-  startedAt: string;            // ISO
-  finishedAt: string | null;    // ISO
-  isMocked: boolean;            // TRUE during Day 3
+  startedAt: string;
+  finishedAt: string | null;
+  isMocked: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────
 // Morning Agent specific output
 // ─────────────────────────────────────────────────────────────
+//
+// Shape MUST match MORNING_AGENT_OUTPUT_SCHEMA in ./morning/schema.ts.
+// If you change this, update the schema in the same commit.
 
 export interface MorningAgentOutput {
-  greeting: string;             // "בוקר טוב, [שם]"
-  headline: string;             // הכותרת הראשית של היום
+  /** "בוקר טוב, [שם]" — agent always greets as morning regardless of trigger time */
+  greeting: string;
+  /** One-sentence headline for today */
+  headline: string;
   yesterdayMetrics: {
-    revenue?: number;
-    revenueChangePercent?: number;
-    sameWeekdayCompare?: string;
+    revenue: number | null;
+    revenueChangePercent: number | null;
+    sameWeekdayCompare: string | null;
   };
-  thingsCompleted: string[];    // מה הסוכנים סיימו אתמול
+  /** 2-3 items completed yesterday by the agents */
+  thingsCompleted: string[];
+  /** Count of items waiting for owner approval */
   thingsNeedingApproval: number;
-  insights: string[];           // 1-3 תובנות חכמות
-  todaysSchedule: string[];     // לוח זמנים להיום
+  /** 1-3 actionable insights */
+  insights: string[];
+  /** Today's schedule, time-prefixed strings */
+  todaysSchedule: string[];
+  /** One specific action for today */
   callToAction: string;
 }
 
 // ─────────────────────────────────────────────────────────────
-// Generic agent output (for non-Morning agents, future)
+// Generic agent output (placeholder for non-Morning agents)
 // ─────────────────────────────────────────────────────────────
 
 export interface GenericAgentOutput {
@@ -88,7 +98,7 @@ export interface GenericAgentOutput {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Mock fixtures (Day 3 only — removed in Day 4)
+// Mock fixtures (testing only)
 // ─────────────────────────────────────────────────────────────
 
 export interface MockBehavior {
