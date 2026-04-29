@@ -14,6 +14,8 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { calculateCostIls } from "@/lib/anthropic-pricing";
+import type { AnthropicUsageForCost } from "@/lib/anthropic-pricing";
 import type {
   AgentId,
   RunInput,
@@ -22,13 +24,17 @@ import type {
   MockBehavior,
 } from "./types";
 
+// Executor type — injected by each agent with its real Anthropic call
+export type AgentExecutor<TOutput> = () => Promise<{ output: TOutput; usage: AnthropicUsageForCost }>;
+
 // ═══════════════════════════════════════════════════════════════
 // CORE: runAgent()
 // ═══════════════════════════════════════════════════════════════
 
 export async function runAgent<TOutput = unknown>(
   input: RunInput,
-  mockBehavior?: MockBehavior
+  mockBehavior?: MockBehavior,
+  executor?: AgentExecutor<TOutput>
 ): Promise<RunResult<TOutput>> {
   const supabase = createAdminClient();
   const startedAt = new Date().toISOString();
@@ -48,7 +54,7 @@ export async function runAgent<TOutput = unknown>(
       trigger_source: input.triggerSource,
       cost_estimate_ils: costEstimateIls,
       started_at: startedAt,
-      is_mocked: true, // ⚠️ Day 3 only — flip to false in Day 4
+      is_mocked: executor === undefined,
     });
 
   if (insertError) {
@@ -67,10 +73,18 @@ export async function runAgent<TOutput = unknown>(
   let status: RunStatus = "succeeded";
   let errorMessage: string | undefined;
 
+  let usage: AnthropicUsageForCost | undefined;
   try {
-    const result = await mockExecute<TOutput>(input.agentId, mockBehavior);
-    output = result.output;
-    status = result.status;
+    if (executor) {
+      const result = await executor();
+      output = result.output;
+      usage = result.usage;
+      status = "succeeded";
+    } else {
+      const result = await mockExecute<TOutput>(input.agentId, mockBehavior);
+      output = result.output;
+      status = result.status;
+    }
   } catch (err) {
     status = "failed";
     errorMessage = err instanceof Error ? err.message : String(err);
@@ -78,8 +92,11 @@ export async function runAgent<TOutput = unknown>(
   }
 
   // ─── Step 5: settle_spend (MOCK — just log) ───────────────
-  const costActualIls =
-    status === "succeeded" ? costEstimateIls * 0.85 : 0;
+  const costActualIls = (() => {
+    if (status !== "succeeded") return 0;
+    if (usage) return calculateCostIls(input.model ?? "claude-haiku-4-5", usage);
+    return costEstimateIls * 0.85; // mock fallback
+  })();
   console.log(
     `[runAgent MOCK] Settled ₪${costActualIls.toFixed(4)} for run ${runId.slice(0, 8)}`
   );
@@ -116,7 +133,7 @@ export async function runAgent<TOutput = unknown>(
     cacheWriteTokens: null,
     startedAt,
     finishedAt,
-    isMocked: true,
+    isMocked: executor === undefined,
   };
 }
 

@@ -102,7 +102,7 @@ export function RunMorningButton() {
                   ✅ מה הסוכנים סיימו
                 </h3>
                 <ul className="space-y-1">
-                  {output.thingsCompleted.map((item, i) => (
+                  {(Array.isArray(output.thingsCompleted) ? output.thingsCompleted : output.thingsCompleted.split("\n").filter(Boolean)).map((item, i) => (
                     <li key={i} className="text-sm text-slate-200">
                       • {item}
                     </li>
@@ -118,7 +118,7 @@ export function RunMorningButton() {
                   💡 תובנות חכמות
                 </h3>
                 <ul className="space-y-2">
-                  {output.insights.map((item, i) => (
+                  {(Array.isArray(output.insights) ? output.insights : output.insights.split("\n").filter(Boolean)).map((item, i) => (
                     <li key={i} className="text-sm text-slate-200">
                       {item}
                     </li>
@@ -134,7 +134,7 @@ export function RunMorningButton() {
                   📅 לוח הזמנים היום
                 </h3>
                 <ul className="space-y-1">
-                  {output.todaysSchedule.map((item, i) => (
+                  {(Array.isArray(output.todaysSchedule) ? output.todaysSchedule : output.todaysSchedule.split("\n").filter(Boolean)).map((item, i) => (
                     <li key={i} className="text-sm text-slate-200">
                       {item}
                     </li>
