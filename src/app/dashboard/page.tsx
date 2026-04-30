@@ -12,7 +12,7 @@ import { RunReviewsButton } from "@/components/dashboard/run-reviews-button";
 import { RunHotLeadsButton } from "@/components/dashboard/run-hot-leads-button";
 import { RunManagerButton } from "@/components/dashboard/run-manager-button";
 import { AgentGrid } from "@/components/dashboard/agent-grid";
-import { listPendingDrafts } from "@/app/dashboard/actions";
+import { listPendingDrafts, getManagerLockState } from "@/app/dashboard/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +36,12 @@ export default async function DashboardPage() {
   const userName = userEmail.split("@")[0] || "Din";
   const greeting = getGreeting();
 
-  const draftsResult = await listPendingDrafts();
+  // Fetch dashboard signals in parallel
+  const [draftsResult, managerLockResult] = await Promise.all([
+    listPendingDrafts(),
+    getManagerLockState(),
+  ]);
+
   const pendingCount = draftsResult.success
     ? (draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0)
     : 0;
@@ -44,6 +49,19 @@ export default async function DashboardPage() {
     pendingCount > 0
       ? `${pendingCount} ${pendingCount === 1 ? "טיוטה" : "טיוטות"} מחכות לסקירה`
       : "אין טיוטות מחכות";
+
+  // Manager lock state — fall back to "can run" if query failed
+  const managerLockState = managerLockResult.success && managerLockResult.state
+    ? managerLockResult.state
+    : {
+        canRun: true,
+        reason: null,
+        nextEligibleAt: null,
+        daysUntilNext: 0,
+        hoursUntilNext: 0,
+        unreadReportId: null,
+        lastReadAt: null,
+      };
 
   return (
     <div
@@ -97,9 +115,9 @@ export default async function DashboardPage() {
             </h2>
             <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
               סוקר את כל הסוכנים שלך בשבוע האחרון, מזהה חריגות איכות, חישוב
-              מדדי צמיחה והמלצה אחת לפעולה.
+              מדדי צמיחה והמלצה אחת לפעולה. הדוח זמין פעם בשבוע.
             </p>
-            <RunManagerButton />
+            <RunManagerButton lockState={managerLockState} />
           </div>
 
           {/* Morning Agent — Day 5 */}

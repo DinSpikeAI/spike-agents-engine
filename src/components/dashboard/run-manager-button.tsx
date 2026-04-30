@@ -3,13 +3,55 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { triggerManagerAgentAction } from "@/app/dashboard/actions";
+import type { ManagerLockState } from "@/app/dashboard/actions";
 
-export function RunManagerButton() {
+export function RunManagerButton({ lockState }: { lockState: ManagerLockState }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // ─── Mode 1: there is an unread report — link to read it ───
+  if (!lockState.canRun && lockState.reason === "unread_pending") {
+    return (
+      <button
+        onClick={() => router.push("/dashboard/manager")}
+        className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-blue-400"
+      >
+        📬 דוח חדש מחכה — לחץ לקריאה
+      </button>
+    );
+  }
+
+  // ─── Mode 2: locked for the week ───────────────────────────
+  if (!lockState.canRun && lockState.reason === "weekly_lock") {
+    const lockMsg =
+      lockState.daysUntilNext > 0
+        ? `🔒 הדוח הבא בעוד ${lockState.daysUntilNext} ${
+            lockState.daysUntilNext === 1 ? "יום" : "ימים"
+          }`
+        : `🔒 הדוח הבא בעוד ${lockState.hoursUntilNext} ${
+            lockState.hoursUntilNext === 1 ? "שעה" : "שעות"
+          }`;
+    return (
+      <div className="space-y-2">
+        <button
+          disabled
+          className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-slate-400 cursor-not-allowed"
+        >
+          {lockMsg}
+        </button>
+        <button
+          onClick={() => router.push("/dashboard/manager")}
+          className="block text-xs text-slate-400 hover:text-slate-200 underline"
+        >
+          צפייה בדוח האחרון
+        </button>
+      </div>
+    );
+  }
+
+  // ─── Mode 3: can run ───────────────────────────────────────
   const handleClick = () => {
     setError(null);
     setSuccess(null);
