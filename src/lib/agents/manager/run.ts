@@ -1,5 +1,5 @@
 /**
- * Manager Agent — Day 10 + Day 11A spend cap enforcement
+ * Manager Agent — Day 10 + Day 11A spend cap + Day 11B health score
  *
  * Pipeline:
  *   1. Pre-flight spend cap check (Day 11A) — before doing any work
@@ -9,7 +9,8 @@
  *   5. Call Sonnet 4.6 with thinking_budget = 8000 + 5-section JSON schema
  *   6. settle_spend on success / refund_spend on failure (Day 11A)
  *   7. Persist the structured report to manager_reports
- *   8. Return ManagerRunResult
+ *   8. Compute and persist customer health score (Day 11B)
+ *   9. Return ManagerRunResult
  *
  * Notes:
  *   - This is the FIRST agent that uses thinking. Anthropic SDK API:
@@ -22,6 +23,8 @@
  *     unique cost-tracking needs (thinking tokens are billed separately).
  *     Instead we call anthropic directly and write to agent_runs ourselves.
  *     Day 11A: We replicate the runAgent spend-cap pattern manually here.
+ *   - Day 11B: After a successful run, we recompute the customer health
+ *     score so the Admin dashboard always sees fresh-as-of-this-week data.
  */
 
 import { anthropic } from "@/lib/anthropic";
@@ -37,6 +40,7 @@ import {
   assertWithinSpendCap,
   estimateAgentRunCostIls,
 } from "@/lib/quotas/check-cap";
+import { computeAndPersistHealthScore } from "@/lib/health/score";
 import type { ManagerAgentOutput, RunResult } from "../types";
 import { randomUUID } from "node:crypto";
 
@@ -44,7 +48,7 @@ const MODEL = "claude-sonnet-4-6" as const;
 const THINKING_BUDGET = 8000;
 // max_tokens MUST be greater than thinking.budget_tokens.
 // 12000 = 8000 thinking + ~4000 for the JSON output.
-const MAX_TOKENS = 12000;
+const MAX_TOKENS = 16000;
 
 export interface ManagerRunResult extends RunResult<ManagerAgentOutput> {
   reportId: string | null;
@@ -306,6 +310,21 @@ export async function runManagerAgent(
 
     if (insertError) {
       console.error("[manager] Failed to persist report:", insertError);
+    }
+
+    // ─── Step 10: Compute health score (Day 11B) ───────────
+    // Best-effort: failure here MUST NOT fail the Manager run.
+    // The score is a bonus; the Manager's primary job is the report.
+    try {
+      const healthResult = await computeAndPersistHealthScore(tenantId);
+      console.log(
+        `[manager] Health score for ${tenantId.slice(0, 8)}: ${healthResult.score} (${healthResult.riskLevel})`
+      );
+    } catch (healthErr) {
+      console.error(
+        `[manager] Health score computation failed for ${tenantId.slice(0, 8)} (non-fatal):`,
+        healthErr
+      );
     }
 
     return {
