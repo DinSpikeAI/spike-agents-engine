@@ -1,276 +1,106 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* =================================================================
+   Spike Engine — Calm Frosted (Direction D)
+   Apple-style design system: layered tints, frosted glass, system colors.
+   "Calm is the brand."
+   ================================================================= */
 
-/* ============================================================================
-   THEME: Spike OS Engine
-   Merged from:
-   - shadcn/ui b0 preset (Radix base + Lucide icons)
-   - Day 1 Spike design tokens (teal/navy/heebo from spikeai.co.il landing)
-   ============================================================================ */
+@theme {
+  /* === Calm Frosted base === */
+  --color-mist-blue:   #E9EEF8;
+  --color-mist-lilac:  #EFE9F4;
+  --color-mist-mint:   #E5EEF0;
 
-@theme inline {
-  /* Hebrew typography */
-  --font-heebo: var(--font-heebo);
-  --font-sans: var(--font-heebo);
-  --font-heading: var(--font-heebo);
+  /* === Glass === */
+  --color-glass:       rgba(255, 255, 255, 0.72);
+  --color-glass-deep:  rgba(255, 255, 255, 0.86);
+  --color-glass-soft:  rgba(255, 255, 255, 0.55);
 
-  /* Spike brand palette */
-  --color-ink-bg: #07111A;
-  --color-ink-bg2: #0B1A22;
-  --color-ink-text: #E8EBFF;
-  --color-teal-50: #F0FDFA;
-  --color-teal-300: #5EEAD4;
-  --color-teal-400: #22D3B0;
-  --color-teal-500: #14B8A6;
-  --color-teal-700: #0F766E;
-  --color-cyan-300: #5BD0F2;
-  --color-navy-950: #0a1f2c;
-  --color-blush: #FFA4B5;
+  /* === Borders === */
+  --color-hairline:    rgba(15, 20, 30, 0.08);
+  --color-hairline-s:  rgba(15, 20, 30, 0.14);
+  --color-frost-edge:  rgba(255, 255, 255, 0.7);
 
-  /* shadcn tokens (mapped to CSS variables in :root / .dark below) */
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --color-foreground: var(--foreground);
-  --color-background: var(--background);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /* === Ink (text) === */
+  --color-ink:         #0F1620;
+  --color-ink-2:       #3F4654;
+  --color-ink-3:       #727988;
+
+  /* === System colors (status only — never decoration) === */
+  --color-sys-blue:        #0A84FF;
+  --color-sys-blue-soft:   rgba(10, 132, 255, 0.12);
+  --color-sys-green:       #30B36B;
+  --color-sys-green-soft:  rgba(48, 179, 107, 0.14);
+  --color-sys-pink:        #D6336C;
+  --color-sys-amber:       #E0A93D;
+
+  /* === Radii === */
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  /* === Shadows === */
+  --shadow-glass:      0 1px 0 rgba(255,255,255,0.6) inset, 0 8px 28px rgba(15,20,30,0.06), 0 1px 3px rgba(15,20,30,0.04);
+  --shadow-glass-deep: 0 1px 0 rgba(255,255,255,0.7) inset, 0 12px 40px rgba(15,20,30,0.08), 0 2px 6px rgba(15,20,30,0.05);
+  --shadow-cta:        0 1px 0 rgba(255,255,255,0.3) inset, 0 8px 22px rgba(10,132,255,0.32);
+
+  /* === Type === */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Heebo", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Geist Mono", monospace;
 }
 
-/* ============================================================================
-   :root = ALWAYS DARK for Spike Engine.
-   No light theme — the app is dark-first by design (Apple-clean dashboard).
-   ============================================================================ */
+/* =================================================================
+   Base
+   ================================================================= */
 
-:root {
-  --background: #07111A;
-  --foreground: #E8EBFF;
-  --card: #0B1A22;
-  --card-foreground: #E8EBFF;
-  --popover: #0B1A22;
-  --popover-foreground: #E8EBFF;
-
-  --primary: #22D3B0;
-  --primary-foreground: #07111A;
-
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: #E8EBFF;
-
-  --muted: oklch(0.18 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-
-  --accent: #5BD0F2;
-  --accent-foreground: #07111A;
-
-  --destructive: #FFA4B5;
-
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: #22D3B0;
-
-  /* Charts — Spike palette */
-  --chart-1: #22D3B0;   /* teal-400 */
-  --chart-2: #5BD0F2;   /* cyan-300 */
-  --chart-3: #FFA4B5;   /* blush */
-  --chart-4: #5EEAD4;   /* teal-300 */
-  --chart-5: #0F766E;   /* teal-700 */
-
-  --radius: 0.625rem;
-
-  --sidebar: #0B1A22;
-  --sidebar-foreground: #E8EBFF;
-  --sidebar-primary: #22D3B0;
-  --sidebar-primary-foreground: #07111A;
-  --sidebar-accent: oklch(1 0 0 / 6%);
-  --sidebar-accent-foreground: #E8EBFF;
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: #22D3B0;
+html {
+  direction: rtl;
 }
 
-/* .dark mirrors :root for now (single dark theme). If we add light later,
-   :root becomes light and .dark keeps these values. */
-
-.dark {
-  --background: #07111A;
-  --foreground: #E8EBFF;
-  --card: #0B1A22;
-  --card-foreground: #E8EBFF;
-  --popover: #0B1A22;
-  --popover-foreground: #E8EBFF;
-  --primary: #22D3B0;
-  --primary-foreground: #07111A;
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: #E8EBFF;
-  --muted: oklch(0.18 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: #5BD0F2;
-  --accent-foreground: #07111A;
-  --destructive: #FFA4B5;
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: #22D3B0;
-  --chart-1: #22D3B0;
-  --chart-2: #5BD0F2;
-  --chart-3: #FFA4B5;
-  --chart-4: #5EEAD4;
-  --chart-5: #0F766E;
-  --sidebar: #0B1A22;
-  --sidebar-foreground: #E8EBFF;
-  --sidebar-primary: #22D3B0;
-  --sidebar-primary-foreground: #07111A;
-  --sidebar-accent: oklch(1 0 0 / 6%);
-  --sidebar-accent-foreground: #E8EBFF;
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: #22D3B0;
+html, body {
+  font-family: var(--font-sans);
 }
 
-/* ============================================================================
-   BASE STYLES
-   ============================================================================ */
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  html {
-    scroll-behavior: smooth;
-    font-family: var(--font-heebo), system-ui, sans-serif;
-  }
-  body {
-    @apply bg-background text-foreground antialiased;
-  }
+body {
+  background: var(--color-mist-blue);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ============================================================================
-   SPIKE BRAND ANIMATIONS
-   ============================================================================ */
-
-@keyframes spike-float {
-  0%, 100% { transform: translateY(-12px); }
-  50%      { transform: translateY(12px); }
+/* Hebrew typography fix — slightly increase letter-spacing for Heebo */
+[lang="he"] h1, h1 {
+  letter-spacing: -0.025em;
 }
 
-@keyframes spike-glow {
-  0%, 100% { opacity: 0.4; }
-  50%      { opacity: 0.7; }
+/* Remove default focus rings; we'll add custom ones */
+*:focus {
+  outline: none;
 }
 
-@keyframes spike-pulse {
-  0%, 100% { transform: scale(1);    opacity: 0.8; }
-  50%      { transform: scale(1.05); opacity: 1;   }
-}
-
-.animate-spike-float { animation: spike-float 4s ease-in-out infinite; }
-.animate-spike-glow  { animation: spike-glow  3s ease-in-out infinite; }
-.animate-spike-pulse { animation: spike-pulse 3s ease-in-out infinite; }
-
-/* ============================================================================
-   SPIKE BRAND UTILITIES
-   ============================================================================ */
-
-::selection {
-  background: #22D3B0;
-  color: #07111A;
-}
-
-.gradient-text {
-  background: linear-gradient(135deg, #22D3B0 0%, #5BD0F2 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.glass-card {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  transition: border-color 0.3s ease, transform 0.3s ease;
-}
-
-.glass-card:hover {
-  border-color: rgba(34, 211, 176, 0.4);
-  transform: translateY(-4px);
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Day 4 — Visual Rebuild Additions
-   ═══════════════════════════════════════════════════════════════ */
-
-:root {
-  --spike-bg: #060B12;
-  --spike-bg-2: #0A1119;
-  --spike-surface: #0E1722;
-  --spike-surface-2: #131F2C;
-  --spike-border: rgba(148, 163, 184, 0.08);
-  --spike-border-strong: rgba(148, 163, 184, 0.14);
-  --spike-text: #E2E8F0;
-  --spike-text-dim: #94A3B8;
-  --spike-text-mute: #64748B;
-  --spike-teal: #22D3B0;
-  --spike-teal-light: #5EEAD4;
-  --spike-teal-deep: #14B8A6;
-  --spike-cyan: #5BD0F2;
-  --spike-amber: #FCD34D;
-  --spike-warm: #C9A06B;
-}
-
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 800px 400px at 80% 0%, rgba(34, 211, 176, 0.04), transparent 60%),
-    radial-gradient(ellipse 600px 400px at 0% 100%, rgba(91, 208, 242, 0.025), transparent 60%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-@keyframes spike-livepulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 176, 0.55); }
-  70% { box-shadow: 0 0 0 6px rgba(34, 211, 176, 0); }
-}
-.spike-pulse-dot {
-  animation: spike-livepulse 2s ease-in-out infinite;
-}
-
-.spike-scroll::-webkit-scrollbar { width: 8px; }
-.spike-scroll::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.1);
+*:focus-visible {
+  outline: 2px solid var(--color-sys-blue);
+  outline-offset: 2px;
   border-radius: 4px;
 }
-.spike-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* Custom scrollbar — minimal, calm */
+.spike-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.spike-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.spike-scroll::-webkit-scrollbar-thumb {
+  background: rgba(15, 20, 30, 0.12);
+  border-radius: 4px;
+}
+
+.spike-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 20, 30, 0.2);
+}

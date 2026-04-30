@@ -7,78 +7,190 @@ import { Topbar } from "@/components/dashboard/topbar";
 import { KpiStrip } from "@/components/dashboard/kpi-strip";
 import { ApprovalBanner } from "@/components/dashboard/approval-banner";
 import { WhatsAppFab } from "@/components/dashboard/whatsapp-fab";
+import { AppleBg } from "@/components/ui/apple-bg";
+import { Glass } from "@/components/ui/glass";
 import { RunMorningButton } from "@/components/dashboard/run-morning-button";
 import { RunWatcherButton } from "@/components/dashboard/run-watcher-button";
 import { RunReviewsButton } from "@/components/dashboard/run-reviews-button";
 import { RunHotLeadsButton } from "@/components/dashboard/run-hot-leads-button";
+import { RunManagerButton } from "@/components/dashboard/run-manager-button";
 import { RunSocialButton } from "@/components/dashboard/run-social-button";
 import { RunSalesButton } from "@/components/dashboard/run-sales-button";
-import { RunManagerButton } from "@/components/dashboard/run-manager-button";
-import { AgentGrid } from "@/components/dashboard/agent-grid";
-import { listPendingDrafts, getManagerLockState } from "@/app/dashboard/actions";
+import {
+  listPendingDrafts,
+  getManagerLockState,
+} from "@/app/dashboard/actions";
 
 export const dynamic = "force-dynamic";
 
 function getGreeting(): string {
   const hour = new Date().getHours();
-  if (hour >= 5 && hour < 11) return "בוקר טוב";
-  if (hour >= 11 && hour < 16) return "אחר צהריים טובים";
-  if (hour >= 16 && hour < 19) return "ערב טוב";
-  return "ערב טוב";
+  if (hour >= 5 && hour < 12) return "בוקר טוב";
+  if (hour >= 12 && hour < 17) return "צהריים טובים";
+  if (hour >= 17 && hour < 21) return "ערב טוב";
+  return "לילה טוב";
 }
+
+// Agent metadata — desc + role + status from research handoff
+const AGENTS = [
+  {
+    id: "manager",
+    emoji: "🧠",
+    name: "סוכן מנהל",
+    role: "דוח שבועי",
+    desc: "סוקר את כל הסוכנים שלך בשבוע האחרון, מזהה חריגות איכות, חישוב מדדי צמיחה והמלצה אחת לפעולה.",
+    button: "manager",
+  },
+  {
+    id: "morning",
+    emoji: "☀️",
+    name: "סוכן הבוקר",
+    role: "תדריך יומי",
+    desc: "תדריך בוקר עם 3 פעולות לעדיפות ראשונה, על בסיס הלידים והפניות מאתמול.",
+    button: "morning",
+  },
+  {
+    id: "watcher",
+    emoji: "🎯",
+    name: "סוכן מעקב",
+    role: "התראות בזמן אמת",
+    desc: "מסמן לידים תקועים, פניות שלא נענו ושיחות שמצריכות תגובה היום.",
+    button: "watcher",
+  },
+  {
+    id: "reviews",
+    emoji: "⭐",
+    name: "סוכן ביקורות",
+    role: "טיוטות תגובה",
+    desc: "מנסח תגובות לביקורות בגוגל ופייסבוק, בודק טון ומחכה לאישורך לפני שליחה.",
+    button: "reviews",
+  },
+  {
+    id: "leads",
+    emoji: "🔥",
+    name: "סוכן לידים חמים",
+    role: "סיווג לידים",
+    desc: "מסווג לידים נכנסים ל־Cold / Warm / Hot / Burning לפי התנהגות בפועל.",
+    button: "leads",
+  },
+  {
+    id: "social",
+    emoji: "📱",
+    name: "סוכן רשתות",
+    role: "פוסטים יומיים",
+    desc: "מכין 3 טיוטות פוסטים יומיים בעברית לאינסטגרם ופייסבוק. אתה מאשר ושולח בעצמך.",
+    button: "social",
+  },
+  {
+    id: "sales",
+    emoji: "💰",
+    name: "סוכן מכירות",
+    role: "פולואו־אפ",
+    desc: "מאתר לידים שתקועים יותר מ־3 ימים ומכין follow-up עם קישור ישיר ל-WhatsApp.",
+    button: "sales",
+  },
+];
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     redirect("/login");
   }
 
   const userEmail = user.email ?? "";
-  const userName = userEmail.split("@")[0] || "Din";
+  const userName = userEmail.split("@")[0] || "din";
   const greeting = getGreeting();
 
-  // Fetch dashboard signals in parallel
   const [draftsResult, managerLockResult] = await Promise.all([
     listPendingDrafts(),
     getManagerLockState(),
   ]);
 
   const pendingCount = draftsResult.success
-    ? (draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0)
+    ? draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0
     : 0;
-  const pendingSummary =
-    pendingCount > 0
-      ? `${pendingCount} ${pendingCount === 1 ? "טיוטה" : "טיוטות"} מחכות לסקירה`
-      : "אין טיוטות מחכות";
 
-  // Manager lock state — fall back to "can run" if query failed
-  const managerLockState = managerLockResult.success && managerLockResult.state
-    ? managerLockResult.state
-    : {
-        canRun: true,
-        reason: null,
-        nextEligibleAt: null,
-        daysUntilNext: 0,
-        hoursUntilNext: 0,
-        unreadReportId: null,
-        lastReadAt: null,
-      };
+  // Build pending summary string
+  const pendingSummary = (() => {
+    if (!draftsResult.success || !draftsResult.drafts) return "אין טיוטות מחכות";
+    const pending = draftsResult.drafts.filter((d) => d.status === "pending");
+    if (pending.length === 0) return "אין טיוטות מחכות";
+
+    const counts = {
+      sales_followup: 0,
+      social_post: 0,
+      review_reply: 0,
+    };
+    for (const d of pending) {
+      if (d.type === "sales_followup") counts.sales_followup++;
+      else if (d.type === "social_post") counts.social_post++;
+      else if (d.type === "review_reply") counts.review_reply++;
+    }
+
+    const parts = [];
+    if (counts.sales_followup > 0)
+      parts.push(`${counts.sales_followup} טיוטות מכירה`);
+    if (counts.social_post > 0) parts.push(`${counts.social_post} פוסטים`);
+    if (counts.review_reply > 0)
+      parts.push(`${counts.review_reply} תגובות לביקורות`);
+    return parts.join(" · ");
+  })();
+
+  const managerLockState =
+    managerLockResult.success && managerLockResult.state
+      ? managerLockResult.state
+      : {
+          canRun: true,
+          reason: null,
+          nextEligibleAt: null,
+          daysUntilNext: 0,
+          hoursUntilNext: 0,
+          unreadReportId: null,
+          lastReadAt: null,
+        };
+
+  // Render the right button per agent
+  const renderButton = (buttonType: string) => {
+    switch (buttonType) {
+      case "manager":
+        return <RunManagerButton lockState={managerLockState} />;
+      case "morning":
+        return <RunMorningButton />;
+      case "watcher":
+        return <RunWatcherButton />;
+      case "reviews":
+        return <RunReviewsButton />;
+      case "leads":
+        return <RunHotLeadsButton />;
+      case "social":
+        return <RunSocialButton />;
+      case "sales":
+        return <RunSalesButton />;
+      default:
+        return null;
+    }
+  };
 
   return (
     <div
       className="relative min-h-screen"
       dir="rtl"
-      style={{ background: "var(--spike-bg)", color: "var(--spike-text)" }}
+      style={{ color: "var(--color-ink)" }}
     >
-      <Sidebar userEmail={userEmail} isAdmin={isAdminEmail(userEmail)} />
+      <AppleBg />
 
-      <div className="md:mr-[248px]">
-        <main
-          className="spike-scroll mx-auto max-w-[1400px] px-6 pb-20 pt-8 md:px-10"
-          style={{ position: "relative", zIndex: 1 }}
-        >
+      <Sidebar
+        userEmail={userEmail}
+        isAdmin={isAdminEmail(userEmail)}
+        pendingCount={pendingCount}
+      />
+
+      <div className="md:mr-[232px]">
+        <main className="spike-scroll mx-auto max-w-[1280px] px-6 pb-20 pt-2 md:px-10">
           <Topbar
             greeting={greeting}
             userName={userName}
@@ -90,7 +202,7 @@ export default async function DashboardPage() {
           <KpiStrip
             pendingApprovals={pendingCount}
             todaysActions={23}
-            todaysActionsDelta="▲ 8% מאתמול"
+            todaysActionsDelta="14 הושלמו"
             todaysActionsUp={true}
             todaysActionsSparkline={[15, 12, 14, 8, 10, 4, 6]}
             weeklySavings={1840}
@@ -99,137 +211,86 @@ export default async function DashboardPage() {
           />
 
           {pendingCount > 0 && (
-            <Link href="/dashboard/approvals" className="block hover:opacity-90 transition-opacity">
+            <Link
+              href="/dashboard/approvals"
+              className="block transition-opacity hover:opacity-90"
+            >
               <ApprovalBanner count={pendingCount} summary={pendingSummary} />
             </Link>
           )}
 
-          {/* Manager Agent — Day 10 (top placement, it's the orchestrator) */}
-          <div
-            className="mb-4 rounded-xl px-6 py-5"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(168, 85, 247, 0.04))",
-              border: "1px solid rgba(139, 92, 246, 0.25)",
-            }}
-          >
-            <h2 className="mb-2 text-xl font-bold" style={{ color: "#A78BFA" }}>
-              🧠 סוכן מנהל
+          {/* Section header */}
+          <div className="mb-3 flex items-center justify-between pt-2">
+            <h2
+              className="text-[19px] font-semibold tracking-[-0.01em]"
+              style={{ color: "var(--color-ink)" }}
+            >
+              הסוכנים שלך
             </h2>
-            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
-              סוקר את כל הסוכנים שלך בשבוע האחרון, מזהה חריגות איכות, חישוב
-              מדדי צמיחה והמלצה אחת לפעולה. הדוח זמין פעם בשבוע.
-            </p>
-            <RunManagerButton lockState={managerLockState} />
+            <span
+              className="text-[12px]"
+              style={{ color: "var(--color-ink-3)" }}
+            >
+              {AGENTS.length} פעילים
+            </span>
           </div>
 
-          {/* Morning Agent — Day 5 */}
-          <div
-            className="mb-4 rounded-xl px-6 py-5"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(34, 211, 176, 0.06), rgba(91, 208, 242, 0.03))",
-              border: "1px solid rgba(34, 211, 176, 0.2)",
-            }}
-          >
-            <h2 className="mb-2 text-xl font-bold" style={{ color: "var(--spike-teal-light)" }}>
-              ☀️ סוכן הבוקר
-            </h2>
-            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
-              לחצו כדי לקבל briefing יומי בעברית עם תובנות, לוז ויעדים.
-            </p>
-            <RunMorningButton />
+          {/* Agent grid */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {AGENTS.map((agent) => (
+              <Glass
+                key={agent.id}
+                className="flex flex-col gap-2.5 p-[18px]"
+              >
+                <div className="flex items-start justify-between">
+                  <div
+                    className="flex h-11 w-11 items-center justify-center rounded-[12px] text-[22px]"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(245,247,252,0.7))",
+                      border: "1px solid rgba(255,255,255,0.9)",
+                      boxShadow:
+                        "0 4px 12px rgba(15,20,30,0.06), inset 0 1px 0 rgba(255,255,255,0.6)",
+                    }}
+                  >
+                    {agent.emoji}
+                  </div>
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[10.5px] font-medium"
+                    style={{
+                      background: "var(--color-sys-green-soft)",
+                      color: "var(--color-sys-green)",
+                    }}
+                  >
+                    פעיל
+                  </span>
+                </div>
+                <div>
+                  <div
+                    className="text-[15.5px] font-semibold tracking-tight"
+                    style={{ color: "var(--color-ink)" }}
+                  >
+                    {agent.name}
+                  </div>
+                  <div
+                    className="mt-0.5 text-[11.5px]"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
+                    {agent.role}
+                  </div>
+                </div>
+                <div
+                  className="text-[12.5px] leading-[1.55]"
+                  style={{ color: "var(--color-ink-2)" }}
+                >
+                  {agent.desc}
+                </div>
+                <div className="mt-auto pt-2.5">
+                  {renderButton(agent.button)}
+                </div>
+              </Glass>
+            ))}
           </div>
-
-          {/* Watcher Agent — Day 6 */}
-          <div
-            className="mb-4 rounded-xl px-6 py-5"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(91, 208, 242, 0.06), rgba(34, 211, 176, 0.03))",
-              border: "1px solid rgba(91, 208, 242, 0.2)",
-            }}
-          >
-            <h2 className="mb-2 text-xl font-bold" style={{ color: "var(--spike-cyan)" }}>
-              🎯 סוכן מעקב
-            </h2>
-            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
-              סורק את כל מקורות הנתונים ומחזיר התראות ממוינות לפי דחיפות.
-            </p>
-            <RunWatcherButton />
-          </div>
-
-          {/* Reviews Agent — Day 8 */}
-          <div
-            className="mb-4 rounded-xl px-6 py-5"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(255, 164, 181, 0.06), rgba(252, 211, 77, 0.03))",
-              border: "1px solid rgba(255, 164, 181, 0.2)",
-            }}
-          >
-            <h2 className="mb-2 text-xl font-bold" style={{ color: "#FFA4B5" }}>
-              ✍️ סוכן ביקורות
-            </h2>
-            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
-              כותב טיוטות תגובה לביקורות. כל טיוטה עוברת בדיקת לשון הרע ומחכה לאישורך לפני שליחה.
-            </p>
-            <RunReviewsButton />
-          </div>
-                    {/* Social Agent — Day 14 */}
-          <div
-            className="mb-4 rounded-xl px-6 py-5"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(168, 85, 247, 0.06), rgba(236, 72, 153, 0.03))",
-              border: "1px solid rgba(168, 85, 247, 0.2)",
-            }}
-          >
-            <h2 className="mb-2 text-xl font-bold" style={{ color: "#C084FC" }}>
-              📱 סוכן רשתות
-            </h2>
-            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
-              מכין 3 טיוטות פוסטים יומיות בעברית לאינסטגרם ופייסבוק. אתה מאשר, מעתיק, ומפרסם בעצמך.
-            </p>
-            <RunSocialButton />
-          </div> 
-{/* Sales Agent — Day 15 */}
-          <div
-            className="mb-4 rounded-xl px-6 py-5"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(20, 184, 166, 0.04))",
-              border: "1px solid rgba(34, 197, 94, 0.25)",
-            }}
-          >
-            <h2 className="mb-2 text-xl font-bold" style={{ color: "#86EFAC" }}>
-              💰 סוכן מכירות
-            </h2>
-            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
-              מאתר לידים תקועים יותר מ-3 ימים ומכין follow-ups בעברית עם קישור ישיר ל-WhatsApp. אתה מאשר ושולח בעצמך.
-            </p>
-            <RunSalesButton />
-          </div>  
-          {/* Hot Leads Agent — Day 9 */}
-          <div
-            className="mb-8 rounded-xl px-6 py-5"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(249, 115, 22, 0.08), rgba(239, 68, 68, 0.04))",
-              border: "1px solid rgba(249, 115, 22, 0.25)",
-            }}
-          >
-            <h2 className="mb-2 text-xl font-bold" style={{ color: "#FB923C" }}>
-              🔥 סוכן לידים חמים
-            </h2>
-            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
-              מסווג פניות נכנסות ל-buckets לפי פוטנציאל סגירה. רואה רק התנהגות —
-              לא שמות ולא דמוגרפיה (הגנת אפליה).
-            </p>
-            <RunHotLeadsButton />
-          </div>
-
-          <AgentGrid />
         </main>
 
         <WhatsAppFab />

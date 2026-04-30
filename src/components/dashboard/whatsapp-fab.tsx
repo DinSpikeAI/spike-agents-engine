@@ -1,34 +1,24 @@
-"use client";
-
 import { MessageCircle } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
-const WHATSAPP_NUMBER = "972000000000";
-const PRESET_MESSAGE = "שלום, אני משתמש ב-Spike Engine וזקוק לעזרה";
-
+/**
+ * WhatsApp Floating Action Button — bottom-start (right in RTL)
+ * Calm Frosted style — soft green gradient, refined shadow.
+ */
 export function WhatsAppFab() {
-  const href = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(PRESET_MESSAGE)}`;
-
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="פתח WhatsApp לתמיכה"
-          className="fixed bottom-6 end-6 z-40 w-14 h-14 rounded-full bg-[#25D366] hover:bg-[#1FB855] shadow-lg hover:shadow-xl transition-all flex items-center justify-center group"
-        >
-          <MessageCircle className="h-6 w-6 text-white group-hover:scale-110 transition-transform" />
-        </a>
-      </TooltipTrigger>
-      <TooltipContent side="top">
-        <p>צריך עזרה? שלח הודעה ב-WhatsApp</p>
-      </TooltipContent>
-    </Tooltip>
+    <a
+      href="https://wa.me/972000000000"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="פתח וואטסאפ"
+      className="fixed bottom-[22px] start-[18px] z-30 flex h-[50px] w-[50px] items-center justify-center rounded-full text-white transition-transform hover:scale-105"
+      style={{
+        background: "linear-gradient(135deg, #25D366, #1A9F4E)",
+        boxShadow:
+          "0 1px 0 rgba(255,255,255,0.3) inset, 0 10px 24px rgba(31,185,112,0.4)",
+      }}
+    >
+      <MessageCircle size={22} strokeWidth={1.75} />
+    </a>
   );
 }

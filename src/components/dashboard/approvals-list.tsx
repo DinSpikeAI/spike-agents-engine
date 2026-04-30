@@ -2,16 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { approveDraft, rejectDraft, type PendingDraft } from "@/app/dashboard/actions";
-
-const RISK_STYLES: Record<
-  "low" | "medium" | "high",
-  { bg: string; border: string; text: string; label: string }
-> = {
-  low:    { bg: "rgba(34, 197, 94, 0.08)",  border: "rgba(34, 197, 94, 0.30)",  text: "#86EFAC", label: "סיכון נמוך" },
-  medium: { bg: "rgba(252, 211, 77, 0.10)", border: "rgba(252, 211, 77, 0.40)", text: "#FDE68A", label: "סיכון בינוני" },
-  high:   { bg: "rgba(255, 164, 181, 0.10)", border: "rgba(255, 164, 181, 0.40)", text: "#FFA4B5", label: "נחסם — סיכון גבוה" },
-};
+import {
+  approveDraft,
+  rejectDraft,
+  type PendingDraft,
+} from "@/app/dashboard/actions";
+import { Glass } from "@/components/ui/glass";
+import { Check, X, Copy, MessageCircle, Lock } from "lucide-react";
 
 const SENTIMENT_LABELS: Record<string, string> = {
   positive: "חיובי",
@@ -77,28 +74,25 @@ const SALES_STUCK_REASON_LABELS: Record<string, string> = {
 
 function StarRow({ rating }: { rating: number }) {
   const filled = Math.max(0, Math.min(5, rating));
-  const empty = 5 - filled;
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        gap: "2px",
-        verticalAlign: "middle",
-        marginInlineEnd: "6px",
-      }}
-      aria-label={`${filled} מתוך 5 כוכבים`}
-    >
-      {Array.from({ length: filled }).map((_, i) => (
-        <span key={`f${i}`} style={{ color: "#FCD34D", fontSize: "1.1em", lineHeight: 1 }}>★</span>
-      ))}
-      {Array.from({ length: empty }).map((_, i) => (
-        <span key={`e${i}`} style={{ color: "#475569", fontSize: "1.1em", lineHeight: 1 }}>☆</span>
+    <span className="inline-flex gap-[2px]" aria-label={`${filled} מתוך 5 כוכבים`}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <span
+          key={i}
+          style={{
+            color: i < filled ? "#E0A93D" : "rgba(15,20,30,0.15)",
+            fontSize: "14px",
+            lineHeight: 1,
+          }}
+        >
+          ★
+        </span>
       ))}
     </span>
   );
 }
 
-function CopyButton({ text, label = "העתק" }: { text: string; label?: string }) {
+function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -112,9 +106,15 @@ function CopyButton({ text, label = "העתק" }: { text: string; label?: string
           alert("לא ניתן להעתיק. נסה ידנית.");
         }
       }}
-      className="rounded-md border border-slate-600 bg-slate-800 px-2 py-1 text-xs font-medium text-slate-300 transition-all hover:bg-slate-700"
+      className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11.5px] font-medium transition-all hover:bg-white"
+      style={{
+        background: "rgba(255,255,255,0.7)",
+        borderColor: "var(--color-hairline)",
+        color: "var(--color-ink-2)",
+      }}
     >
-      {copied ? "✓ הועתק" : `📋 ${label}`}
+      <Copy size={11} strokeWidth={1.75} />
+      {copied ? "הועתק" : "העתק"}
     </button>
   );
 }
@@ -128,11 +128,8 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
     setActioningId(id);
     startTransition(async () => {
       const res = await approveDraft(id);
-      if (res.success) {
-        router.refresh();
-      } else {
-        alert(`שגיאה: ${res.error ?? "לא ידוע"}`);
-      }
+      if (res.success) router.refresh();
+      else alert(`שגיאה: ${res.error ?? "לא ידוע"}`);
       setActioningId(null);
     });
   };
@@ -142,17 +139,14 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
     setActioningId(id);
     startTransition(async () => {
       const res = await rejectDraft(id);
-      if (res.success) {
-        router.refresh();
-      } else {
-        alert(`שגיאה: ${res.error ?? "לא ידוע"}`);
-      }
+      if (res.success) router.refresh();
+      else alert(`שגיאה: ${res.error ?? "לא ידוע"}`);
       setActioningId(null);
     });
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {drafts.map((d) => {
         const isReview = d.type === "review_reply";
         const isSocial = d.type === "social_post";
@@ -201,16 +195,15 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
             : messageHebrew
           : "";
 
-        const risk = (d.defamation_risk ?? "low") as "low" | "medium" | "high";
-        const riskStyle = RISK_STYLES[risk];
-        const isBlocked = d.status === "rejected" && d.rejection_reason?.includes("Defamation");
+        const isBlocked =
+          d.status === "rejected" && d.rejection_reason?.includes("Defamation");
 
         const typeLabel = isReview
           ? "תגובה לביקורת"
           : isSocial
           ? "פוסט לרשתות"
           : isSales
-          ? "פולואו-אפ ללקוח"
+          ? "פולואו־אפ ללקוח"
           : d.type;
 
         const headerTitle = isReview
@@ -222,69 +215,79 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
           : d.recipient_label ?? "טיוטה";
 
         return (
-          <div
-            key={d.id}
-            className="rounded-xl border border-slate-700 bg-slate-900/60 p-5"
-            style={{
-              borderColor: risk === "high" ? riskStyle.border : undefined,
-            }}
-          >
-            {/* Header row */}
+          <Glass key={d.id} className="overflow-hidden p-5">
+            {/* Header */}
             <div className="mb-3 flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="mb-1 flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-medium uppercase tracking-wide text-teal-300">
+              <div className="flex-1 min-w-0">
+                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                  <span
+                    className="text-[10.5px] font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
                     {typeLabel}
                   </span>
-                  <span
-                    className="rounded-md px-2 py-0.5 text-xs font-semibold"
-                    style={{
-                      color: riskStyle.text,
-                      background: riskStyle.bg,
-                      border: `1px solid ${riskStyle.border}`,
-                    }}
-                  >
-                    {riskStyle.label}
-                  </span>
                   {d.contains_pii && (
-                    <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-300">
-                      🔒 PII הוסתר
+                    <span
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-medium"
+                      style={{
+                        background: "var(--color-sys-amber)",
+                        color: "white",
+                      }}
+                    >
+                      <Lock size={9} strokeWidth={2} />
+                      PII הוסתר
                     </span>
                   )}
                   {isSocial && confidence && (
                     <span
-                      className="rounded-md px-2 py-0.5 text-xs font-medium"
+                      className="rounded-md px-2 py-0.5 text-[10.5px] font-medium"
                       style={{
+                        background:
+                          confidence === "high"
+                            ? "var(--color-sys-green-soft)"
+                            : "rgba(15,20,30,0.05)",
                         color:
                           confidence === "high"
-                            ? "#86EFAC"
-                            : confidence === "medium"
-                            ? "#FDE68A"
-                            : "#94A3B8",
-                        background: "rgba(148, 163, 184, 0.1)",
+                            ? "var(--color-sys-green)"
+                            : "var(--color-ink-3)",
                       }}
                     >
-                      ביטחון: {confidence === "high" ? "גבוה" : confidence === "medium" ? "בינוני" : "נמוך"}
+                      ביטחון:{" "}
+                      {confidence === "high"
+                        ? "גבוה"
+                        : confidence === "medium"
+                        ? "בינוני"
+                        : "נמוך"}
                     </span>
                   )}
                   {isSales && responseProb && (
                     <span
-                      className="rounded-md px-2 py-0.5 text-xs font-medium"
+                      className="rounded-md px-2 py-0.5 text-[10.5px] font-medium"
                       style={{
+                        background:
+                          responseProb === "high"
+                            ? "var(--color-sys-green-soft)"
+                            : "rgba(15,20,30,0.05)",
                         color:
                           responseProb === "high"
-                            ? "#86EFAC"
-                            : responseProb === "med"
-                            ? "#FDE68A"
-                            : "#94A3B8",
-                        background: "rgba(148, 163, 184, 0.1)",
+                            ? "var(--color-sys-green)"
+                            : "var(--color-ink-3)",
                       }}
                     >
-                      סיכוי תגובה: {responseProb === "high" ? "גבוה" : responseProb === "med" ? "בינוני" : "נמוך"}
+                      סיכוי תגובה:{" "}
+                      {responseProb === "high"
+                        ? "גבוה"
+                        : responseProb === "med"
+                        ? "בינוני"
+                        : "נמוך"}
                     </span>
                   )}
                 </div>
-                <h3 className="text-lg font-bold text-slate-100 flex items-center">
+
+                <h3
+                  className="text-[16px] font-semibold tracking-tight flex items-center gap-2"
+                  style={{ color: "var(--color-ink)" }}
+                >
                   {isReview && (
                     <>
                       <StarRow rating={rating} />
@@ -293,16 +296,26 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                   )}
                   {!isReview && headerTitle}
                 </h3>
+
                 {isReview && (
-                  <div className="mt-1 flex gap-3 text-xs text-slate-500">
+                  <div
+                    className="mt-1 flex gap-3 text-[11.5px]"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
                     <span>טון: {SENTIMENT_LABELS[sentiment] ?? sentiment}</span>
                     <span>·</span>
                     <span>כוונה: {INTENT_LABELS[intent] ?? intent}</span>
                   </div>
                 )}
+
                 {isSocial && (
-                  <div className="mt-1 flex flex-wrap gap-3 text-xs text-slate-500">
-                    <span>{SOCIAL_PLATFORM_LABELS[platformRec] ?? platformRec}</span>
+                  <div
+                    className="mt-1 flex flex-wrap gap-3 text-[11.5px]"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
+                    <span>
+                      {SOCIAL_PLATFORM_LABELS[platformRec] ?? platformRec}
+                    </span>
                     {bestTimeToPost && (
                       <>
                         <span>·</span>
@@ -311,9 +324,16 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                     )}
                   </div>
                 )}
+
                 {isSales && (
-                  <div className="mt-1 flex flex-wrap gap-3 text-xs text-slate-500">
-                    <span>סיבת קיפאון: {SALES_STUCK_REASON_LABELS[stuckReason] ?? stuckReason}</span>
+                  <div
+                    className="mt-1 flex flex-wrap gap-3 text-[11.5px]"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
+                    <span>
+                      סיבה:{" "}
+                      {SALES_STUCK_REASON_LABELS[stuckReason] ?? stuckReason}
+                    </span>
                     {messageTone && (
                       <>
                         <span>·</span>
@@ -325,63 +345,88 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
               </div>
             </div>
 
-            {/* Original review */}
+            {/* Original review (if applicable) */}
             {isReview && reviewText && (
-              <div className="mb-3 rounded-lg border border-slate-700 bg-slate-950/50 p-3">
-                <div className="mb-1 text-xs font-medium text-slate-500">
+              <div
+                className="mb-3 rounded-lg p-3"
+                style={{
+                  background: "rgba(15,20,30,0.04)",
+                  border: "1px solid var(--color-hairline)",
+                }}
+              >
+                <div
+                  className="mb-1 text-[11px] font-medium"
+                  style={{ color: "var(--color-ink-3)" }}
+                >
                   הביקורת המקורית:
                 </div>
-                <p className="text-sm text-slate-300 leading-relaxed">
+                <p
+                  className="text-[13px] leading-relaxed"
+                  style={{ color: "var(--color-ink-2)" }}
+                >
                   {reviewText}
                 </p>
               </div>
             )}
 
-            {/* Content area */}
+            {/* Content */}
             {isBlocked ? (
               <div
-                className="mb-3 rounded-lg p-4"
+                className="mb-3 rounded-lg p-3.5"
                 style={{
-                  background: riskStyle.bg,
-                  border: `1px solid ${riskStyle.border}`,
+                  background: "rgba(214, 51, 108, 0.08)",
+                  border: "1px solid rgba(214, 51, 108, 0.2)",
                 }}
               >
-                <div className="mb-2 text-sm font-semibold" style={{ color: riskStyle.text }}>
+                <div
+                  className="mb-1.5 text-[13px] font-semibold"
+                  style={{ color: "var(--color-sys-pink)" }}
+                >
                   ⚠️ הטיוטה הזו נחסמה
                 </div>
-                <p className="text-sm text-slate-300">
+                <p
+                  className="text-[12.5px]"
+                  style={{ color: "var(--color-ink-2)" }}
+                >
                   {d.rejection_reason ?? "סיכון של לשון הרע."}
                 </p>
-                {d.defamation_flagged_phrases && d.defamation_flagged_phrases.length > 0 && (
-                  <div className="mt-2 text-xs text-slate-400">
-                    ביטויים שסומנו:{" "}
-                    {d.defamation_flagged_phrases.map((p) => `"${p}"`).join(", ")}
-                  </div>
-                )}
-                <details className="mt-3 text-sm text-slate-400">
-                  <summary className="cursor-pointer hover:text-slate-200">
-                    הצג את הטיוטה החסומה
-                  </summary>
-                  <div className="mt-2 whitespace-pre-wrap rounded border border-slate-700 bg-slate-950 p-3 text-slate-300">
+                <details
+                  className="mt-3 text-[12px]"
+                  style={{ color: "var(--color-ink-3)" }}
+                >
+                  <summary className="cursor-pointer">הצג את הטיוטה החסומה</summary>
+                  <div
+                    className="mt-2 whitespace-pre-wrap rounded p-3"
+                    style={{
+                      background: "rgba(15,20,30,0.04)",
+                      color: "var(--color-ink-2)",
+                    }}
+                  >
                     {draftText}
                   </div>
                 </details>
               </div>
             ) : isSocial ? (
               <div
-                className="mb-3 rounded-lg p-4"
+                className="mb-3 rounded-lg p-3.5"
                 style={{
-                  background: riskStyle.bg,
-                  border: `1px solid ${riskStyle.border}`,
+                  background: "rgba(255,255,255,0.5)",
+                  border: "1px solid var(--color-hairline)",
                 }}
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <div className="text-xs font-medium text-slate-500">
+                  <div
+                    className="text-[11px] font-medium"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
                     הפוסט המוצע:
                   </div>
-                  <CopyButton text={fullSocialText} label="העתק את הפוסט" />
+                  <CopyButton text={fullSocialText} />
                 </div>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
+                <p
+                  className="whitespace-pre-wrap text-[13px] leading-relaxed"
+                  style={{ color: "var(--color-ink)" }}
+                >
                   {captionHebrew}
                 </p>
 
@@ -390,7 +435,11 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                     {hashtags.map((h, i) => (
                       <span
                         key={i}
-                        className="rounded-md bg-slate-800/60 px-2 py-0.5 text-xs text-teal-300"
+                        className="rounded-md px-2 py-0.5 text-[11px]"
+                        style={{
+                          background: "var(--color-sys-blue-soft)",
+                          color: "var(--color-sys-blue)",
+                        }}
                       >
                         {h}
                       </span>
@@ -399,39 +448,57 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                 )}
 
                 {cta && (
-                  <div className="mt-3 text-sm font-semibold text-teal-300">
+                  <div
+                    className="mt-3 text-[13px] font-semibold"
+                    style={{ color: "var(--color-sys-blue)" }}
+                  >
                     👉 {cta}
                   </div>
                 )}
 
                 {suggestedImagePrompt && (
                   <details className="mt-3">
-                    <summary className="cursor-pointer text-xs font-medium text-slate-400 hover:text-slate-200">
+                    <summary
+                      className="cursor-pointer text-[11.5px] font-medium"
+                      style={{ color: "var(--color-ink-3)" }}
+                    >
                       💡 הצעת תמונה לפוסט
                     </summary>
-                    <p className="mt-2 text-xs text-slate-300 leading-relaxed">
+                    <p
+                      className="mt-2 text-[11.5px] leading-relaxed"
+                      style={{ color: "var(--color-ink-2)" }}
+                    >
                       {suggestedImagePrompt}
                     </p>
                   </details>
                 )}
 
                 {rationaleShort && (
-                  <div className="mt-3 border-t border-slate-700/50 pt-2 text-xs text-slate-500">
-                    <span className="font-medium text-slate-400">למה זה? </span>
+                  <div
+                    className="mt-3 border-t pt-2.5 text-[11px]"
+                    style={{
+                      borderColor: "var(--color-hairline)",
+                      color: "var(--color-ink-3)",
+                    }}
+                  >
+                    <span className="font-medium">למה זה? </span>
                     {rationaleShort}
                   </div>
                 )}
               </div>
             ) : isSales ? (
               <div
-                className="mb-3 rounded-lg p-4"
+                className="mb-3 rounded-lg p-3.5"
                 style={{
-                  background: riskStyle.bg,
-                  border: `1px solid ${riskStyle.border}`,
+                  background: "rgba(255,255,255,0.5)",
+                  border: "1px solid var(--color-hairline)",
                 }}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-xs font-medium text-slate-500">
+                  <div
+                    className="text-[11px] font-medium"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
                     ההודעה המוצעת:
                   </div>
                   <div className="flex gap-2">
@@ -440,58 +507,102 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                         href={whatsappUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="rounded-md bg-emerald-500 px-2 py-1 text-xs font-semibold text-slate-900 transition-all hover:bg-emerald-400"
+                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] font-semibold text-white transition-all"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, #25D366, #1A9F4E)",
+                          boxShadow: "0 4px 12px rgba(31,185,112,0.32)",
+                        }}
                       >
-                        💬 פתח בוואטסאפ
+                        <MessageCircle size={11} strokeWidth={2} />
+                        פתח בוואטסאפ
                       </a>
                     )}
-                    <CopyButton text={fullSalesText} label="העתק" />
+                    <CopyButton text={fullSalesText} />
                   </div>
                 </div>
 
                 {subjectLine && (
-                  <div className="mb-2 rounded border border-slate-700 bg-slate-950/50 p-2">
-                    <div className="text-xs text-slate-500">נושא המייל:</div>
-                    <div className="text-sm font-semibold text-slate-200">
+                  <div
+                    className="mb-2 rounded p-2"
+                    style={{
+                      background: "rgba(15,20,30,0.04)",
+                      border: "1px solid var(--color-hairline)",
+                    }}
+                  >
+                    <div
+                      className="text-[10.5px]"
+                      style={{ color: "var(--color-ink-3)" }}
+                    >
+                      נושא:
+                    </div>
+                    <div
+                      className="text-[12.5px] font-semibold"
+                      style={{ color: "var(--color-ink)" }}
+                    >
                       {subjectLine}
                     </div>
                   </div>
                 )}
 
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
+                <p
+                  className="whitespace-pre-wrap text-[13px] leading-relaxed"
+                  style={{ color: "var(--color-ink)" }}
+                >
                   {messageHebrew}
                 </p>
 
                 {sendWindow && (
-                  <div className="mt-3 text-xs text-slate-400">
+                  <div
+                    className="mt-3 text-[11px]"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
                     ⏰ {sendWindow}
                   </div>
                 )}
 
                 {rationaleShort && (
-                  <div className="mt-3 border-t border-slate-700/50 pt-2 text-xs text-slate-500">
-                    <span className="font-medium text-slate-400">למה זה? </span>
+                  <div
+                    className="mt-3 border-t pt-2.5 text-[11px]"
+                    style={{
+                      borderColor: "var(--color-hairline)",
+                      color: "var(--color-ink-3)",
+                    }}
+                  >
+                    <span className="font-medium">למה זה? </span>
                     {rationaleShort}
                   </div>
                 )}
               </div>
             ) : (
               <div
-                className="mb-3 rounded-lg p-4"
+                className="mb-3 rounded-lg p-3.5"
                 style={{
-                  background: riskStyle.bg,
-                  border: `1px solid ${riskStyle.border}`,
+                  background: "rgba(255,255,255,0.5)",
+                  border: "1px solid var(--color-hairline)",
                 }}
               >
-                <div className="mb-1 text-xs font-medium text-slate-500">
+                <div
+                  className="mb-1 text-[11px] font-medium"
+                  style={{ color: "var(--color-ink-3)" }}
+                >
                   הטיוטה המוצעת:
                 </div>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
+                <p
+                  className="whitespace-pre-wrap text-[13px] leading-relaxed"
+                  style={{ color: "var(--color-ink)" }}
+                >
                   {draftText}
                 </p>
                 {rationale && (
-                  <div className="mt-3 border-t border-slate-700/50 pt-2 text-xs text-slate-500">
-                    <span className="font-medium text-slate-400">למה זה? </span>
+                  <div
+                    className="mt-3 border-t pt-2.5 text-[11px]"
+                    style={{
+                      borderColor: "var(--color-hairline)",
+                      color: "var(--color-ink-3)",
+                    }}
+                  >
+                    <span className="font-medium">למה זה? </span>
                     {rationale}
                   </div>
                 )}
@@ -499,8 +610,14 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
             )}
 
             {/* Actions */}
-            <div className="flex items-center justify-between border-t border-slate-700 pt-3">
-              <div className="text-xs text-slate-500">
+            <div
+              className="flex items-center justify-between border-t pt-3"
+              style={{ borderColor: "var(--color-hairline)" }}
+            >
+              <div
+                className="text-[11px]"
+                style={{ color: "var(--color-ink-3)" }}
+              >
                 נוצר{" "}
                 {new Date(d.created_at).toLocaleString("he-IL", {
                   day: "numeric",
@@ -514,27 +631,38 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                   <button
                     onClick={() => handleApprove(d.id)}
                     disabled={isPending && actioningId === d.id}
-                    className="rounded-lg bg-teal-500 px-4 py-1.5 text-sm font-semibold text-slate-900 transition-all hover:bg-teal-400 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold text-white transition-all disabled:opacity-50"
+                    style={{
+                      background: "var(--color-sys-green)",
+                      boxShadow: "0 4px 12px rgba(48,179,107,0.28)",
+                    }}
                   >
+                    <Check size={12} strokeWidth={2.5} />
                     {isPending && actioningId === d.id
                       ? "..."
                       : isSales
-                      ? "✓ שלחתי"
+                      ? "שלחתי"
                       : isSocial
-                      ? "✓ אושר"
-                      : "✓ אשר ושלח"}
+                      ? "אושר"
+                      : "אשר ושלח"}
                   </button>
                 )}
                 <button
                   onClick={() => handleReject(d.id)}
                   disabled={isPending && actioningId === d.id}
-                  className="rounded-lg border border-slate-600 bg-slate-800 px-4 py-1.5 text-sm font-medium text-slate-300 transition-all hover:bg-slate-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] font-medium transition-all disabled:opacity-50"
+                  style={{
+                    background: "rgba(255,255,255,0.7)",
+                    borderColor: "var(--color-hairline)",
+                    color: "var(--color-ink-2)",
+                  }}
                 >
-                  {isPending && actioningId === d.id ? "..." : "✕ דחה"}
+                  <X size={12} strokeWidth={2} />
+                  {isPending && actioningId === d.id ? "..." : "דחה"}
                 </button>
               </div>
             </div>
-          </div>
+          </Glass>
         );
       })}
     </div>

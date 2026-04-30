@@ -3,12 +3,13 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { triggerSalesAgentAction } from "@/app/dashboard/actions";
+import { Play } from "lucide-react";
 
 const LOADING_STAGES = [
-  "🔍 מזהה לידים תקועים...",
-  "✍️ כותב follow-ups...",
-  "💭 מתאים את הטון...",
-  "🎯 מסיים...",
+  "מזהה לידים תקועים...",
+  "כותב follow-ups...",
+  "מתאים את הטון...",
+  "מסיים...",
 ];
 
 export function RunSalesButton() {
@@ -42,20 +43,16 @@ export function RunSalesButton() {
         const stuckCount = res.result.stuckLeadsCount;
 
         if (n === 0) {
-          const reason = res.result.output?.noOpReason ?? "אין מה לעשות כעת";
-          setSuccess(`לא הוכנו follow-ups: ${reason}`);
+          const reason = res.result.output?.noOpReason ?? "אין מה לעשות";
+          setSuccess(reason);
           return;
         }
 
-        let msg = `הוכנו ${n} ${n === 1 ? "טיוטת follow-up" : "טיוטות follow-up"}`;
-        if (stuckCount > n) {
-          msg += ` (מתוך ${stuckCount} לידים תקועים)`;
-        }
+        let msg = `${n} ${n === 1 ? "follow-up" : "follow-ups"} מוכנים`;
+        if (stuckCount > n) msg += ` (מ-${stuckCount} לידים)`;
         setSuccess(msg);
 
-        setTimeout(() => {
-          router.push("/dashboard/approvals");
-        }, 1200);
+        setTimeout(() => router.push("/dashboard/approvals"), 1000);
       } else {
         setError(res.error ?? "משהו השתבש");
       }
@@ -67,42 +64,57 @@ export function RunSalesButton() {
       <button
         onClick={handleClick}
         disabled={isPending}
-        className="rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-slate-900 transition-all hover:bg-teal-400 disabled:opacity-50 inline-flex items-center gap-2"
+        className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white transition-all disabled:opacity-50"
+        style={{
+          background: "var(--color-sys-blue)",
+          boxShadow: "var(--shadow-cta)",
+        }}
       >
         {isPending ? (
           <>
             <span
-              className="inline-block h-3 w-3 rounded-full border-2 border-slate-900 border-t-transparent"
+              className="inline-block h-3 w-3 rounded-full border-2 border-white border-t-transparent"
               style={{ animation: "spin 0.8s linear infinite" }}
               aria-hidden="true"
             />
             <span>{LOADING_STAGES[loadingStage]}</span>
           </>
         ) : (
-          "💰 הרץ סוכן מכירות עכשיו"
+          <>
+            <Play size={11} strokeWidth={2} />
+            הרץ
+          </>
         )}
       </button>
 
       {success && (
-        <div className="mt-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+        <div
+          className="mt-2 rounded-md px-3 py-2 text-xs"
+          style={{
+            background: "var(--color-sys-green-soft)",
+            color: "var(--color-sys-green)",
+          }}
+        >
           ✓ {success}
         </div>
       )}
 
       {error && (
-        <div className="mt-2 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-400">
+        <div
+          className="mt-2 rounded-md px-3 py-2 text-xs"
+          style={{
+            background: "rgba(214, 51, 108, 0.1)",
+            color: "var(--color-sys-pink)",
+          }}
+        >
           ⚠️ {error}
         </div>
       )}
 
       <style jsx>{`
         @keyframes spin {
-          from {
-            transform: rotate(0deg);
-          }
-          to {
-            transform: rotate(360deg);
-          }
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </>
