@@ -12,14 +12,9 @@
  *        AND status = 'classified'
  *        AND received_at < NOW() - INTERVAL '3 days'
  *   3. Skip leads with already-pending sales drafts (don't dup)
- *   4. Send to Sonnet 4.6 with adaptive thinking
- *   5. Persist each follow-up as a draft row:
- *      - status='pending', action_type='requires_approval'
- *      - content jsonb has all fields (incl. whatsappUrl, channel)
- *      - external_target.platform = channel
- *      - related to lead via context.lead_id
- *      - expires_at = 24h (re-prompt next day if not marked sent)
- *   6. Return SalesRunResult with draft IDs
+ *   4. Deduplicate by normalized source_handle and display_name
+ *   5. Send to Sonnet 4.6 with adaptive thinking
+ *   6. Persist each follow-up as a draft row
  */
 
 import { runAgent } from "../run-agent";
@@ -75,6 +70,7 @@ export interface SalesAgentOutput {
 export interface SalesRunResult extends RunResult<SalesAgentOutput> {
   draftIds: string[];
   stuckLeadsCount: number;
+  duplicatesSkipped: number;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -185,6 +181,67 @@ async function loadStuckLeads(tenantId: string): Promise<StuckLead[]> {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Deduplicate leads — keep the most recent per duplicate group
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Remove duplicate leads by:
+ *   1. Normalized source_handle (phone/email/handle stripped of whitespace, lowercased)
+ *   2. Same display_name + same source platform (catches same person via 2 channels)
+ *
+ * Within a duplicate group, keep the lead with the most recent received_at.
+ * This is a runtime-only dedup — does not modify the DB.
+ *
+ * Returns { kept, skipped } so caller can report what was filtered.
+ */
+function deduplicateLeads(leads: StuckLead[]): {
+  kept: StuckLead[];
+  skipped: number;
+} {
+  if (leads.length <= 1) return { kept: leads, skipped: 0 };
+
+  // Sort newest-first so the first lead per group is the one we keep
+  const sorted = [...leads].sort(
+    (a, b) =>
+      new Date(b.received_at).getTime() - new Date(a.received_at).getTime()
+  );
+
+  const seenHandles = new Set<string>();
+  const seenNameSource = new Set<string>();
+  const kept: StuckLead[] = [];
+
+  for (const lead of sorted) {
+    // Normalize source_handle (phones, emails, IG handles)
+    const handleNorm = lead.source_handle
+      ? lead.source_handle.replace(/[\s\-+()]/g, "").toLowerCase()
+      : null;
+
+    // Normalize display_name + source as compound key
+    const nameSourceNorm =
+      lead.display_name && lead.source
+        ? `${lead.display_name.trim().toLowerCase()}|${lead.source}`
+        : null;
+
+    // Skip if either signature was already seen
+    if (handleNorm && seenHandles.has(handleNorm)) continue;
+    if (nameSourceNorm && seenNameSource.has(nameSourceNorm)) continue;
+
+    // Otherwise keep and remember
+    if (handleNorm) seenHandles.add(handleNorm);
+    if (nameSourceNorm) seenNameSource.add(nameSourceNorm);
+    kept.push(lead);
+  }
+
+  // Re-sort kept leads oldest-first (stuck longest = highest priority for prompt)
+  kept.sort(
+    (a, b) =>
+      new Date(a.received_at).getTime() - new Date(b.received_at).getTime()
+  );
+
+  return { kept, skipped: leads.length - kept.length };
+}
+
+// ─────────────────────────────────────────────────────────────
 // Filter out leads with already-pending sales drafts
 // ─────────────────────────────────────────────────────────────
 
@@ -223,10 +280,8 @@ function buildWhatsappUrl(
   message: string
 ): string | null {
   if (!phoneRaw) return null;
-  // Strip non-digits, expect Israeli format
   const digits = phoneRaw.replace(/\D/g, "");
   if (digits.length < 9) return null;
-  // Normalize: 0501234567 → 972501234567; +972501234567 → 972501234567
   let normalized = digits;
   if (normalized.startsWith("0")) {
     normalized = "972" + normalized.substring(1);
@@ -249,10 +304,21 @@ export async function runSalesAgent(
     | "admin_manual" = "manual"
 ): Promise<SalesRunResult> {
   // ─── Load tenant + leads ────────────────────────────────────
-  const [tenant, stuckLeads] = await Promise.all([
+  const [tenant, stuckLeadsRaw] = await Promise.all([
     loadTenantContext(tenantId),
     loadStuckLeads(tenantId),
   ]);
+
+  // ─── Deduplicate ─────────────────────────────────────────────
+  const { kept: stuckLeads, skipped: duplicatesSkipped } =
+    deduplicateLeads(stuckLeadsRaw);
+
+  if (duplicatesSkipped > 0) {
+    console.log(
+      `[sales_agent] Skipped ${duplicatesSkipped} duplicate leads. ` +
+        `Processing ${stuckLeads.length} unique leads.`
+    );
+  }
 
   // ─── Filter out already-drafted leads ───────────────────────
   const alreadyDrafted = await filterAlreadyDraftedLeads(
@@ -263,12 +329,15 @@ export async function runSalesAgent(
 
   // ─── No-op short circuit ────────────────────────────────────
   if (leadsToProcess.length === 0) {
-    const reason =
-      stuckLeads.length === 0
-        ? "אין לידים תקועים מעל 3 ימים."
-        : "כל הלידים התקועים כבר יש להם follow-up בהמתנה.";
+    let reason: string;
+    if (stuckLeadsRaw.length === 0) {
+      reason = "אין לידים תקועים מעל 3 ימים.";
+    } else if (stuckLeads.length === 0) {
+      reason = `נמצאו ${duplicatesSkipped} לידים כפולים — מומלץ לאחד אותם.`;
+    } else {
+      reason = "כל הלידים התקועים כבר יש להם follow-up בהמתנה.";
+    }
 
-    // Persist a synthetic no_op result through runAgent so cost is tracked.
     const runResult = await runAgent<SalesAgentOutput>(
       { tenantId, agentId: "sales", triggerSource, model: MODEL },
       undefined,
@@ -291,7 +360,8 @@ export async function runSalesAgent(
     return {
       ...runResult,
       draftIds: [],
-      stuckLeadsCount: stuckLeads.length,
+      stuckLeadsCount: stuckLeadsRaw.length,
+      duplicatesSkipped,
     };
   }
 
@@ -393,19 +463,17 @@ export async function runSalesAgent(
     return {
       ...runResult,
       draftIds: [],
-      stuckLeadsCount: stuckLeads.length,
+      stuckLeadsCount: stuckLeadsRaw.length,
+      duplicatesSkipped,
     };
   }
 
   // ─── Persist each follow-up as a draft ──────────────────────
   const db = createAdminClient();
   const draftIds: string[] = [];
-
-  // 24h expiry — if owner doesn't mark "sent", agent will re-suggest tomorrow
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
   for (const fu of runResult.output.followUps) {
-    // Build whatsapp URL on server side (don't trust LLM-generated URL)
     const sourceLead = leadsToProcess.find((l) => l.id === fu.leadId);
     let whatsappUrl: string | null = null;
     if (fu.channel === "whatsapp" && sourceLead) {
@@ -428,7 +496,7 @@ export async function runSalesAgent(
         subjectLineHebrew: fu.subjectLineHebrew,
         messageHebrew: fu.messageHebrew,
         messageTone: fu.messageTone,
-        whatsappUrl, // server-built, override LLM
+        whatsappUrl,
         recommendedSendWindowLocal: fu.recommendedSendWindowLocal,
         expectedResponseProbability: fu.expectedResponseProbability,
         rationaleShort: fu.rationaleShort,
@@ -473,6 +541,7 @@ export async function runSalesAgent(
   return {
     ...runResult,
     draftIds,
-    stuckLeadsCount: stuckLeads.length,
+    stuckLeadsCount: stuckLeadsRaw.length,
+    duplicatesSkipped,
   };
 }
