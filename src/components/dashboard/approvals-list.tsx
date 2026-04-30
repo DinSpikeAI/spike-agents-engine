@@ -28,6 +28,28 @@ const INTENT_LABELS: Record<string, string> = {
   spam_or_fake: "ספאם/חשוד",
 };
 
+const SOCIAL_SLOT_LABELS: Record<string, string> = {
+  morning: "🌅 בוקר",
+  noon: "☀️ צהריים",
+  evening: "🌙 ערב",
+};
+
+const SOCIAL_PLATFORM_LABELS: Record<string, string> = {
+  instagram: "📷 אינסטגרם",
+  facebook: "👥 פייסבוק",
+  both: "📱 שני הפלטפורמות",
+};
+
+const SOCIAL_TYPE_LABELS: Record<string, string> = {
+  educational: "חינוכי",
+  promotional: "קידום",
+  testimonial: "המלצה",
+  behind_scenes: "מאחורי הקלעים",
+  seasonal: "עונתי",
+  milestone: "אבן דרך",
+  engagement: "מעורבות",
+};
+
 // Star rendering with explicit colors so filled vs empty stars are visible
 // against any background. Filled = warm yellow (#FCD34D); Empty = dim slate.
 function StarRow({ rating }: { rating: number }) {
@@ -50,6 +72,28 @@ function StarRow({ rating }: { rating: number }) {
         <span key={`e${i}`} style={{ color: "#475569", fontSize: "1.1em", lineHeight: 1 }}>☆</span>
       ))}
     </span>
+  );
+}
+
+// Copy-to-clipboard helper for social posts.
+function CopyButton({ text, label = "העתק" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={async (e) => {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          alert("לא ניתן להעתיק. נסה ידנית.");
+        }
+      }}
+      className="rounded-md border border-slate-600 bg-slate-800 px-2 py-1 text-xs font-medium text-slate-300 transition-all hover:bg-slate-700"
+    >
+      {copied ? "✓ הועתק" : `📋 ${label}`}
+    </button>
   );
 }
 
@@ -89,7 +133,10 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
     <div className="space-y-4">
       {drafts.map((d) => {
         const isReview = d.type === "review_reply";
+        const isSocial = d.type === "social_post";
         const c = d.content as Record<string, unknown>;
+
+        // Reviews fields
         const reviewerName = (c.reviewerName as string) ?? d.recipient_label ?? "—";
         const rating = (c.rating as number) ?? 0;
         const reviewText = (c.reviewTextDisplay as string) ?? "";
@@ -98,9 +145,40 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
         const sentiment = (c.sentiment as string) ?? "";
         const intent = (c.intent as string) ?? "";
 
+        // Social fields
+        const slot = (c.slot as string) ?? "";
+        const platformRec = (c.platformRecommendation as string) ?? "";
+        const postType = (c.postType as string) ?? "";
+        const captionHebrew = (c.captionHebrew as string) ?? "";
+        const hashtags = (c.hashtags as string[]) ?? [];
+        const cta = (c.cta as string) ?? "";
+        const suggestedImagePrompt = (c.suggestedImagePrompt as string) ?? "";
+        const bestTimeToPost = (c.bestTimeToPostLocal as string) ?? "";
+        const rationaleShort = (c.rationaleShort as string) ?? "";
+        const confidence = (c.confidence as string) ?? "";
+
+        // Combined post text for clipboard (caption + hashtags + cta)
+        const fullSocialText = isSocial
+          ? `${captionHebrew}\n\n${hashtags.join(" ")}\n\n${cta}`.trim()
+          : "";
+
         const risk = (d.defamation_risk ?? "low") as "low" | "medium" | "high";
         const riskStyle = RISK_STYLES[risk];
         const isBlocked = d.status === "rejected" && d.rejection_reason?.includes("Defamation");
+
+        // Type label for header
+        const typeLabel = isReview
+          ? "תגובה לביקורת"
+          : isSocial
+          ? "פוסט לרשתות"
+          : d.type;
+
+        // Title for header
+        const headerTitle = isReview
+          ? null
+          : isSocial
+          ? `${SOCIAL_SLOT_LABELS[slot] ?? slot} · ${SOCIAL_TYPE_LABELS[postType] ?? postType}`
+          : d.recipient_label ?? "טיוטה";
 
         return (
           <div
@@ -115,7 +193,7 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
               <div className="flex-1">
                 <div className="mb-1 flex flex-wrap items-center gap-2">
                   <span className="text-xs font-medium uppercase tracking-wide text-teal-300">
-                    {isReview ? "תגובה לביקורת" : d.type}
+                    {typeLabel}
                   </span>
                   <span
                     className="rounded-md px-2 py-0.5 text-xs font-semibold"
@@ -132,6 +210,22 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                       🔒 PII הוסתר
                     </span>
                   )}
+                  {isSocial && confidence && (
+                    <span
+                      className="rounded-md px-2 py-0.5 text-xs font-medium"
+                      style={{
+                        color:
+                          confidence === "high"
+                            ? "#86EFAC"
+                            : confidence === "medium"
+                            ? "#FDE68A"
+                            : "#94A3B8",
+                        background: "rgba(148, 163, 184, 0.1)",
+                      }}
+                    >
+                      ביטחון: {confidence === "high" ? "גבוה" : confidence === "medium" ? "בינוני" : "נמוך"}
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-lg font-bold text-slate-100 flex items-center">
                   {isReview && (
@@ -140,7 +234,7 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                       <span>· {reviewerName}</span>
                     </>
                   )}
-                  {!isReview && (d.recipient_label ?? "טיוטה")}
+                  {!isReview && headerTitle}
                 </h3>
                 {isReview && (
                   <div className="mt-1 flex gap-3 text-xs text-slate-500">
@@ -149,10 +243,21 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                     <span>כוונה: {INTENT_LABELS[intent] ?? intent}</span>
                   </div>
                 )}
+                {isSocial && (
+                  <div className="mt-1 flex flex-wrap gap-3 text-xs text-slate-500">
+                    <span>{SOCIAL_PLATFORM_LABELS[platformRec] ?? platformRec}</span>
+                    {bestTimeToPost && (
+                      <>
+                        <span>·</span>
+                        <span>זמן מומלץ: {bestTimeToPost}</span>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Original review */}
+            {/* Original review (Reviews only) */}
             {isReview && reviewText && (
               <div className="mb-3 rounded-lg border border-slate-700 bg-slate-950/50 p-3">
                 <div className="mb-1 text-xs font-medium text-slate-500">
@@ -193,6 +298,61 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                     {draftText}
                   </div>
                 </details>
+              </div>
+            ) : isSocial ? (
+              <div
+                className="mb-3 rounded-lg p-4"
+                style={{
+                  background: riskStyle.bg,
+                  border: `1px solid ${riskStyle.border}`,
+                }}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-medium text-slate-500">
+                    הפוסט המוצע:
+                  </div>
+                  <CopyButton text={fullSocialText} label="העתק את הפוסט" />
+                </div>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
+                  {captionHebrew}
+                </p>
+
+                {hashtags.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {hashtags.map((h, i) => (
+                      <span
+                        key={i}
+                        className="rounded-md bg-slate-800/60 px-2 py-0.5 text-xs text-teal-300"
+                      >
+                        {h}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {cta && (
+                  <div className="mt-3 text-sm font-semibold text-teal-300">
+                    👉 {cta}
+                  </div>
+                )}
+
+                {suggestedImagePrompt && (
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-xs font-medium text-slate-400 hover:text-slate-200">
+                      💡 הצעת תמונה לפוסט
+                    </summary>
+                    <p className="mt-2 text-xs text-slate-300 leading-relaxed">
+                      {suggestedImagePrompt}
+                    </p>
+                  </details>
+                )}
+
+                {rationaleShort && (
+                  <div className="mt-3 border-t border-slate-700/50 pt-2 text-xs text-slate-500">
+                    <span className="font-medium text-slate-400">למה זה? </span>
+                    {rationaleShort}
+                  </div>
+                )}
               </div>
             ) : (
               <div
@@ -235,7 +395,7 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                     disabled={isPending && actioningId === d.id}
                     className="rounded-lg bg-teal-500 px-4 py-1.5 text-sm font-semibold text-slate-900 transition-all hover:bg-teal-400 disabled:opacity-50"
                   >
-                    {isPending && actioningId === d.id ? "..." : "✓ אשר ושלח"}
+                    {isPending && actioningId === d.id ? "..." : isSocial ? "✓ אושר" : "✓ אשר ושלח"}
                   </button>
                 )}
                 <button
