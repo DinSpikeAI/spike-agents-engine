@@ -50,8 +50,31 @@ const SOCIAL_TYPE_LABELS: Record<string, string> = {
   engagement: "מעורבות",
 };
 
-// Star rendering with explicit colors so filled vs empty stars are visible
-// against any background. Filled = warm yellow (#FCD34D); Empty = dim slate.
+const SALES_CHANNEL_LABELS: Record<string, string> = {
+  whatsapp: "💬 וואטסאפ",
+  email: "✉️ אימייל",
+  instagram_dm: "📷 הודעה באינסטגרם",
+  manual: "📝 העתקה ידנית",
+};
+
+const SALES_TONE_LABELS: Record<string, string> = {
+  warm_check_in: "בדיקה חמה",
+  value_reminder: "תזכורת ערך",
+  gentle_nudge: "תזכורת עדינה",
+  direct_close: "סגירה ישירה",
+  break_up: "שחרור",
+};
+
+const SALES_STUCK_REASON_LABELS: Record<string, string> = {
+  no_response_after_quote: "אין תגובה אחרי הצעת מחיר",
+  ghosted_after_meeting: "נעלם אחרי פגישה",
+  price_objection_unresolved: "התנגדות מחיר",
+  timing_uncertain: "תזמון לא ברור",
+  decision_maker_unclear: "מקבל ההחלטות לא ברור",
+  no_response_after_initial: "אין תגובה אחרי פנייה ראשונה",
+  other: "אחר",
+};
+
 function StarRow({ rating }: { rating: number }) {
   const filled = Math.max(0, Math.min(5, rating));
   const empty = 5 - filled;
@@ -75,7 +98,6 @@ function StarRow({ rating }: { rating: number }) {
   );
 }
 
-// Copy-to-clipboard helper for social posts.
 function CopyButton({ text, label = "העתק" }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -134,6 +156,7 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
       {drafts.map((d) => {
         const isReview = d.type === "review_reply";
         const isSocial = d.type === "social_post";
+        const isSales = d.type === "sales_followup";
         const c = d.content as Record<string, unknown>;
 
         // Reviews fields
@@ -157,27 +180,45 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
         const rationaleShort = (c.rationaleShort as string) ?? "";
         const confidence = (c.confidence as string) ?? "";
 
-        // Combined post text for clipboard (caption + hashtags + cta)
+        // Sales fields
+        const leadDisplayName = (c.leadDisplayName as string) ?? "";
+        const stuckReason = (c.stuckReasonInferred as string) ?? "";
+        const channel = (c.channel as string) ?? "";
+        const subjectLine = (c.subjectLineHebrew as string) ?? null;
+        const messageHebrew = (c.messageHebrew as string) ?? "";
+        const messageTone = (c.messageTone as string) ?? "";
+        const whatsappUrl = (c.whatsappUrl as string) ?? null;
+        const sendWindow = (c.recommendedSendWindowLocal as string) ?? "";
+        const responseProb = (c.expectedResponseProbability as string) ?? "";
+
         const fullSocialText = isSocial
           ? `${captionHebrew}\n\n${hashtags.join(" ")}\n\n${cta}`.trim()
+          : "";
+
+        const fullSalesText = isSales
+          ? subjectLine
+            ? `נושא: ${subjectLine}\n\n${messageHebrew}`
+            : messageHebrew
           : "";
 
         const risk = (d.defamation_risk ?? "low") as "low" | "medium" | "high";
         const riskStyle = RISK_STYLES[risk];
         const isBlocked = d.status === "rejected" && d.rejection_reason?.includes("Defamation");
 
-        // Type label for header
         const typeLabel = isReview
           ? "תגובה לביקורת"
           : isSocial
           ? "פוסט לרשתות"
+          : isSales
+          ? "פולואו-אפ ללקוח"
           : d.type;
 
-        // Title for header
         const headerTitle = isReview
           ? null
           : isSocial
           ? `${SOCIAL_SLOT_LABELS[slot] ?? slot} · ${SOCIAL_TYPE_LABELS[postType] ?? postType}`
+          : isSales
+          ? `${leadDisplayName} · ${SALES_CHANNEL_LABELS[channel] ?? channel}`
           : d.recipient_label ?? "טיוטה";
 
         return (
@@ -226,6 +267,22 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                       ביטחון: {confidence === "high" ? "גבוה" : confidence === "medium" ? "בינוני" : "נמוך"}
                     </span>
                   )}
+                  {isSales && responseProb && (
+                    <span
+                      className="rounded-md px-2 py-0.5 text-xs font-medium"
+                      style={{
+                        color:
+                          responseProb === "high"
+                            ? "#86EFAC"
+                            : responseProb === "med"
+                            ? "#FDE68A"
+                            : "#94A3B8",
+                        background: "rgba(148, 163, 184, 0.1)",
+                      }}
+                    >
+                      סיכוי תגובה: {responseProb === "high" ? "גבוה" : responseProb === "med" ? "בינוני" : "נמוך"}
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-lg font-bold text-slate-100 flex items-center">
                   {isReview && (
@@ -254,10 +311,21 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                     )}
                   </div>
                 )}
+                {isSales && (
+                  <div className="mt-1 flex flex-wrap gap-3 text-xs text-slate-500">
+                    <span>סיבת קיפאון: {SALES_STUCK_REASON_LABELS[stuckReason] ?? stuckReason}</span>
+                    {messageTone && (
+                      <>
+                        <span>·</span>
+                        <span>טון: {SALES_TONE_LABELS[messageTone] ?? messageTone}</span>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Original review (Reviews only) */}
+            {/* Original review */}
             {isReview && reviewText && (
               <div className="mb-3 rounded-lg border border-slate-700 bg-slate-950/50 p-3">
                 <div className="mb-1 text-xs font-medium text-slate-500">
@@ -269,7 +337,7 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
               </div>
             )}
 
-            {/* High-risk block message */}
+            {/* Content area */}
             {isBlocked ? (
               <div
                 className="mb-3 rounded-lg p-4"
@@ -354,6 +422,59 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                   </div>
                 )}
               </div>
+            ) : isSales ? (
+              <div
+                className="mb-3 rounded-lg p-4"
+                style={{
+                  background: riskStyle.bg,
+                  border: `1px solid ${riskStyle.border}`,
+                }}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-xs font-medium text-slate-500">
+                    ההודעה המוצעת:
+                  </div>
+                  <div className="flex gap-2">
+                    {whatsappUrl && (
+                      <a
+                        href={whatsappUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-md bg-emerald-500 px-2 py-1 text-xs font-semibold text-slate-900 transition-all hover:bg-emerald-400"
+                      >
+                        💬 פתח בוואטסאפ
+                      </a>
+                    )}
+                    <CopyButton text={fullSalesText} label="העתק" />
+                  </div>
+                </div>
+
+                {subjectLine && (
+                  <div className="mb-2 rounded border border-slate-700 bg-slate-950/50 p-2">
+                    <div className="text-xs text-slate-500">נושא המייל:</div>
+                    <div className="text-sm font-semibold text-slate-200">
+                      {subjectLine}
+                    </div>
+                  </div>
+                )}
+
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
+                  {messageHebrew}
+                </p>
+
+                {sendWindow && (
+                  <div className="mt-3 text-xs text-slate-400">
+                    ⏰ {sendWindow}
+                  </div>
+                )}
+
+                {rationaleShort && (
+                  <div className="mt-3 border-t border-slate-700/50 pt-2 text-xs text-slate-500">
+                    <span className="font-medium text-slate-400">למה זה? </span>
+                    {rationaleShort}
+                  </div>
+                )}
+              </div>
             ) : (
               <div
                 className="mb-3 rounded-lg p-4"
@@ -395,7 +516,13 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
                     disabled={isPending && actioningId === d.id}
                     className="rounded-lg bg-teal-500 px-4 py-1.5 text-sm font-semibold text-slate-900 transition-all hover:bg-teal-400 disabled:opacity-50"
                   >
-                    {isPending && actioningId === d.id ? "..." : isSocial ? "✓ אושר" : "✓ אשר ושלח"}
+                    {isPending && actioningId === d.id
+                      ? "..."
+                      : isSales
+                      ? "✓ שלחתי"
+                      : isSocial
+                      ? "✓ אושר"
+                      : "✓ אשר ושלח"}
                   </button>
                 )}
                 <button

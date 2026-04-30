@@ -12,6 +12,7 @@ import { RunWatcherButton } from "@/components/dashboard/run-watcher-button";
 import { RunReviewsButton } from "@/components/dashboard/run-reviews-button";
 import { RunHotLeadsButton } from "@/components/dashboard/run-hot-leads-button";
 import { RunSocialButton } from "@/components/dashboard/run-social-button";
+import { RunSalesButton } from "@/components/dashboard/run-sales-button";
 import { RunManagerButton } from "@/components/dashboard/run-manager-button";
 import { AgentGrid } from "@/components/dashboard/agent-grid";
 import { listPendingDrafts, getManagerLockState } from "@/app/dashboard/actions";
@@ -191,7 +192,24 @@ export default async function DashboardPage() {
               מכין 3 טיוטות פוסטים יומיות בעברית לאינסטגרם ופייסבוק. אתה מאשר, מעתיק, ומפרסם בעצמך.
             </p>
             <RunSocialButton />
-          </div>
+          </div> 
+{/* Sales Agent — Day 15 */}
+          <div
+            className="mb-4 rounded-xl px-6 py-5"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(20, 184, 166, 0.04))",
+              border: "1px solid rgba(34, 197, 94, 0.25)",
+            }}
+          >
+            <h2 className="mb-2 text-xl font-bold" style={{ color: "#86EFAC" }}>
+              💰 סוכן מכירות
+            </h2>
+            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
+              מאתר לידים תקועים יותר מ-3 ימים ומכין follow-ups בעברית עם קישור ישיר ל-WhatsApp. אתה מאשר ושולח בעצמך.
+            </p>
+            <RunSalesButton />
+          </div>  
           {/* Hot Leads Agent — Day 9 */}
           <div
             className="mb-8 rounded-xl px-6 py-5"
