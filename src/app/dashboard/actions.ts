@@ -8,6 +8,7 @@ import { runReviewsAgent, type ReviewsRunResult } from "@/lib/agents/reviews/run
 import { runHotLeadsAgent, type HotLeadsRunResult } from "@/lib/agents/hot_leads/run";
 import { runManagerAgent, type ManagerRunResult } from "@/lib/agents/manager/run";
 import type {
+  AgentId,
   MorningAgentOutput,
   WatcherAgentOutput,
   RunResult,
@@ -15,6 +16,104 @@ import type {
   MockLead,
   LeadBucket,
 } from "@/lib/agents/types";
+
+// ─────────────────────────────────────────────────────────────
+// Rate limit configuration
+// ─────────────────────────────────────────────────────────────
+//
+// Per-agent cooldown in minutes. The cooldown is measured from the
+// last `succeeded` or `running` run for this tenant+agent in agent_runs.
+// Failed runs do NOT count — user should be able to retry after a failure.
+//
+// Cooldown rationale:
+//   - manager:    240min (4h) — most expensive (~₪0.40/run with thinking)
+//   - reviews:    30min        — medium cost (~₪0.15/run)
+//   - hot_leads:  30min        — medium cost (~₪0.025/run)
+//   - watcher:    5min         — cheap, owner may want frequent scans
+//   - morning:    5min         — cheap, owner may want morning + lunch refresh
+//
+// These are sane defaults for an MVP. Day 11 onboarding can let owners
+// customize per their tier (Business gets shorter cooldowns, Starter
+// gets longer ones).
+
+const RATE_LIMIT_MINUTES: Record<AgentId, number> = {
+  manager: 240,
+  reviews: 30,
+  hot_leads: 30,
+  watcher: 5,
+  morning: 5,
+  // Not yet implemented agents — defaults match their planned cost tier
+  social: 30,
+  sales: 30,
+  cleanup: 30,
+  inventory: 30,
+};
+
+interface RateLimitCheckResult {
+  allowed: boolean;
+  /** If not allowed, how many minutes until the next attempt is allowed. */
+  retryAfterMinutes?: number;
+  /** If not allowed, an owner-facing Hebrew explanation. */
+  message?: string;
+}
+
+async function checkAgentRateLimit(
+  tenantId: string,
+  agentId: AgentId
+): Promise<RateLimitCheckResult> {
+  const cooldownMinutes = RATE_LIMIT_MINUTES[agentId];
+  const cooldownMs = cooldownMinutes * 60 * 1000;
+  const cutoff = new Date(Date.now() - cooldownMs).toISOString();
+
+  const db = createAdminClient();
+
+  // Find the most recent run for this tenant+agent that is either still
+  // running OR succeeded within the cooldown window.
+  const { data, error } = await db
+    .from("agent_runs")
+    .select("started_at, status")
+    .eq("tenant_id", tenantId)
+    .eq("agent_id", agentId)
+    .in("status", ["running", "succeeded"])
+    .gte("started_at", cutoff)
+    .order("started_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    // On DB error, fail open (allow the run) and log — better than
+    // blocking owner from working due to a transient query failure.
+    console.error(`[rateLimit] DB error checking ${agentId}:`, error);
+    return { allowed: true };
+  }
+
+  if (!data || data.length === 0) {
+    return { allowed: true };
+  }
+
+  const latestRun = data[0];
+  const lastRunTime = new Date(latestRun.started_at as string).getTime();
+  const elapsedMs = Date.now() - lastRunTime;
+  const remainingMs = cooldownMs - elapsedMs;
+  const retryAfterMinutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+
+  // Special case: a "running" status means the agent is still executing.
+  // The user clicked twice — we should tell them the agent is mid-flight.
+  if (latestRun.status === "running") {
+    return {
+      allowed: false,
+      retryAfterMinutes,
+      message: "הסוכן עדיין רץ. המתן עד שהריצה הקודמת תסתיים.",
+    };
+  }
+
+  // Otherwise: the agent succeeded recently and is in cooldown.
+  const elapsedMinutes = Math.max(1, Math.floor(elapsedMs / 60_000));
+  return {
+    allowed: false,
+    retryAfterMinutes,
+    message: `הסוכן רץ לפני ${elapsedMinutes} דק׳. ניתן להפעיל שוב בעוד ${retryAfterMinutes} דק׳.`,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────
 // Shared: resolve current user's active tenant
@@ -58,6 +157,12 @@ export async function triggerMorningAgentAction(): Promise<{
   try {
     const tenant = await getActiveTenant();
     if ("error" in tenant) return { success: false, error: tenant.error };
+
+    const limit = await checkAgentRateLimit(tenant.tenantId, "morning");
+    if (!limit.allowed) {
+      return { success: false, error: limit.message ?? "הסוכן רץ לאחרונה." };
+    }
+
     const result = await runMorningAgent(tenant.tenantId, "manual");
     return { success: true, result };
   } catch (err) {
@@ -79,6 +184,11 @@ export async function triggerWatcherAgentAction(): Promise<{
   try {
     const tenant = await getActiveTenant();
     if ("error" in tenant) return { success: false, error: tenant.error };
+
+    const limit = await checkAgentRateLimit(tenant.tenantId, "watcher");
+    if (!limit.allowed) {
+      return { success: false, error: limit.message ?? "הסוכן רץ לאחרונה." };
+    }
 
     const mockRecentEvents = [
       {
@@ -127,6 +237,11 @@ export async function triggerReviewsAgentAction(): Promise<{
     const tenant = await getActiveTenant();
     if ("error" in tenant) return { success: false, error: tenant.error };
 
+    const limit = await checkAgentRateLimit(tenant.tenantId, "reviews");
+    if (!limit.allowed) {
+      return { success: false, error: limit.message ?? "הסוכן רץ לאחרונה." };
+    }
+
     const mockReviews: MockReview[] = [
       {
         id: "mock-google-001",
@@ -172,6 +287,11 @@ export async function triggerHotLeadsAgentAction(): Promise<{
   try {
     const tenant = await getActiveTenant();
     if ("error" in tenant) return { success: false, error: tenant.error };
+
+    const limit = await checkAgentRateLimit(tenant.tenantId, "hot_leads");
+    if (!limit.allowed) {
+      return { success: false, error: limit.message ?? "הסוכן רץ לאחרונה." };
+    }
 
     const mockLeads: MockLead[] = [
       {
@@ -240,6 +360,11 @@ export async function triggerManagerAgentAction(
   try {
     const tenant = await getActiveTenant();
     if ("error" in tenant) return { success: false, error: tenant.error };
+
+    const limit = await checkAgentRateLimit(tenant.tenantId, "manager");
+    if (!limit.allowed) {
+      return { success: false, error: limit.message ?? "הסוכן רץ לאחרונה." };
+    }
 
     const result = await runManagerAgent(tenant.tenantId, "manual", windowDays);
     return { success: true, result };
