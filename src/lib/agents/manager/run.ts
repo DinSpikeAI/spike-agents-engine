@@ -1,12 +1,15 @@
 /**
- * Manager Agent — Day 10
+ * Manager Agent — Day 10 + Day 11A spend cap enforcement
  *
  * Pipeline:
- *   1. Collect signals (agent_runs + drafts sample + hot_leads + tenant.config)
- *   2. Format into a prompt block
- *   3. Call Sonnet 4.6 with thinking_budget = 8000 + 5-section JSON schema
- *   4. Persist the structured report to manager_reports
- *   5. Return ManagerRunResult
+ *   1. Pre-flight spend cap check (Day 11A) — before doing any work
+ *   2. Collect signals (agent_runs + drafts sample + hot_leads + tenant.config)
+ *   3. Insert agent_runs row + reserve_spend RPC (Day 11A)
+ *   4. Format into a prompt block
+ *   5. Call Sonnet 4.6 with thinking_budget = 8000 + 5-section JSON schema
+ *   6. settle_spend on success / refund_spend on failure (Day 11A)
+ *   7. Persist the structured report to manager_reports
+ *   8. Return ManagerRunResult
  *
  * Notes:
  *   - This is the FIRST agent that uses thinking. Anthropic SDK API:
@@ -18,6 +21,7 @@
  *   - We do NOT use runAgent() wrapper here because the Manager has
  *     unique cost-tracking needs (thinking tokens are billed separately).
  *     Instead we call anthropic directly and write to agent_runs ourselves.
+ *     Day 11A: We replicate the runAgent spend-cap pattern manually here.
  */
 
 import { anthropic } from "@/lib/anthropic";
@@ -29,6 +33,10 @@ import {
   type ManagerPromptContext,
 } from "./prompt";
 import { collectSignals, formatSignalsForPrompt } from "./data-collector";
+import {
+  assertWithinSpendCap,
+  estimateAgentRunCostIls,
+} from "@/lib/quotas/check-cap";
 import type { ManagerAgentOutput, RunResult } from "../types";
 import { randomUUID } from "node:crypto";
 
@@ -51,7 +59,53 @@ export async function runManagerAgent(
   const runId = randomUUID();
   const startedAt = new Date().toISOString();
 
-  // ─── Insert agent_runs row (status=running) ──────────────
+  // ─── Step 1: Pre-flight spend cap check (Day 11A) ────────
+  // Manager is the most expensive agent (~₪0.50 with thinking).
+  // Block early if tenant can't afford the run.
+  const costEstimateIls = estimateAgentRunCostIls("manager");
+  const capCheck = await assertWithinSpendCap(tenantId, costEstimateIls);
+
+  if (!capCheck.allowed) {
+    console.log(
+      `[manager] Blocked by spend cap (${capCheck.reason}) for tenant ${tenantId.slice(0, 8)}`
+    );
+    // Write a failed row so the Admin dashboard can see what happened.
+    const finishedAt = new Date().toISOString();
+    await db.from("agent_runs").insert({
+      id: runId,
+      tenant_id: tenantId,
+      agent_id: "manager",
+      status: "failed",
+      started_at: startedAt,
+      finished_at: finishedAt,
+      trigger_source: triggerSource,
+      model_used: MODEL,
+      thinking_used: false,
+      cost_estimate_ils: costEstimateIls,
+      cost_actual_ils: 0,
+      error_message: `Blocked: ${capCheck.reason} — ${capCheck.messageHe}`,
+      is_mocked: false,
+    });
+
+    return {
+      runId,
+      status: "failed",
+      output: null,
+      error: capCheck.messageHe,
+      costEstimateIls,
+      costActualIls: 0,
+      inputTokens: null,
+      outputTokens: null,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      startedAt,
+      finishedAt,
+      isMocked: false,
+      reportId: null,
+    };
+  }
+
+  // ─── Step 2: Insert agent_runs row (status=running) ──────
   await db.from("agent_runs").insert({
     id: runId,
     tenant_id: tenantId,
@@ -61,11 +115,59 @@ export async function runManagerAgent(
     trigger_source: triggerSource,
     model_used: MODEL,
     thinking_used: true,
+    cost_estimate_ils: costEstimateIls,
     is_mocked: false,
   });
 
+  // ─── Step 3: reserve_spend RPC (Day 11A) ─────────────────
+  const { data: reserveOk, error: reserveError } = await db.rpc(
+    "reserve_spend",
+    {
+      p_tenant_id: tenantId,
+      p_agent_run_id: runId,
+      p_agent_id: "manager",
+      p_estimate_ils: costEstimateIls,
+    }
+  );
+
+  if (reserveError || reserveOk === false) {
+    console.error(
+      `[manager] reserve_spend failed for run ${runId.slice(0, 8)}:`,
+      reserveError ?? "RPC returned FALSE"
+    );
+    const finishedAt = new Date().toISOString();
+    await db
+      .from("agent_runs")
+      .update({
+        status: "failed",
+        finished_at: finishedAt,
+        error_message:
+          reserveError?.message ?? "Spend reservation failed (cap exceeded)",
+        cost_actual_ils: 0,
+      })
+      .eq("id", runId);
+
+    return {
+      runId,
+      status: "failed",
+      output: null,
+      error:
+        "המכסה החודשית התמלאה ברגע זה. נסה שוב בעוד מספר דקות, או המתן ל-1 לחודש הבא.",
+      costEstimateIls,
+      costActualIls: 0,
+      inputTokens: null,
+      outputTokens: null,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      startedAt,
+      finishedAt,
+      isMocked: false,
+      reportId: null,
+    };
+  }
+
   try {
-    // ─── 1. Collect signals ────────────────────────────────
+    // ─── Step 4: Collect signals ───────────────────────────
     const signals = await collectSignals(tenantId, windowDays);
     const promptCtx: ManagerPromptContext = {
       tenantName: signals.tenantInfo.name,
@@ -75,7 +177,7 @@ export async function runManagerAgent(
     };
     const signalsBlock = formatSignalsForPrompt(signals);
 
-    // ─── 2. Call Sonnet 4.6 with thinking ──────────────────
+    // ─── Step 5: Call Sonnet 4.6 with thinking ─────────────
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
@@ -115,7 +217,7 @@ export async function runManagerAgent(
 
     const parsed = JSON.parse(text) as ManagerAgentOutput;
 
-    // ─── 3. Cost calculation ───────────────────────────────
+    // ─── Step 6: Cost calculation ──────────────────────────
     // Sonnet 4.6 pricing (Apr 2026): $3/M input, $15/M output
     // Thinking tokens count as output tokens.
     const usage = response.usage as {
@@ -145,7 +247,27 @@ export async function runManagerAgent(
 
     const finishedAt = new Date().toISOString();
 
-    // ─── 4. Update agent_runs row ──────────────────────────
+    // ─── Step 7: settle_spend RPC (Day 11A) ────────────────
+    // Manager already has the token counts — pass them all for clean ledger.
+    const { error: settleError } = await db.rpc("settle_spend", {
+      p_agent_run_id: runId,
+      p_actual_ils: costIls,
+      p_model: MODEL,
+      p_input_tokens: inputTokens,
+      p_output_tokens: outputTokens,
+      p_cache_read_tokens: cacheRead,
+      p_cache_create_5m_tokens: 0, // not currently tracked separately
+      p_cache_create_1h_tokens: cacheCreation,
+      p_metadata: null,
+    });
+    if (settleError) {
+      console.error(
+        `[manager] settle_spend failed for ${runId.slice(0, 8)}:`,
+        settleError
+      );
+    }
+
+    // ─── Step 8: Update agent_runs row ─────────────────────
     await db
       .from("agent_runs")
       .update({
@@ -157,7 +279,7 @@ export async function runManagerAgent(
       })
       .eq("id", runId);
 
-    // ─── 5. Persist to manager_reports table ───────────────
+    // ─── Step 9: Persist to manager_reports table ──────────
     const recommendationType = parsed.recommendation.type;
     const recommendationTarget = parsed.recommendation.targetAgent;
 
@@ -190,7 +312,7 @@ export async function runManagerAgent(
       runId,
       status: "succeeded",
       output: parsed,
-      costEstimateIls: 0,
+      costEstimateIls,
       costActualIls: costIls,
       inputTokens,
       outputTokens,
@@ -207,12 +329,25 @@ export async function runManagerAgent(
 
     const finishedAt = new Date().toISOString();
 
+    // ─── Refund the reservation on failure (Day 11A) ───────
+    const { error: refundError } = await db.rpc("refund_spend", {
+      p_agent_run_id: runId,
+      p_reason: message,
+    });
+    if (refundError) {
+      console.error(
+        `[manager] refund_spend failed for ${runId.slice(0, 8)}:`,
+        refundError
+      );
+    }
+
     await db
       .from("agent_runs")
       .update({
         status: "failed",
         finished_at: finishedAt,
         error_message: message,
+        cost_actual_ils: 0,
       })
       .eq("id", runId);
 
@@ -221,8 +356,8 @@ export async function runManagerAgent(
       status: "failed",
       output: null,
       error: message,
-      costEstimateIls: 0,
-      costActualIls: null,
+      costEstimateIls,
+      costActualIls: 0,
       inputTokens: null,
       outputTokens: null,
       cacheReadTokens: null,

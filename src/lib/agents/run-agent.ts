@@ -5,18 +5,20 @@
  * Built once, used 9 times.
  *
  * Day 5+ status: real Anthropic calls via injected `executor`.
- * Day 6+:        executor can return status: "no_op" for safe halt
- *                (Watcher pattern — nothing to report, retry next interval).
+ * Day 6+:        executor can return status: "no_op" for safe halt.
+ * Day 11A+:      Real spend cap enforcement via Postgres RPCs.
+ *                Pre-flight check via assertWithinSpendCap.
+ *                reserve_spend → settle_spend on success / refund_spend on failure.
+ *
  * Mock path remains for tests and `is_mocked: true` runs.
  *
  * Uses ADMIN client (service_role) — bypasses RLS.
- * Rationale: agent_runs writes always come from server context
- * (server actions, schedulers, webhooks) — never from user JWT context.
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calculateCostIls } from "@/lib/anthropic-pricing";
 import type { AnthropicUsageForCost } from "@/lib/anthropic-pricing";
+import { assertWithinSpendCap, estimateAgentRunCostIls } from "@/lib/quotas/check-cap";
 import type {
   AgentId,
   RunInput,
@@ -26,8 +28,6 @@ import type {
 } from "./types";
 
 // Executor type — injected by each agent with its real Anthropic call.
-// Optional `status`: lets the executor signal a clean no-op (e.g. Watcher
-// found nothing to report). Defaults to "succeeded" if omitted.
 export type AgentExecutor<TOutput> = () => Promise<{
   output: TOutput;
   usage: AnthropicUsageForCost;
@@ -47,10 +47,51 @@ export async function runAgent<TOutput = unknown>(
   const startedAt = new Date().toISOString();
   const runId = crypto.randomUUID();
 
-  // ─── Step 1: Estimate cost ────────────────────────────────
-  const costEstimateIls = estimateCost(input.agentId);
+  // ─── Step 1: Estimate cost (real per-agent estimates) ─────
+  const costEstimateIls = estimateAgentRunCostIls(input.agentId);
 
-  // ─── Step 2: Insert agent_runs row (status='running') ─────
+  // ─── Step 2: Pre-flight spend cap check ───────────────────
+  // Day 11A: BEFORE we insert anything to agent_runs, verify the tenant
+  // can afford this run. If they can't, return a failed RunResult with
+  // a Hebrew message — without polluting agent_runs with junk rows.
+  const capCheck = await assertWithinSpendCap(input.tenantId, costEstimateIls);
+  if (!capCheck.allowed) {
+    console.log(
+      `[runAgent] Blocked by spend cap (${capCheck.reason}) for tenant ${input.tenantId.slice(0, 8)}, agent ${input.agentId}`
+    );
+    // Still write a failed row so the dashboard can show what happened.
+    await supabase.from("agent_runs").insert({
+      id: runId,
+      tenant_id: input.tenantId,
+      agent_id: input.agentId,
+      status: "failed" as RunStatus,
+      trigger_source: input.triggerSource,
+      cost_estimate_ils: costEstimateIls,
+      cost_actual_ils: 0,
+      error_message: `Blocked: ${capCheck.reason} — ${capCheck.messageHe}`,
+      started_at: startedAt,
+      finished_at: new Date().toISOString(),
+      is_mocked: executor === undefined,
+    });
+
+    return {
+      runId,
+      status: "failed",
+      output: null,
+      error: capCheck.messageHe,
+      costEstimateIls,
+      costActualIls: 0,
+      inputTokens: null,
+      outputTokens: null,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      isMocked: executor === undefined,
+    };
+  }
+
+  // ─── Step 3: Insert agent_runs row (status='running') ─────
   const { error: insertError } = await supabase
     .from("agent_runs")
     .insert({
@@ -69,13 +110,56 @@ export async function runAgent<TOutput = unknown>(
     throw new Error(`DB insert failed: ${insertError.message}`);
   }
 
-  // ─── Step 3: reserve_spend (MOCK — just log) ──────────────
-  // Day 8+: await supabase.rpc('reserve_spend', { ... })
-  console.log(
-    `[runAgent MOCK] Reserved ₪${costEstimateIls.toFixed(4)} for ${input.agentId} (run ${runId.slice(0, 8)})`
+  // ─── Step 4: reserve_spend RPC ────────────────────────────
+  // Real call now. Returns boolean — TRUE if reservation succeeded.
+  // FALSE means another concurrent run grabbed the budget between our
+  // check and reservation (race condition). Treat as cap exceeded.
+  const { data: reserveOk, error: reserveError } = await supabase.rpc(
+    "reserve_spend",
+    {
+      p_tenant_id: input.tenantId,
+      p_agent_run_id: runId,
+      p_agent_id: input.agentId,
+      p_estimate_ils: costEstimateIls,
+    }
   );
 
-  // ─── Step 4: Execute ──────────────────────────────────────
+  if (reserveError || reserveOk === false) {
+    console.error(
+      `[runAgent] reserve_spend failed for run ${runId.slice(0, 8)}:`,
+      reserveError ?? "RPC returned FALSE"
+    );
+    const finishedAt = new Date().toISOString();
+    await supabase
+      .from("agent_runs")
+      .update({
+        status: "failed",
+        error_message:
+          reserveError?.message ?? "Spend reservation failed (cap exceeded)",
+        finished_at: finishedAt,
+        cost_actual_ils: 0,
+      })
+      .eq("id", runId);
+
+    return {
+      runId,
+      status: "failed",
+      output: null,
+      error:
+        "המכסה החודשית התמלאה ברגע זה. נסה שוב בעוד מספר דקות, או המתן ל-1 לחודש הבא.",
+      costEstimateIls,
+      costActualIls: 0,
+      inputTokens: null,
+      outputTokens: null,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      startedAt,
+      finishedAt,
+      isMocked: executor === undefined,
+    };
+  }
+
+  // ─── Step 5: Execute ──────────────────────────────────────
   let output: TOutput | null = null;
   let status: RunStatus = "succeeded";
   let errorMessage: string | undefined;
@@ -86,8 +170,6 @@ export async function runAgent<TOutput = unknown>(
       const result = await executor();
       output = result.output;
       usage = result.usage;
-      // Executor may report no_op (Watcher: nothing to alert about).
-      // Default to succeeded if not specified.
       status = result.status ?? "succeeded";
     } else {
       const result = await mockExecute<TOutput>(input.agentId, mockBehavior);
@@ -100,21 +182,54 @@ export async function runAgent<TOutput = unknown>(
     console.error(`[runAgent] Execution failed for ${input.agentId}:`, err);
   }
 
-  // ─── Step 5: settle_spend (MOCK — just log) ───────────────
-  // No-op runs still cost tokens (LLM had to think to decide nothing).
-  // Only failed runs are zero-cost (we refund the reservation).
+  // ─── Step 6: settle_spend OR refund_spend ─────────────────
+  // Success/no_op → settle with actual cost (no_op still cost tokens)
+  // Failed → refund the reservation
+  const finishedAt = new Date().toISOString();
+
+  if (status === "failed") {
+    // Refund the entire reservation
+    const { error: refundError } = await supabase.rpc("refund_spend", {
+      p_agent_run_id: runId,
+      p_reason: errorMessage ?? "execution failed",
+    });
+    if (refundError) {
+      console.error(
+        `[runAgent] refund_spend failed for ${runId.slice(0, 8)}:`,
+        refundError
+      );
+    }
+  } else {
+    // Settle with actual costs
+    const costActualIls = usage
+      ? calculateCostIls(input.model, usage)
+      : costEstimateIls * 0.85; // mock fallback
+    const { error: settleError } = await supabase.rpc("settle_spend", {
+      p_agent_run_id: runId,
+      p_actual_ils: costActualIls,
+      p_model: input.model,
+      p_input_tokens: usage?.input_tokens ?? null,
+      p_output_tokens: usage?.output_tokens ?? null,
+      p_cache_read_tokens: usage?.cache_read_input_tokens ?? 0,
+      p_cache_create_5m_tokens: 0, // not currently tracked separately
+      p_cache_create_1h_tokens: usage?.cache_creation_input_tokens ?? 0,
+      p_metadata: null,
+    });
+    if (settleError) {
+      console.error(
+        `[runAgent] settle_spend failed for ${runId.slice(0, 8)}:`,
+        settleError
+      );
+    }
+  }
+
+  // ─── Step 7: Update agent_runs row ────────────────────────
   const costActualIls = (() => {
     if (status === "failed") return 0;
     if (usage) return calculateCostIls(input.model, usage);
-    return costEstimateIls * 0.85; // mock fallback
+    return costEstimateIls * 0.85;
   })();
-  console.log(
-    `[runAgent MOCK] Settled ₪${costActualIls.toFixed(4)} for run ${runId.slice(0, 8)} (status: ${status})`
-  );
 
-  // ─── Step 6: Update agent_runs row ────────────────────────
-  // ⚠️ NOTE: DB column is 'error_message' (not 'error')
-  const finishedAt = new Date().toISOString();
   const { error: updateError } = await supabase
     .from("agent_runs")
     .update({
@@ -130,7 +245,7 @@ export async function runAgent<TOutput = unknown>(
     console.error("[runAgent] Failed to update agent_runs row:", updateError);
   }
 
-  // ─── Step 7: Return RunResult ─────────────────────────────
+  // ─── Step 8: Return RunResult ─────────────────────────────
   return {
     runId,
     status,
@@ -138,10 +253,10 @@ export async function runAgent<TOutput = unknown>(
     error: errorMessage,
     costEstimateIls,
     costActualIls,
-    inputTokens: null,
-    outputTokens: null,
-    cacheReadTokens: null,
-    cacheWriteTokens: null,
+    inputTokens: usage?.input_tokens ?? null,
+    outputTokens: usage?.output_tokens ?? null,
+    cacheReadTokens: usage?.cache_read_input_tokens ?? null,
+    cacheWriteTokens: usage?.cache_creation_input_tokens ?? null,
     startedAt,
     finishedAt,
     isMocked: executor === undefined,
@@ -170,25 +285,6 @@ async function mockExecute<T>(
 
   const mockOutput = getMockOutput(agentId);
   return { output: mockOutput as T, status: "succeeded" };
-}
-
-// ═══════════════════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════════════════
-
-function estimateCost(agentId: AgentId): number {
-  const estimates: Record<AgentId, number> = {
-    morning: 0.05,
-    reviews: 0.08,
-    social: 0.12,
-    manager: 0.25,
-    watcher: 0.03,
-    cleanup: 0.04,
-    sales: 0.10,
-    inventory: 0.06,
-    hot_leads: 0.04,
-  };
-  return estimates[agentId] ?? 0.10;
 }
 
 function getMockOutput(agentId: AgentId): object {
