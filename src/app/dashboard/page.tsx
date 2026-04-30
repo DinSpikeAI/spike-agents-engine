@@ -10,6 +10,7 @@ import { RunMorningButton } from "@/components/dashboard/run-morning-button";
 import { RunWatcherButton } from "@/components/dashboard/run-watcher-button";
 import { RunReviewsButton } from "@/components/dashboard/run-reviews-button";
 import { RunHotLeadsButton } from "@/components/dashboard/run-hot-leads-button";
+import { RunManagerButton } from "@/components/dashboard/run-manager-button";
 import { AgentGrid } from "@/components/dashboard/agent-grid";
 import { listPendingDrafts } from "@/app/dashboard/actions";
 
@@ -81,6 +82,25 @@ export default async function DashboardPage() {
               <ApprovalBanner count={pendingCount} summary={pendingSummary} />
             </Link>
           )}
+
+          {/* Manager Agent — Day 10 (top placement, it's the orchestrator) */}
+          <div
+            className="mb-4 rounded-xl px-6 py-5"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(168, 85, 247, 0.04))",
+              border: "1px solid rgba(139, 92, 246, 0.25)",
+            }}
+          >
+            <h2 className="mb-2 text-xl font-bold" style={{ color: "#A78BFA" }}>
+              🧠 סוכן מנהל
+            </h2>
+            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
+              סוקר את כל הסוכנים שלך בשבוע האחרון, מזהה חריגות איכות, חישוב
+              מדדי צמיחה והמלצה אחת לפעולה.
+            </p>
+            <RunManagerButton />
+          </div>
 
           {/* Morning Agent — Day 5 */}
           <div

@@ -6,6 +6,7 @@ import { runMorningAgent } from "@/lib/agents/morning/run";
 import { runWatcherAgent } from "@/lib/agents/watcher/run";
 import { runReviewsAgent, type ReviewsRunResult } from "@/lib/agents/reviews/run";
 import { runHotLeadsAgent, type HotLeadsRunResult } from "@/lib/agents/hot_leads/run";
+import { runManagerAgent, type ManagerRunResult } from "@/lib/agents/manager/run";
 import type {
   MorningAgentOutput,
   WatcherAgentOutput,
@@ -57,7 +58,6 @@ export async function triggerMorningAgentAction(): Promise<{
   try {
     const tenant = await getActiveTenant();
     if ("error" in tenant) return { success: false, error: tenant.error };
-
     const result = await runMorningAgent(tenant.tenantId, "manual");
     return { success: true, result };
   } catch (err) {
@@ -83,14 +83,12 @@ export async function triggerWatcherAgentAction(): Promise<{
     const mockRecentEvents = [
       {
         source: "Google Reviews",
-        summary:
-          "ביקורת חדשה: 1★ מיוסי לוי — 'השירות היה איטי, חיכיתי 40 דקות'",
+        summary: "ביקורת חדשה: 1★ מיוסי לוי — 'השירות היה איטי, חיכיתי 40 דקות'",
         occurredAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
       },
       {
         source: "Instagram DM",
-        summary:
-          "פנייה מ-@dana_fashion: 'מעוניינת לקנות לחתונה השבוע, מתי הקולקציה הבאה?'",
+        summary: "פנייה מ-@dana_fashion: 'מעוניינת לקנות לחתונה השבוע, מתי הקולקציה הבאה?'",
         occurredAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
       },
       {
@@ -100,8 +98,7 @@ export async function triggerWatcherAgentAction(): Promise<{
       },
       {
         source: "מלאי",
-        summary:
-          "מוצר #PT-204 (סלמון נורבגי): נשארו 12 יחידות, ממוצע מכירה יומי 18",
+        summary: "מוצר #PT-204 (סלמון נורבגי): נשארו 12 יחידות, ממוצע מכירה יומי 18",
         occurredAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       },
     ];
@@ -109,7 +106,6 @@ export async function triggerWatcherAgentAction(): Promise<{
     const result = await runWatcherAgent(tenant.tenantId, "manual", {
       recentEvents: mockRecentEvents,
     });
-
     return { success: true, result };
   } catch (err) {
     const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
@@ -167,17 +163,6 @@ export async function triggerReviewsAgentAction(): Promise<{
 // ─────────────────────────────────────────────────────────────
 // Hot Leads Agent trigger — Day 9
 // ─────────────────────────────────────────────────────────────
-//
-// 5 mock leads exercise the bucket distribution:
-//   1. blazing — specific product + budget + urgency (today)
-//   2. hot — specific product + budget (no urgency)
-//   3. warm — generic interest, no specifics
-//   4. cold — generic question (location/hours)
-//   5. spam — bot-pattern outreach offer
-//
-// Names span genders & origins so we can spot bias issues by eye even
-// before the formal Day 13 audit. The LLM sees NONE of these names —
-// they're stripped before the prompt is built.
 
 export async function triggerHotLeadsAgentAction(): Promise<{
   success: boolean;
@@ -194,8 +179,7 @@ export async function triggerHotLeadsAgentAction(): Promise<{
         source: "whatsapp",
         displayName: "דנה כהן",
         sourceHandle: "+972501234567",
-        rawMessage:
-          "שלום, אני מחפשת לקנות סלמון נורבגי טרי, 2 ק'ג, היום. תקציב עד ₪450. אפשר?",
+        rawMessage: "שלום, אני מחפשת לקנות סלמון נורבגי טרי, 2 ק'ג, היום. תקציב עד ₪450. אפשר?",
         receivedAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
       },
       {
@@ -203,8 +187,7 @@ export async function triggerHotLeadsAgentAction(): Promise<{
         source: "instagram_dm",
         displayName: "Mohammed Khalil",
         sourceHandle: "@mhd_khalil",
-        rawMessage:
-          "היי, ראיתי את הדגם XYZ-44 בעמוד שלכם. מעוניין להזמין שניים. תקציב 1500 שקל. כמה זמן משלוח?",
+        rawMessage: "היי, ראיתי את הדגם XYZ-44 בעמוד שלכם. מעוניין להזמין שניים. תקציב 1500 שקל. כמה זמן משלוח?",
         receivedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       },
       {
@@ -212,8 +195,7 @@ export async function triggerHotLeadsAgentAction(): Promise<{
         source: "website_form",
         displayName: "תמר שמעוני",
         sourceHandle: "tamar.sh@gmail.com",
-        rawMessage:
-          "שלום, מעוניינת לקבל מידע על השירותים שלכם. תוכלו לשלוח לי קטלוג?",
+        rawMessage: "שלום, מעוניינת לקבל מידע על השירותים שלכם. תוכלו לשלוח לי קטלוג?",
         receivedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
       },
       {
@@ -240,6 +222,30 @@ export async function triggerHotLeadsAgentAction(): Promise<{
   } catch (err) {
     const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
     console.error("[triggerHotLeadsAgentAction] Error:", err);
+    return { success: false, error: message };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Manager Agent trigger — Day 10
+// ─────────────────────────────────────────────────────────────
+
+export async function triggerManagerAgentAction(
+  windowDays = 7
+): Promise<{
+  success: boolean;
+  result?: ManagerRunResult;
+  error?: string;
+}> {
+  try {
+    const tenant = await getActiveTenant();
+    if ("error" in tenant) return { success: false, error: tenant.error };
+
+    const result = await runManagerAgent(tenant.tenantId, "manual", windowDays);
+    return { success: true, result };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
+    console.error("[triggerManagerAgentAction] Error:", err);
     return { success: false, error: message };
   }
 }
@@ -290,7 +296,6 @@ export async function listPendingDrafts(): Promise<{
       console.error("[listPendingDrafts] DB error:", error);
       return { success: false, error: error.message };
     }
-
     return { success: true, drafts: (data as PendingDraft[]) ?? [] };
   } catch (err) {
     const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
@@ -306,9 +311,7 @@ export async function approveDraft(
     if ("error" in tenant) return { success: false, error: tenant.error };
 
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "לא מחובר" };
 
     const db = createAdminClient();
@@ -402,7 +405,6 @@ export async function listClassifiedLeads(): Promise<{
       console.error("[listClassifiedLeads] DB error:", error);
       return { success: false, error: error.message };
     }
-
     return { success: true, leads: (data as ClassifiedLead[]) ?? [] };
   } catch (err) {
     const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
@@ -418,9 +420,7 @@ export async function markLeadContacted(
     if ("error" in tenant) return { success: false, error: tenant.error };
 
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: "לא מחובר" };
 
     const db = createAdminClient();
@@ -465,6 +465,60 @@ export async function dismissLead(
 
     if (error) return { success: false, error: error.message };
     return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
+    return { success: false, error: message };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Manager reports queries — Day 10
+// ─────────────────────────────────────────────────────────────
+
+export interface ManagerReportRow {
+  id: string;
+  agent_run_id: string | null;
+  window_start: string;
+  window_end: string;
+  agents_succeeded: number;
+  agents_failed: number;
+  drafts_sampled: number;
+  drafts_flagged: number;
+  has_critical_issues: boolean;
+  cost_window_ils: number | null;
+  cost_anomaly: boolean;
+  recommendation_type: string | null;
+  recommendation_target_agent: string | null;
+  report: Record<string, unknown>;
+  created_at: string;
+}
+
+export async function listManagerReports(
+  limit = 10
+): Promise<{
+  success: boolean;
+  reports?: ManagerReportRow[];
+  error?: string;
+}> {
+  try {
+    const tenant = await getActiveTenant();
+    if ("error" in tenant) return { success: false, error: tenant.error };
+
+    const db = createAdminClient();
+    const { data, error } = await db
+      .from("manager_reports")
+      .select(
+        "id, agent_run_id, window_start, window_end, agents_succeeded, agents_failed, drafts_sampled, drafts_flagged, has_critical_issues, cost_window_ils, cost_anomaly, recommendation_type, recommendation_target_agent, report, created_at"
+      )
+      .eq("tenant_id", tenant.tenantId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error("[listManagerReports] DB error:", error);
+      return { success: false, error: error.message };
+    }
+    return { success: true, reports: (data as ManagerReportRow[]) ?? [] };
   } catch (err) {
     const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
     return { success: false, error: message };
