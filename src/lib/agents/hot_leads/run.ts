@@ -127,7 +127,7 @@ function extractFeatures(lead: MockLead, scrubbedMessage: string): LeadFeatures 
 export async function runHotLeadsAgent(
   tenantId: string,
   leads: MockLead[],
-  triggerSource: "manual" | "scheduled" | "webhook" = "manual"
+  triggerSource: "manual" | "scheduled" | "webhook" | "admin_manual" = "manual"
 ): Promise<HotLeadsRunResult> {
   // ─── Pre-flight: extract features per lead ───────────────
   // The features object is what the LLM sees. The display_name and

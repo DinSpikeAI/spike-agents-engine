@@ -43,7 +43,7 @@ interface WatcherRawOutput {
 
 export async function runWatcherAgent(
   tenantId: string,
-  triggerSource: "manual" | "scheduled" | "webhook" = "manual",
+  triggerSource: "manual" | "scheduled" | "webhook" | "admin_manual" = "manual",
   context?: Partial<WatcherPromptContext>
 ): Promise<RunResult<WatcherAgentOutput>> {
   const promptContext: WatcherPromptContext = {

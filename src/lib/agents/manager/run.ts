@@ -56,7 +56,7 @@ export interface ManagerRunResult extends RunResult<ManagerAgentOutput> {
 
 export async function runManagerAgent(
   tenantId: string,
-  triggerSource: "manual" | "scheduled" | "webhook" = "manual",
+  triggerSource: "manual" | "scheduled" | "webhook" | "admin_manual" = "manual",
   windowDays = 7
 ): Promise<ManagerRunResult> {
   const db = createAdminClient();

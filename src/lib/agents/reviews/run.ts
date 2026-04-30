@@ -90,7 +90,7 @@ async function loadTenantContext(tenantId: string): Promise<TenantSafetyContext>
 export async function runReviewsAgent(
   tenantId: string,
   reviews: MockReview[],
-  triggerSource: "manual" | "scheduled" | "webhook" = "manual"
+  triggerSource: "manual" | "scheduled" | "webhook" | "admin_manual" = "manual"
 ): Promise<ReviewsRunResult> {
   // ─── Load tenant safety context ──────────────────────────────
   const tenant = await loadTenantContext(tenantId);

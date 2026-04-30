@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { isAdminEmail } from "@/lib/admin/auth";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Topbar } from "@/components/dashboard/topbar";
 import { KpiStrip } from "@/components/dashboard/kpi-strip";
@@ -69,7 +70,7 @@ export default async function DashboardPage() {
       dir="rtl"
       style={{ background: "var(--spike-bg)", color: "var(--spike-text)" }}
     >
-      <Sidebar userEmail={userEmail} />
+      <Sidebar userEmail={userEmail} isAdmin={isAdminEmail(userEmail)} />
 
       <div className="md:mr-[248px]">
         <main

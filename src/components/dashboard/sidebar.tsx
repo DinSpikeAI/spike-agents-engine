@@ -13,6 +13,8 @@ interface NavItem {
 interface NavSection {
   label: string;
   items: NavItem[];
+  /** If true, this section only renders for admin users */
+  adminOnly?: boolean;
 }
 
 const HomeIcon = (
@@ -62,6 +64,16 @@ const LogoutIcon = (
   </svg>
 );
 
+// Admin-only icon: command center / radar
+const AdminIcon = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <circle cx="12" cy="12" r="6" />
+    <circle cx="12" cy="12" r="2" />
+    <path d="M12 2v2M12 20v2M2 12h2M20 12h2" />
+  </svg>
+);
+
 const SECTIONS: NavSection[] = [
   {
     label: "ראשי",
@@ -80,6 +92,13 @@ const SECTIONS: NavSection[] = [
     ],
   },
   {
+    label: "ניהול",
+    adminOnly: true,
+    items: [
+      { href: "/admin", label: "מרכז בקרה", icon: AdminIcon },
+    ],
+  },
+  {
     label: "חשבון",
     items: [
       { href: "/dashboard/trust", label: "אמון ופרטיות", icon: ShieldIcon },
@@ -90,12 +109,22 @@ const SECTIONS: NavSection[] = [
 
 export interface SidebarProps {
   userEmail: string;
+  /**
+   * Whether the current user is an admin. When true, the 'ניהול' section
+   * with the link to /admin is rendered. Computed server-side via
+   * isAdminEmail() so non-admin clients can't tamper with it.
+   * Defaults to false for safety.
+   */
+  isAdmin?: boolean;
 }
 
-export function Sidebar({ userEmail }: SidebarProps) {
+export function Sidebar({ userEmail, isAdmin = false }: SidebarProps) {
   const pathname = usePathname();
   const userInitial = userEmail.charAt(0).toUpperCase();
   const userName = userEmail.split("@")[0];
+
+  // Filter out admin-only sections if user is not an admin
+  const visibleSections = SECTIONS.filter((s) => !s.adminOnly || isAdmin);
 
   return (
     <aside
@@ -130,12 +159,14 @@ export function Sidebar({ userEmail }: SidebarProps) {
 
       {/* Nav sections */}
       <div className="flex-1 overflow-y-auto spike-scroll">
-        {SECTIONS.map((section) => (
+        {visibleSections.map((section) => (
           <div key={section.label}>
             <div
               className="px-3 pb-2 pt-3.5 text-[10px] font-bold uppercase"
               style={{
-                color: "var(--spike-text-mute)",
+                color: section.adminOnly
+                  ? "var(--spike-amber)"
+                  : "var(--spike-text-mute)",
                 letterSpacing: "0.15em",
               }}
             >

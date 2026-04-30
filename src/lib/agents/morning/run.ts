@@ -15,7 +15,7 @@ const MODEL = "claude-haiku-4-5" as const;
 
 export async function runMorningAgent(
   tenantId: string,
-  triggerSource: "manual" | "scheduled" | "webhook" = "manual",
+  triggerSource: "manual" | "scheduled" | "webhook" | "admin_manual" = "manual",
   context?: Partial<MorningPromptContext>
 ): Promise<RunResult<MorningAgentOutput>> {
   const promptContext: MorningPromptContext = {

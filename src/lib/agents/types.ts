@@ -40,7 +40,7 @@ export type RunStatus =
 export interface RunInput {
   tenantId: string;
   agentId: AgentId;
-  triggerSource: "manual" | "scheduled" | "webhook";
+  triggerSource: "manual" | "scheduled" | "webhook" | "admin_manual";
   model: AgentModel;
 }
 

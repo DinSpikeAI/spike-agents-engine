@@ -48,7 +48,7 @@ export default async function AdminPage() {
       dir="rtl"
       style={{ background: "var(--spike-bg)", color: "var(--spike-text)" }}
     >
-      <Sidebar userEmail={adminEmail} />
+      <Sidebar userEmail={adminEmail} isAdmin={true} />
 
       <div className="md:mr-[248px]">
         <main
