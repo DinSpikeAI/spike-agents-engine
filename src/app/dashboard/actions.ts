@@ -7,6 +7,7 @@ import { runWatcherAgent } from "@/lib/agents/watcher/run";
 import { runReviewsAgent, type ReviewsRunResult } from "@/lib/agents/reviews/run";
 import { runHotLeadsAgent, type HotLeadsRunResult } from "@/lib/agents/hot_leads/run";
 import { runManagerAgent, type ManagerRunResult } from "@/lib/agents/manager/run";
+import { runSocialAgent, type SocialRunResult } from "@/lib/agents/social/run";
 import type {
   AgentId,
   MorningAgentOutput,
@@ -526,7 +527,32 @@ export async function triggerManagerAgentAction(
     return { success: false, error: message };
   }
 }
+// ─────────────────────────────────────────────────────────────
+// Social Agent trigger — Day 14
+// ─────────────────────────────────────────────────────────────
 
+export async function triggerSocialAgentAction(): Promise<{
+  success: boolean;
+  result?: SocialRunResult;
+  error?: string;
+}> {
+  try {
+    const tenant = await getActiveTenant();
+    if ("error" in tenant) return { success: false, error: tenant.error };
+
+    const limit = await checkAgentRateLimit(tenant.tenantId, "social");
+    if (!limit.allowed) {
+      return { success: false, error: limit.message ?? "הסוכן רץ לאחרונה." };
+    }
+
+    const result = await runSocialAgent(tenant.tenantId, "manual");
+    return { success: true, result };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
+    console.error("[triggerSocialAgentAction] Error:", err);
+    return { success: false, error: message };
+  }
+}
 // ─────────────────────────────────────────────────────────────
 // Approval Inbox queries (Day 8)
 // ─────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ import { RunMorningButton } from "@/components/dashboard/run-morning-button";
 import { RunWatcherButton } from "@/components/dashboard/run-watcher-button";
 import { RunReviewsButton } from "@/components/dashboard/run-reviews-button";
 import { RunHotLeadsButton } from "@/components/dashboard/run-hot-leads-button";
+import { RunSocialButton } from "@/components/dashboard/run-social-button";
 import { RunManagerButton } from "@/components/dashboard/run-manager-button";
 import { AgentGrid } from "@/components/dashboard/agent-grid";
 import { listPendingDrafts, getManagerLockState } from "@/app/dashboard/actions";
@@ -174,7 +175,23 @@ export default async function DashboardPage() {
             </p>
             <RunReviewsButton />
           </div>
-
+                    {/* Social Agent — Day 14 */}
+          <div
+            className="mb-4 rounded-xl px-6 py-5"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(168, 85, 247, 0.06), rgba(236, 72, 153, 0.03))",
+              border: "1px solid rgba(168, 85, 247, 0.2)",
+            }}
+          >
+            <h2 className="mb-2 text-xl font-bold" style={{ color: "#C084FC" }}>
+              📱 סוכן רשתות
+            </h2>
+            <p className="mb-4 text-sm" style={{ color: "var(--spike-text-dim)" }}>
+              מכין 3 טיוטות פוסטים יומיות בעברית לאינסטגרם ופייסבוק. אתה מאשר, מעתיק, ומפרסם בעצמך.
+            </p>
+            <RunSocialButton />
+          </div>
           {/* Hot Leads Agent — Day 9 */}
           <div
             className="mb-8 rounded-xl px-6 py-5"
