@@ -39,8 +39,7 @@ import {
 import { withGenderLock, type BusinessOwnerGender } from "@/lib/safety/gender-lock";
 import type { RunResult } from "../types";
 
-const MODEL = "claude-haiku-4-5" as const;
-
+const MODEL = "claude-sonnet-4-6" as const;
 // ─────────────────────────────────────────────────────────────
 // Output type — matches schema
 // ─────────────────────────────────────────────────────────────
@@ -222,7 +221,7 @@ export async function runSocialAgent(
   const executor = async () => {
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 2048,
+      max_tokens: 3000,
       system: systemBlocks,
       messages: [
         {
