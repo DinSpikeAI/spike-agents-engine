@@ -15,6 +15,8 @@ import {
 
 interface SidebarProps {
   userEmail: string;
+  ownerName?: string | null;
+  businessName?: string | null;
   isAdmin?: boolean;
   pendingCount?: number;
 }
@@ -30,10 +32,21 @@ const NAV_ITEMS = [
   { id: "settings", label: "הגדרות", href: "/dashboard/settings", icon: Settings },
 ];
 
-export function Sidebar({ userEmail, isAdmin = false, pendingCount = 0 }: SidebarProps) {
+export function Sidebar({
+  userEmail,
+  ownerName,
+  businessName,
+  isAdmin = false,
+  pendingCount = 0,
+}: SidebarProps) {
   const pathname = usePathname();
-  const userInitial = userEmail.charAt(0).toUpperCase();
-  const userName = userEmail.split("@")[0];
+
+  // Display name precedence: owner_name from onboarding > email username
+  const displayName =
+    (ownerName && ownerName.trim()) || userEmail.split("@")[0] || "משתמש";
+  const displayBusiness =
+    (businessName && businessName.trim()) || "Spike Demo";
+  const userInitial = (displayName.charAt(0) || "?").toUpperCase();
 
   return (
     <aside
@@ -139,16 +152,16 @@ export function Sidebar({ userEmail, isAdmin = false, pendingCount = 0 }: Sideba
           </div>
           <div className="min-w-0 flex-1">
             <div
-              className="text-[12.5px] font-medium"
+              className="truncate text-[12.5px] font-medium"
               style={{ color: "var(--color-ink)" }}
             >
-              {userName}
+              {displayName}
             </div>
             <div
               className="truncate text-[10.5px]"
               style={{ color: "var(--color-ink-3)" }}
             >
-              Spike Demo
+              {displayBusiness}
             </div>
           </div>
         </div>

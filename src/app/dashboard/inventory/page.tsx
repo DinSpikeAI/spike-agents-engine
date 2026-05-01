@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireOnboarded } from "@/lib/auth/require-onboarded";
 import { isAdminEmail } from "@/lib/admin/auth";
 import { Sidebar } from "@/components/dashboard/sidebar";
@@ -29,7 +30,7 @@ function formatDate(iso: string): string {
 
 export default async function InventoryPage() {
   // Block access if user hasn't completed onboarding yet.
-  await requireOnboarded();
+  const { tenantId } = await requireOnboarded();
 
   const supabase = await createClient();
   const {
@@ -41,6 +42,25 @@ export default async function InventoryPage() {
   }
 
   const userEmail = user.email ?? "";
+
+  // Load tenant identity for sidebar profile section.
+  const adminDb = createAdminClient();
+  const { data: tenantRow } = await adminDb
+    .from("tenants")
+    .select("name, config")
+    .eq("id", tenantId)
+    .maybeSingle();
+
+  const tenantConfig =
+    (tenantRow?.config as Record<string, unknown> | null) ?? {};
+  const ownerName =
+    typeof tenantConfig.owner_name === "string"
+      ? tenantConfig.owner_name
+      : null;
+  const businessName =
+    typeof tenantConfig.business_name === "string"
+      ? tenantConfig.business_name
+      : (tenantRow?.name as string | undefined) ?? null;
 
   const [draftsResult, snapshotResult, analysisResult] = await Promise.all([
     listPendingDrafts(),
@@ -78,6 +98,8 @@ export default async function InventoryPage() {
 
       <Sidebar
         userEmail={userEmail}
+        ownerName={ownerName}
+        businessName={businessName}
         isAdmin={isAdminEmail(userEmail)}
         pendingCount={pendingCount}
       />
