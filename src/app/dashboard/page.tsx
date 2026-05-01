@@ -16,6 +16,7 @@ import { RunHotLeadsButton } from "@/components/dashboard/run-hot-leads-button";
 import { RunManagerButton } from "@/components/dashboard/run-manager-button";
 import { RunSocialButton } from "@/components/dashboard/run-social-button";
 import { RunSalesButton } from "@/components/dashboard/run-sales-button";
+import { RunInventoryButton } from "@/components/dashboard/run-inventory-button";
 import {
   listPendingDrafts,
   getManagerLockState,
@@ -89,6 +90,14 @@ const AGENTS = [
     role: "פולואו־אפ",
     desc: "מאתר לידים שתקועים יותר מ־3 ימים ומכין follow-up עם קישור ישיר ל-WhatsApp.",
     button: "sales",
+  },
+  {
+    id: "inventory",
+    emoji: "📦",
+    name: "סוכן מלאי",
+    role: "ניתוח מלאי",
+    desc: "מנתח קובץ CSV של המלאי, מחשב ימי כיסוי לכל מוצר ומסמן פריטים שדורשים תשומת לב.",
+    button: "inventory",
   },
 ];
 
@@ -182,6 +191,8 @@ export default async function DashboardPage() {
         return <RunSocialButton />;
       case "sales":
         return <RunSalesButton />;
+      case "inventory":
+        return <RunInventoryButton />;
       default:
         return null;
     }
