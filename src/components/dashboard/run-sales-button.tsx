@@ -3,13 +3,13 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { triggerSalesAgentAction } from "@/app/dashboard/actions";
-import { Play } from "lucide-react";
+import { DollarSign, Check, AlertTriangle, Info } from "lucide-react";
 
 const LOADING_STAGES = [
-  "מזהה לידים תקועים...",
-  "כותב follow-ups...",
-  "מתאים את הטון...",
-  "מסיים...",
+  "מאתר לידים תקועים...",
+  "מנתח היסטוריית שיחה...",
+  "מנסח follow-up אישי...",
+  "מסיים את העבודה...",
 ];
 
 export function RunSalesButton() {
@@ -17,6 +17,7 @@ export function RunSalesButton() {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [noOpReason, setNoOpReason] = useState<string | null>(null);
   const [loadingStage, setLoadingStage] = useState(0);
 
   useEffect(() => {
@@ -25,34 +26,33 @@ export function RunSalesButton() {
       return;
     }
     const interval = setInterval(() => {
-      setLoadingStage((prev) =>
-        prev >= LOADING_STAGES.length - 1 ? prev : prev + 1
-      );
-    }, 3000);
+      setLoadingStage((prev) => {
+        if (prev >= LOADING_STAGES.length - 1) return prev;
+        return prev + 1;
+      });
+    }, 2500);
     return () => clearInterval(interval);
   }, [isPending]);
 
   const handleClick = () => {
     setError(null);
     setSuccess(null);
+    setNoOpReason(null);
     setLoadingStage(0);
     startTransition(async () => {
       const res = await triggerSalesAgentAction();
       if (res.success && res.result) {
         const n = res.result.draftIds.length;
-        const stuckCount = res.result.stuckLeadsCount;
-
         if (n === 0) {
-          const reason = res.result.output?.noOpReason ?? "אין מה לעשות";
-          setSuccess(reason);
+          const reason =
+            res.result.output?.noOpReason ?? "אין לידים תקועים כרגע";
+          setNoOpReason(reason);
           return;
         }
-
-        let msg = `${n} ${n === 1 ? "follow-up" : "follow-ups"} מוכנים`;
-        if (stuckCount > n) msg += ` (מ-${stuckCount} לידים)`;
-        setSuccess(msg);
-
-        setTimeout(() => router.push("/dashboard/approvals"), 1000);
+        setSuccess(
+          `הוכנו ${n} ${n === 1 ? "טיוטת follow-up" : "טיוטות follow-up"}`
+        );
+        setTimeout(() => router.push("/dashboard/approvals"), 1200);
       } else {
         setError(res.error ?? "משהו השתבש");
       }
@@ -64,7 +64,7 @@ export function RunSalesButton() {
       <button
         onClick={handleClick}
         disabled={isPending}
-        className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white transition-all disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded-[10px] px-4 py-2 text-[13px] font-medium text-white transition-all disabled:opacity-50"
         style={{
           background: "var(--color-sys-blue)",
           boxShadow: "var(--shadow-cta)",
@@ -81,33 +81,55 @@ export function RunSalesButton() {
           </>
         ) : (
           <>
-            <Play size={11} strokeWidth={2} />
-            הרץ
+            <DollarSign size={13} strokeWidth={1.75} />
+            הרץ עכשיו
           </>
         )}
       </button>
 
       {success && (
         <div
-          className="mt-2 rounded-md px-3 py-2 text-xs"
+          className="mt-3 flex items-start gap-2 rounded-[10px] px-3 py-2 text-[12.5px]"
           style={{
             background: "var(--color-sys-green-soft)",
+            border: "1px solid rgba(48, 179, 107, 0.25)",
             color: "var(--color-sys-green)",
           }}
         >
-          ✓ {success}
+          <Check size={14} strokeWidth={2} className="mt-0.5 flex-shrink-0" />
+          <span>{success} — מעביר אותך לתיבת האישורים...</span>
+        </div>
+      )}
+
+      {noOpReason && (
+        <div
+          className="mt-3 flex items-start gap-2 rounded-[10px] px-3 py-2 text-[12.5px]"
+          style={{
+            background: "var(--color-sys-blue-soft)",
+            border: "1px solid rgba(10, 132, 255, 0.20)",
+            color: "var(--color-sys-blue)",
+          }}
+        >
+          <Info size={14} strokeWidth={2} className="mt-0.5 flex-shrink-0" />
+          <span>לא הוכנו follow-ups — {noOpReason}</span>
         </div>
       )}
 
       {error && (
         <div
-          className="mt-2 rounded-md px-3 py-2 text-xs"
+          className="mt-3 flex items-start gap-2 rounded-[10px] px-3 py-2 text-[12.5px]"
           style={{
-            background: "rgba(214, 51, 108, 0.1)",
+            background: "rgba(214, 51, 108, 0.08)",
+            border: "1px solid rgba(214, 51, 108, 0.20)",
             color: "var(--color-sys-pink)",
           }}
         >
-          ⚠️ {error}
+          <AlertTriangle
+            size={14}
+            strokeWidth={2}
+            className="mt-0.5 flex-shrink-0"
+          />
+          <span>{error}</span>
         </div>
       )}
 

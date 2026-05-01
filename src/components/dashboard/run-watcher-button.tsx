@@ -1,41 +1,113 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { triggerWatcherAgentAction } from "@/app/dashboard/actions";
-import { Play } from "lucide-react";
+import type {
+  WatcherAgentOutput,
+  WatcherAlert,
+} from "@/lib/agents/types";
+import {
+  CATEGORY_LABELS_HE,
+  SEVERITY_LABELS_HE,
+} from "@/lib/agents/watcher/hierarchy";
+import { Target, X, AlertTriangle, FlaskConical, Sprout } from "lucide-react";
+
+// ─────────────────────────────────────────────────────────────
+// Severity styles — Calm Frosted edition (System palette)
+// ─────────────────────────────────────────────────────────────
+const SEVERITY_STYLES: Record<
+  WatcherAlert["severity"],
+  { bg: string; border: string; text: string }
+> = {
+  critical: {
+    bg: "rgba(214, 51, 108, 0.08)",
+    border: "rgba(214, 51, 108, 0.25)",
+    text: "var(--color-sys-pink)",
+  },
+  high: {
+    bg: "rgba(224, 169, 61, 0.10)",
+    border: "rgba(224, 169, 61, 0.30)",
+    text: "var(--color-sys-amber)",
+  },
+  medium: {
+    bg: "var(--color-sys-blue-soft)",
+    border: "rgba(10, 132, 255, 0.25)",
+    text: "var(--color-sys-blue)",
+  },
+  low: {
+    bg: "rgba(114, 121, 136, 0.08)",
+    border: "rgba(114, 121, 136, 0.20)",
+    text: "var(--color-ink-3)",
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// Format occurredAt for Hebrew display.
+// ─────────────────────────────────────────────────────────────
+function formatOccurredAt(s: string): string {
+  const ts = Date.parse(s);
+  if (!Number.isFinite(ts)) return s;
+
+  const now = Date.now();
+  const diffMs = now - ts;
+  const diffMin = Math.round(diffMs / (60 * 1000));
+  const diffHr = Math.round(diffMs / (60 * 60 * 1000));
+  const diffDay = Math.round(diffMs / (24 * 60 * 60 * 1000));
+
+  if (diffMin < 1) return "ממש עכשיו";
+  if (diffMin < 60) return `לפני ${diffMin} דק'`;
+  if (diffHr < 24) return `לפני ${diffHr} ${diffHr === 1 ? "שעה" : "שעות"}`;
+  if (diffDay === 1) {
+    const time = new Date(ts).toLocaleTimeString("he-IL", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `אתמול ${time}`;
+  }
+  if (diffDay < 7) return `לפני ${diffDay} ימים`;
+  return new Date(ts).toLocaleDateString("he-IL", {
+    day: "numeric",
+    month: "long",
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
 
 export function RunWatcherButton() {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [output, setOutput] = useState<WatcherAgentOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [isMocked, setIsMocked] = useState(false);
+  const [isNoOp, setIsNoOp] = useState(false);
 
   const handleClick = () => {
     setError(null);
-    setSuccess(null);
     startTransition(async () => {
       const res = await triggerWatcherAgentAction();
       if (res.success && res.result) {
-        const alerts = res.result.output?.alerts.length ?? 0;
-        setSuccess(
-          alerts === 0
-            ? "אין התראות חדשות"
-            : `${alerts} התראות זוהו`
-        );
-        setTimeout(() => router.refresh(), 800);
+        setOutput(res.result.output);
+        setIsMocked(res.result.isMocked);
+        setIsNoOp(res.result.status === "no_op");
       } else {
         setError(res.error ?? "משהו השתבש");
       }
     });
   };
 
+  const close = () => {
+    setOutput(null);
+    setIsNoOp(false);
+  };
+
+  const hero = output && output.alerts.length > 0 ? output.alerts[0] : null;
+  const others = output?.alerts.slice(1) ?? [];
+
   return (
     <>
       <button
         onClick={handleClick}
         disabled={isPending}
-        className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white transition-all disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded-[10px] px-4 py-2 text-[13px] font-medium text-white transition-all disabled:opacity-50"
         style={{
           background: "var(--color-sys-blue)",
           boxShadow: "var(--shadow-cta)",
@@ -48,37 +120,273 @@ export function RunWatcherButton() {
               style={{ animation: "spin 0.8s linear infinite" }}
               aria-hidden="true"
             />
-            <span>סורק...</span>
+            סורק...
           </>
         ) : (
           <>
-            <Play size={11} strokeWidth={2} />
-            הרץ
+            <Target size={13} strokeWidth={1.75} />
+            הרץ עכשיו
           </>
         )}
       </button>
 
-      {success && (
-        <div
-          className="mt-2 rounded-md px-3 py-2 text-xs"
-          style={{
-            background: "var(--color-sys-green-soft)",
-            color: "var(--color-sys-green)",
-          }}
-        >
-          ✓ {success}
-        </div>
-      )}
-
       {error && (
         <div
-          className="mt-2 rounded-md px-3 py-2 text-xs"
+          className="mt-3 flex items-start gap-2 rounded-[10px] px-3 py-2 text-[12.5px]"
           style={{
-            background: "rgba(214, 51, 108, 0.1)",
+            background: "rgba(214, 51, 108, 0.08)",
+            border: "1px solid rgba(214, 51, 108, 0.20)",
             color: "var(--color-sys-pink)",
           }}
         >
-          ⚠️ {error}
+          <AlertTriangle
+            size={14}
+            strokeWidth={2}
+            className="mt-0.5 flex-shrink-0"
+          />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {output && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={close}
+          style={{
+            background: "rgba(15, 22, 32, 0.45)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+          }}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[18px] p-6"
+            onClick={(e) => e.stopPropagation()}
+            dir="rtl"
+            style={{
+              background: "var(--color-glass-deep)",
+              backdropFilter: "blur(40px) saturate(180%)",
+              WebkitBackdropFilter: "blur(40px) saturate(180%)",
+              border: "1px solid var(--color-hairline-s)",
+              boxShadow:
+                "0 1px 0 rgba(255,255,255,0.6) inset, 0 24px 60px rgba(15,20,30,0.18)",
+            }}
+          >
+            {/* Header */}
+            <div
+              className="mb-4 flex items-start justify-between border-b pb-4"
+              style={{ borderColor: "var(--color-hairline)" }}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[12px]"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(245,247,252,0.7))",
+                    border: "1px solid rgba(255,255,255,0.9)",
+                    boxShadow:
+                      "0 4px 12px rgba(15,20,30,0.06), inset 0 1px 0 rgba(255,255,255,0.6)",
+                  }}
+                >
+                  <Target
+                    size={18}
+                    strokeWidth={1.75}
+                    style={{ color: "var(--color-sys-blue)" }}
+                  />
+                </div>
+                <div>
+                  <h2
+                    className="text-[20px] font-bold tracking-tight"
+                    style={{ color: "var(--color-ink)" }}
+                  >
+                    סוכן מעקב
+                  </h2>
+                  <p
+                    className="mt-0.5 text-[12.5px]"
+                    style={{ color: "var(--color-ink-2)" }}
+                  >
+                    {output.scanSummary}
+                  </p>
+                  {isMocked && (
+                    <span
+                      className="mt-2 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-semibold"
+                      style={{
+                        background: "rgba(224, 169, 61, 0.12)",
+                        color: "var(--color-sys-amber)",
+                      }}
+                    >
+                      <FlaskConical size={10} strokeWidth={2} />
+                      Mock data
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={close}
+                className="flex h-8 w-8 items-center justify-center rounded-md transition-colors"
+                style={{ color: "var(--color-ink-3)" }}
+                aria-label="סגור"
+              >
+                <X size={16} strokeWidth={2} />
+              </button>
+            </div>
+
+            {/* No-op state — clean halt */}
+            {isNoOp && (
+              <div
+                className="rounded-[14px] p-6 text-center"
+                style={{
+                  background: "var(--color-sys-green-soft)",
+                  border: "1px solid rgba(48, 179, 107, 0.20)",
+                }}
+              >
+                <Sprout
+                  size={32}
+                  strokeWidth={1.5}
+                  className="mx-auto mb-2"
+                  style={{ color: "var(--color-sys-green)" }}
+                />
+                <h3
+                  className="text-[16px] font-semibold"
+                  style={{ color: "var(--color-sys-green)" }}
+                >
+                  הכל שקט
+                </h3>
+                <p
+                  className="mt-1 text-[12.5px]"
+                  style={{ color: "var(--color-ink-2)" }}
+                >
+                  אין אירועים חדשים שראויים לדיווח.
+                  {output.scannedSources.length > 0 && (
+                    <> נסרקו: {output.scannedSources.join(", ")}.</>
+                  )}
+                </p>
+              </div>
+            )}
+
+            {/* Hero alert */}
+            {hero && (
+              <div
+                className="mb-4 rounded-[14px] p-4"
+                style={{
+                  background: SEVERITY_STYLES[hero.severity].bg,
+                  border: `1px solid ${SEVERITY_STYLES[hero.severity].border}`,
+                }}
+              >
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span
+                    className="rounded-md px-2 py-0.5 text-[11px] font-semibold"
+                    style={{
+                      color: SEVERITY_STYLES[hero.severity].text,
+                      background: "rgba(255,255,255,0.7)",
+                    }}
+                  >
+                    {SEVERITY_LABELS_HE[hero.severity]}
+                  </span>
+                  <span
+                    className="text-[11px]"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
+                    {CATEGORY_LABELS_HE[hero.category]} · {hero.source} ·{" "}
+                    {formatOccurredAt(hero.occurredAt)}
+                  </span>
+                </div>
+                <h3
+                  className="mb-1 text-[16px] font-semibold tracking-tight"
+                  style={{ color: "var(--color-ink)" }}
+                >
+                  {hero.title}
+                </h3>
+                <p
+                  className="text-[13px] leading-relaxed"
+                  style={{ color: "var(--color-ink-2)" }}
+                >
+                  {hero.context}
+                </p>
+              </div>
+            )}
+
+            {/* Other alerts */}
+            {others.length > 0 && (
+              <div className="space-y-2">
+                <h4
+                  className="text-[10.5px] font-medium uppercase tracking-wider"
+                  style={{ color: "var(--color-ink-3)" }}
+                >
+                  עוד {others.length}{" "}
+                  {others.length === 1 ? "התראה" : "התראות"}
+                </h4>
+                {others.map((alert, i) => (
+                  <div
+                    key={i}
+                    className="rounded-[12px] p-3"
+                    style={{
+                      background: SEVERITY_STYLES[alert.severity].bg,
+                      border: `1px solid ${
+                        SEVERITY_STYLES[alert.severity].border
+                      }`,
+                    }}
+                  >
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span
+                        className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold"
+                        style={{
+                          color: SEVERITY_STYLES[alert.severity].text,
+                        }}
+                      >
+                        {SEVERITY_LABELS_HE[alert.severity]}
+                      </span>
+                      <span
+                        className="text-[10.5px]"
+                        style={{ color: "var(--color-ink-3)" }}
+                      >
+                        {CATEGORY_LABELS_HE[alert.category]} · {alert.source} ·{" "}
+                        {formatOccurredAt(alert.occurredAt)}
+                      </span>
+                    </div>
+                    <p
+                      className="text-[13px] font-medium"
+                      style={{ color: "var(--color-ink)" }}
+                    >
+                      {alert.title}
+                    </p>
+                    <p
+                      className="mt-0.5 text-[11.5px] leading-relaxed"
+                      style={{ color: "var(--color-ink-2)" }}
+                    >
+                      {alert.context}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Footer */}
+            <div
+              className="mt-6 flex items-center justify-between border-t pt-4"
+              style={{ borderColor: "var(--color-hairline)" }}
+            >
+              <span
+                className="text-[12.5px]"
+                style={{ color: "var(--color-ink-3)" }}
+              >
+                {output.totalCount > 0
+                  ? `סה"כ ${output.totalCount} ${
+                      output.totalCount === 1 ? "התראה" : "התראות"
+                    } · נסרקו ${output.scannedSources.length} מקורות`
+                  : `נסרקו ${output.scannedSources.length} מקורות`}
+              </span>
+              <button
+                onClick={close}
+                className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[13px] font-medium text-white transition-all"
+                style={{
+                  background: "var(--color-sys-blue)",
+                  boxShadow: "var(--shadow-cta)",
+                }}
+              >
+                סגור
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

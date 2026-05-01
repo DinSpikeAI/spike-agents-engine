@@ -3,13 +3,13 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { triggerSocialAgentAction } from "@/app/dashboard/actions";
-import { Play } from "lucide-react";
+import { Smartphone, Check, AlertTriangle, Info } from "lucide-react";
 
 const LOADING_STAGES = [
   "כותב פוסט בוקר...",
   "כותב פוסט צהריים...",
   "כותב פוסט ערב...",
-  "מסיים...",
+  "מסיים את העבודה...",
 ];
 
 export function RunSocialButton() {
@@ -17,17 +17,20 @@ export function RunSocialButton() {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [noOpReason, setNoOpReason] = useState<string | null>(null);
   const [loadingStage, setLoadingStage] = useState(0);
 
+  // Rotate loading message every 2.5s while pending
   useEffect(() => {
     if (!isPending) {
       setLoadingStage(0);
       return;
     }
     const interval = setInterval(() => {
-      setLoadingStage((prev) =>
-        prev >= LOADING_STAGES.length - 1 ? prev : prev + 1
-      );
+      setLoadingStage((prev) => {
+        if (prev >= LOADING_STAGES.length - 1) return prev;
+        return prev + 1;
+      });
     }, 2500);
     return () => clearInterval(interval);
   }, [isPending]);
@@ -35,20 +38,19 @@ export function RunSocialButton() {
   const handleClick = () => {
     setError(null);
     setSuccess(null);
+    setNoOpReason(null);
     setLoadingStage(0);
     startTransition(async () => {
       const res = await triggerSocialAgentAction();
       if (res.success && res.result) {
         const n = res.result.draftIds.length;
-
         if (n === 0) {
           const reason = res.result.output?.noOpReason ?? "אין פוסטים להיום";
-          setSuccess(reason);
+          setNoOpReason(reason);
           return;
         }
-
-        setSuccess(`${n} פוסטים מוכנים`);
-        setTimeout(() => router.push("/dashboard/approvals"), 1000);
+        setSuccess(`הוכנו ${n} טיוטות פוסטים לבוקר, צהריים וערב`);
+        setTimeout(() => router.push("/dashboard/approvals"), 1200);
       } else {
         setError(res.error ?? "משהו השתבש");
       }
@@ -60,7 +62,7 @@ export function RunSocialButton() {
       <button
         onClick={handleClick}
         disabled={isPending}
-        className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] font-medium text-white transition-all disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded-[10px] px-4 py-2 text-[13px] font-medium text-white transition-all disabled:opacity-50"
         style={{
           background: "var(--color-sys-blue)",
           boxShadow: "var(--shadow-cta)",
@@ -77,33 +79,55 @@ export function RunSocialButton() {
           </>
         ) : (
           <>
-            <Play size={11} strokeWidth={2} />
-            הרץ
+            <Smartphone size={13} strokeWidth={1.75} />
+            הרץ עכשיו
           </>
         )}
       </button>
 
       {success && (
         <div
-          className="mt-2 rounded-md px-3 py-2 text-xs"
+          className="mt-3 flex items-start gap-2 rounded-[10px] px-3 py-2 text-[12.5px]"
           style={{
             background: "var(--color-sys-green-soft)",
+            border: "1px solid rgba(48, 179, 107, 0.25)",
             color: "var(--color-sys-green)",
           }}
         >
-          ✓ {success}
+          <Check size={14} strokeWidth={2} className="mt-0.5 flex-shrink-0" />
+          <span>{success} — מעביר אותך לתיבת האישורים...</span>
+        </div>
+      )}
+
+      {noOpReason && (
+        <div
+          className="mt-3 flex items-start gap-2 rounded-[10px] px-3 py-2 text-[12.5px]"
+          style={{
+            background: "var(--color-sys-blue-soft)",
+            border: "1px solid rgba(10, 132, 255, 0.20)",
+            color: "var(--color-sys-blue)",
+          }}
+        >
+          <Info size={14} strokeWidth={2} className="mt-0.5 flex-shrink-0" />
+          <span>לא הוכנו פוסטים — {noOpReason}</span>
         </div>
       )}
 
       {error && (
         <div
-          className="mt-2 rounded-md px-3 py-2 text-xs"
+          className="mt-3 flex items-start gap-2 rounded-[10px] px-3 py-2 text-[12.5px]"
           style={{
-            background: "rgba(214, 51, 108, 0.1)",
+            background: "rgba(214, 51, 108, 0.08)",
+            border: "1px solid rgba(214, 51, 108, 0.20)",
             color: "var(--color-sys-pink)",
           }}
         >
-          ⚠️ {error}
+          <AlertTriangle
+            size={14}
+            strokeWidth={2}
+            className="mt-0.5 flex-shrink-0"
+          />
+          <span>{error}</span>
         </div>
       )}
 
