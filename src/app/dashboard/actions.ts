@@ -855,3 +855,106 @@ export async function listManagerReports(
     return { success: false, error: message };
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// Dashboard KPIs (Day 17 audit — replaces hardcoded values)
+// ─────────────────────────────────────────────────────────────
+//
+// Returns 3 real KPIs sourced from the database:
+//   1. pendingApprovals — drafts WHERE status='pending'
+//   2. todaysActions    — drafts WHERE created_at >= today_start (Israel TZ)
+//   3. monthlySpend     — tenants.spend_used_ils + spend_reserved_ils
+//   4. monthlyCap       — tenants.spend_cap_ils
+//
+// Computed in a single round-trip to keep the dashboard fast.
+
+export interface DashboardKpis {
+  pendingApprovals: number;
+  todaysActions: number;
+  monthlySpend: number;
+  monthlyCap: number;
+}
+
+export async function getDashboardKpis(): Promise<{
+  success: boolean;
+  kpis?: DashboardKpis;
+  error?: string;
+}> {
+  try {
+    const tenant = await getActiveTenant();
+    if ("error" in tenant) return { success: false, error: tenant.error };
+
+    const db = createAdminClient();
+
+    // Israel TZ midnight today (UTC+2/+3 with DST). We use a stable boundary:
+    // local-day-start in Asia/Jerusalem expressed as UTC ISO.
+    const now = new Date();
+    const israelNow = new Date(
+      now.toLocaleString("en-US", { timeZone: "Asia/Jerusalem" })
+    );
+    const israelMidnight = new Date(
+      israelNow.getFullYear(),
+      israelNow.getMonth(),
+      israelNow.getDate(),
+      0,
+      0,
+      0,
+      0
+    );
+    // Convert local-Israel midnight back to UTC ISO. The trick: get the
+    // diff between machine clock and Israel clock, apply it.
+    const tzOffsetMs = now.getTime() - israelNow.getTime();
+    const israelMidnightUtc = new Date(israelMidnight.getTime() + tzOffsetMs);
+
+    const [pendingResult, todayResult, tenantResult] = await Promise.all([
+      // 1. Pending drafts count
+      db
+        .from("drafts")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenant.tenantId)
+        .eq("status", "pending"),
+
+      // 2. Drafts created since Israel midnight
+      db
+        .from("drafts")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenant.tenantId)
+        .gte("created_at", israelMidnightUtc.toISOString()),
+
+      // 3. Spend snapshot
+      db
+        .from("tenants")
+        .select("spend_cap_ils, spend_used_ils, spend_reserved_ils")
+        .eq("id", tenant.tenantId)
+        .single(),
+    ]);
+
+    if (pendingResult.error || todayResult.error || tenantResult.error) {
+      const err =
+        pendingResult.error?.message ??
+        todayResult.error?.message ??
+        tenantResult.error?.message ??
+        "DB error";
+      console.error("[getDashboardKpis] DB error:", err);
+      return { success: false, error: err };
+    }
+
+    const usedIls = Number(tenantResult.data?.spend_used_ils ?? 0);
+    const reservedIls = Number(tenantResult.data?.spend_reserved_ils ?? 0);
+    const capIls = Number(tenantResult.data?.spend_cap_ils ?? 0);
+
+    return {
+      success: true,
+      kpis: {
+        pendingApprovals: pendingResult.count ?? 0,
+        todaysActions: todayResult.count ?? 0,
+        monthlySpend: usedIls + reservedIls,
+        monthlyCap: capIls,
+      },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
+    console.error("[getDashboardKpis] Error:", err);
+    return { success: false, error: message };
+  }
+}

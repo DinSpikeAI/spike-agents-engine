@@ -19,6 +19,7 @@ import { RunSalesButton } from "@/components/dashboard/run-sales-button";
 import {
   listPendingDrafts,
   getManagerLockState,
+  getDashboardKpis,
 } from "@/app/dashboard/actions";
 
 export const dynamic = "force-dynamic";
@@ -105,14 +106,25 @@ export default async function DashboardPage() {
   const userName = userEmail.split("@")[0] || "din";
   const greeting = getGreeting();
 
-  const [draftsResult, managerLockResult] = await Promise.all([
+  const [draftsResult, managerLockResult, kpiResult] = await Promise.all([
     listPendingDrafts(),
     getManagerLockState(),
+    getDashboardKpis(),
   ]);
 
   const pendingCount = draftsResult.success
     ? draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0
     : 0;
+
+  // KPIs — real numbers from DB. Falls back to safe zeros if query failed.
+  const kpis = kpiResult.success && kpiResult.kpis
+    ? kpiResult.kpis
+    : {
+        pendingApprovals: pendingCount,
+        todaysActions: 0,
+        monthlySpend: 0,
+        monthlyCap: 0,
+      };
 
   // Build pending summary string
   const pendingSummary = (() => {
@@ -199,14 +211,10 @@ export default async function DashboardPage() {
           />
 
           <KpiStrip
-            pendingApprovals={pendingCount}
-            todaysActions={23}
-            todaysActionsDelta="14 הושלמו"
-            todaysActionsUp={true}
-            todaysActionsSparkline={[15, 12, 14, 8, 10, 4, 6]}
-            weeklySavings={1840}
-            monthlySpend={0}
-            monthlyCap={50}
+            pendingApprovals={kpis.pendingApprovals}
+            todaysActions={kpis.todaysActions}
+            monthlySpend={kpis.monthlySpend}
+            monthlyCap={kpis.monthlyCap}
           />
 
           {pendingCount > 0 && (
