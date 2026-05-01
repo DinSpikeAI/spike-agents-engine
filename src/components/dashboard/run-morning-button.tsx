@@ -85,223 +85,207 @@ export function RunMorningButton() {
       {/* Output modal */}
       {output && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
           onClick={() => setOutput(null)}
+          dir="rtl"
           style={{
-            background: "rgba(15, 22, 32, 0.45)",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
+            background: "rgba(15, 22, 32, 0.55)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
           }}
         >
           <div
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[18px] p-6"
+            className="relative max-h-[88vh] w-full max-w-[560px] overflow-y-auto rounded-[20px]"
             onClick={(e) => e.stopPropagation()}
-            dir="rtl"
             style={{
-              background: "var(--color-glass-deep)",
+              background: "rgba(255,255,255,0.96)",
               backdropFilter: "blur(40px) saturate(180%)",
               WebkitBackdropFilter: "blur(40px) saturate(180%)",
-              border: "1px solid var(--color-hairline-s)",
+              border: "1px solid rgba(255,255,255,0.9)",
               boxShadow:
-                "0 1px 0 rgba(255,255,255,0.6) inset, 0 24px 60px rgba(15,20,30,0.18)",
+                "0 1px 0 rgba(255,255,255,0.6) inset, 0 32px 80px rgba(15,20,30,0.24)",
             }}
           >
-            {/* Header */}
-            <div
-              className="mb-4 flex items-start justify-between border-b pb-4"
-              style={{ borderColor: "var(--color-hairline)" }}
+            {/* Close button — absolute corner */}
+            <button
+              onClick={() => setOutput(null)}
+              className="absolute left-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5"
+              style={{ color: "var(--color-ink-3)" }}
+              aria-label="סגור"
             >
-              <div className="flex items-start gap-3">
-                <div
-                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[12px]"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(245,247,252,0.7))",
-                    border: "1px solid rgba(255,255,255,0.9)",
-                    boxShadow:
-                      "0 4px 12px rgba(15,20,30,0.06), inset 0 1px 0 rgba(255,255,255,0.6)",
-                  }}
-                >
-                  <Sun
-                    size={18}
-                    strokeWidth={1.75}
-                    style={{ color: "var(--color-sys-amber)" }}
-                  />
-                </div>
-                <div>
-                  <h2
-                    className="text-[20px] font-bold tracking-tight"
-                    style={{ color: "var(--color-ink)" }}
-                  >
-                    {output.greeting}
-                  </h2>
-                  {isMocked && (
-                    <span
-                      className="mt-1 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-semibold"
-                      style={{
-                        background: "rgba(224, 169, 61, 0.12)",
-                        color: "var(--color-sys-amber)",
-                      }}
-                    >
-                      <FlaskConical size={10} strokeWidth={2} />
-                      Mock data
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => setOutput(null)}
-                className="flex h-8 w-8 items-center justify-center rounded-md transition-colors"
-                style={{ color: "var(--color-ink-3)" }}
-                aria-label="סגור"
-              >
-                <X size={16} strokeWidth={2} />
-              </button>
-            </div>
+              <X size={16} strokeWidth={2} />
+            </button>
 
-            {/* Headline */}
-            <p
-              className="mb-4 text-[16px] font-semibold leading-snug"
-              style={{ color: "var(--color-ink)" }}
-            >
-              {output.headline}
-            </p>
-
-            {/* Yesterday metrics */}
-            {output.yesterdayMetrics.revenue != null && (
+            <div className="p-6 pt-7">
+              {/* Header */}
               <div
-                className="mb-4 rounded-[14px] p-4"
-                style={{
-                  background: "rgba(255,255,255,0.5)",
-                  border: "1px solid var(--color-hairline)",
-                }}
+                className="mb-5 border-b pb-4"
+                style={{ borderColor: "var(--color-hairline)" }}
               >
-                <h3
-                  className="mb-2 flex items-center gap-1.5 text-[12px] font-medium"
-                  style={{ color: "var(--color-ink-3)" }}
-                >
-                  <TrendingUp size={12} strokeWidth={1.75} />
-                  אתמול
-                </h3>
-                <div
-                  className="text-[24px] font-bold tracking-[-0.02em]"
+                <h2
+                  className="text-[22px] font-bold tracking-[-0.02em]"
                   style={{ color: "var(--color-ink)" }}
                 >
-                  ₪{output.yesterdayMetrics.revenue.toLocaleString("he-IL")}
-                </div>
-                {output.yesterdayMetrics.sameWeekdayCompare && (
-                  <div
-                    className="mt-1 text-[12px]"
-                    style={{ color: "var(--color-sys-green)" }}
+                  {output.greeting}
+                </h2>
+                {isMocked && (
+                  <span
+                    className="mt-2 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-semibold"
+                    style={{
+                      background: "rgba(224, 169, 61, 0.12)",
+                      color: "var(--color-sys-amber)",
+                    }}
                   >
-                    {output.yesterdayMetrics.sameWeekdayCompare}
-                  </div>
+                    <FlaskConical size={10} strokeWidth={2} />
+                    Mock data
+                  </span>
                 )}
               </div>
-            )}
 
-            {/* Things completed */}
-            {output.thingsCompleted.length > 0 && (
-              <div className="mb-4">
-                <h3
-                  className="mb-2 flex items-center gap-1.5 text-[12px] font-medium"
-                  style={{ color: "var(--color-ink-3)" }}
+              {/* Headline */}
+              <p
+                className="mb-4 text-[16px] font-semibold leading-snug"
+                style={{ color: "var(--color-ink)" }}
+              >
+                {output.headline}
+              </p>
+
+              {/* Yesterday metrics */}
+              {output.yesterdayMetrics.revenue != null && (
+                <div
+                  className="mb-4 rounded-[14px] p-4"
+                  style={{
+                    background: "rgba(255,255,255,0.5)",
+                    border: "1px solid var(--color-hairline)",
+                  }}
                 >
-                  <CheckCircle2 size={12} strokeWidth={1.75} />
-                  מה הסוכנים סיימו
-                </h3>
-                <ul className="space-y-1">
-                  {output.thingsCompleted.map((item, i) => (
-                    <li
-                      key={i}
-                      className="text-[13px] leading-relaxed"
-                      style={{ color: "var(--color-ink-2)" }}
+                  <h3
+                    className="mb-2 flex items-center gap-1.5 text-[12px] font-medium"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
+                    <TrendingUp size={12} strokeWidth={1.75} />
+                    אתמול
+                  </h3>
+                  <div
+                    className="text-[24px] font-bold tracking-[-0.02em]"
+                    style={{ color: "var(--color-ink)" }}
+                  >
+                    ₪{output.yesterdayMetrics.revenue.toLocaleString("he-IL")}
+                  </div>
+                  {output.yesterdayMetrics.sameWeekdayCompare && (
+                    <div
+                      className="mt-1 text-[12px]"
+                      style={{ color: "var(--color-sys-green)" }}
                     >
-                      • {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+                      {output.yesterdayMetrics.sameWeekdayCompare}
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {/* Insights */}
-            {output.insights.length > 0 && (
+              {/* Things completed */}
+              {output.thingsCompleted.length > 0 && (
+                <div className="mb-4">
+                  <h3
+                    className="mb-2 flex items-center gap-1.5 text-[12px] font-medium"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
+                    <CheckCircle2 size={12} strokeWidth={1.75} />
+                    מה הסוכנים סיימו
+                  </h3>
+                  <ul className="space-y-1">
+                    {output.thingsCompleted.map((item, i) => (
+                      <li
+                        key={i}
+                        className="text-[13px] leading-relaxed"
+                        style={{ color: "var(--color-ink-2)" }}
+                      >
+                        • {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Insights */}
+              {output.insights.length > 0 && (
+                <div
+                  className="mb-4 rounded-[14px] p-4"
+                  style={{
+                    background: "rgba(224, 169, 61, 0.06)",
+                    border: "1px solid rgba(224, 169, 61, 0.20)",
+                  }}
+                >
+                  <h3
+                    className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold"
+                    style={{ color: "var(--color-sys-amber)" }}
+                  >
+                    <Lightbulb size={12} strokeWidth={1.75} />
+                    תובנות חכמות
+                  </h3>
+                  <ul className="space-y-2">
+                    {output.insights.map((item, i) => (
+                      <li
+                        key={i}
+                        className="text-[13px] leading-relaxed"
+                        style={{ color: "var(--color-ink)" }}
+                      >
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Today's schedule */}
+              {output.todaysSchedule.length > 0 && (
+                <div className="mb-4">
+                  <h3
+                    className="mb-2 flex items-center gap-1.5 text-[12px] font-medium"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
+                    <Calendar size={12} strokeWidth={1.75} />
+                    לוח הזמנים היום
+                  </h3>
+                  <ul className="space-y-1">
+                    {output.todaysSchedule.map((item, i) => (
+                      <li
+                        key={i}
+                        className="text-[13px] leading-relaxed"
+                        style={{ color: "var(--color-ink-2)" }}
+                      >
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Footer */}
               <div
-                className="mb-4 rounded-[14px] p-4"
-                style={{
-                  background: "rgba(224, 169, 61, 0.06)",
-                  border: "1px solid rgba(224, 169, 61, 0.20)",
-                }}
+                className="mt-6 flex items-center justify-between gap-3 border-t pt-4"
+                style={{ borderColor: "var(--color-hairline)" }}
               >
-                <h3
-                  className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold"
-                  style={{ color: "var(--color-sys-amber)" }}
-                >
-                  <Lightbulb size={12} strokeWidth={1.75} />
-                  תובנות חכמות
-                </h3>
-                <ul className="space-y-2">
-                  {output.insights.map((item, i) => (
-                    <li
-                      key={i}
-                      className="text-[13px] leading-relaxed"
-                      style={{ color: "var(--color-ink)" }}
-                    >
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Today's schedule */}
-            {output.todaysSchedule.length > 0 && (
-              <div className="mb-4">
-                <h3
-                  className="mb-2 flex items-center gap-1.5 text-[12px] font-medium"
+                <span
+                  className="text-[12.5px]"
                   style={{ color: "var(--color-ink-3)" }}
                 >
-                  <Calendar size={12} strokeWidth={1.75} />
-                  לוח הזמנים היום
-                </h3>
-                <ul className="space-y-1">
-                  {output.todaysSchedule.map((item, i) => (
-                    <li
-                      key={i}
-                      className="text-[13px] leading-relaxed"
-                      style={{ color: "var(--color-ink-2)" }}
-                    >
-                      {item}
-                    </li>
-                  ))}
-                </ul>
+                  {output.thingsNeedingApproval > 0
+                    ? `${output.thingsNeedingApproval} פריטים מחכים לאישור`
+                    : "אין פריטים שמחכים"}
+                </span>
+                <button
+                  onClick={() => setOutput(null)}
+                  className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[13px] font-medium text-white transition-all"
+                  style={{
+                    background: "var(--color-sys-blue)",
+                    boxShadow: "var(--shadow-cta)",
+                  }}
+                >
+                  <Check size={13} strokeWidth={2} />
+                  {output.callToAction || "בסדר"}
+                </button>
               </div>
-            )}
-
-            {/* Footer */}
-            <div
-              className="mt-6 flex items-center justify-between border-t pt-4"
-              style={{ borderColor: "var(--color-hairline)" }}
-            >
-              <span
-                className="text-[12.5px]"
-                style={{ color: "var(--color-ink-3)" }}
-              >
-                {output.thingsNeedingApproval > 0
-                  ? `${output.thingsNeedingApproval} פריטים מחכים לאישור`
-                  : "אין פריטים שמחכים"}
-              </span>
-              <button
-                onClick={() => setOutput(null)}
-                className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[13px] font-medium text-white transition-all"
-                style={{
-                  background: "var(--color-sys-blue)",
-                  boxShadow: "var(--shadow-cta)",
-                }}
-              >
-                <Check size={13} strokeWidth={2} />
-                {output.callToAction || "בסדר"}
-              </button>
             </div>
           </div>
         </div>

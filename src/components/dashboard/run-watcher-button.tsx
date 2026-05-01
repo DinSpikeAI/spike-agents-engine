@@ -150,241 +150,227 @@ export function RunWatcherButton() {
 
       {output && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
           onClick={close}
+          dir="rtl"
           style={{
-            background: "rgba(15, 22, 32, 0.45)",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
+            background: "rgba(15, 22, 32, 0.55)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
           }}
         >
           <div
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[18px] p-6"
+            className="relative max-h-[88vh] w-full max-w-[560px] overflow-y-auto rounded-[20px]"
             onClick={(e) => e.stopPropagation()}
-            dir="rtl"
             style={{
-              background: "var(--color-glass-deep)",
+              background: "rgba(255,255,255,0.96)",
               backdropFilter: "blur(40px) saturate(180%)",
               WebkitBackdropFilter: "blur(40px) saturate(180%)",
-              border: "1px solid var(--color-hairline-s)",
+              border: "1px solid rgba(255,255,255,0.9)",
               boxShadow:
-                "0 1px 0 rgba(255,255,255,0.6) inset, 0 24px 60px rgba(15,20,30,0.18)",
+                "0 1px 0 rgba(255,255,255,0.6) inset, 0 32px 80px rgba(15,20,30,0.24)",
             }}
           >
-            {/* Header */}
-            <div
-              className="mb-4 flex items-start justify-between border-b pb-4"
-              style={{ borderColor: "var(--color-hairline)" }}
+            {/* Close button — absolute corner */}
+            <button
+              onClick={close}
+              className="absolute left-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-black/5"
+              style={{ color: "var(--color-ink-3)" }}
+              aria-label="סגור"
             >
-              <div className="flex items-start gap-3">
-                <div
-                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[12px]"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(245,247,252,0.7))",
-                    border: "1px solid rgba(255,255,255,0.9)",
-                    boxShadow:
-                      "0 4px 12px rgba(15,20,30,0.06), inset 0 1px 0 rgba(255,255,255,0.6)",
-                  }}
-                >
-                  <Target
-                    size={18}
-                    strokeWidth={1.75}
-                    style={{ color: "var(--color-sys-blue)" }}
-                  />
-                </div>
-                <div>
-                  <h2
-                    className="text-[20px] font-bold tracking-tight"
-                    style={{ color: "var(--color-ink)" }}
-                  >
-                    סוכן מעקב
-                  </h2>
-                  <p
-                    className="mt-0.5 text-[12.5px]"
-                    style={{ color: "var(--color-ink-2)" }}
-                  >
-                    {output.scanSummary}
-                  </p>
-                  {isMocked && (
-                    <span
-                      className="mt-2 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-semibold"
-                      style={{
-                        background: "rgba(224, 169, 61, 0.12)",
-                        color: "var(--color-sys-amber)",
-                      }}
-                    >
-                      <FlaskConical size={10} strokeWidth={2} />
-                      Mock data
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={close}
-                className="flex h-8 w-8 items-center justify-center rounded-md transition-colors"
-                style={{ color: "var(--color-ink-3)" }}
-                aria-label="סגור"
-              >
-                <X size={16} strokeWidth={2} />
-              </button>
-            </div>
+              <X size={16} strokeWidth={2} />
+            </button>
 
-            {/* No-op state — clean halt */}
-            {isNoOp && (
+            <div className="p-6 pt-7">
+              {/* Header — title + subtitle, NO icon mixed in (no flex hacks) */}
               <div
-                className="rounded-[14px] p-6 text-center"
-                style={{
-                  background: "var(--color-sys-green-soft)",
-                  border: "1px solid rgba(48, 179, 107, 0.20)",
-                }}
+                className="mb-5 border-b pb-4"
+                style={{ borderColor: "var(--color-hairline)" }}
               >
-                <Sprout
-                  size={32}
-                  strokeWidth={1.5}
-                  className="mx-auto mb-2"
-                  style={{ color: "var(--color-sys-green)" }}
-                />
-                <h3
-                  className="text-[16px] font-semibold"
-                  style={{ color: "var(--color-sys-green)" }}
-                >
-                  הכל שקט
-                </h3>
-                <p
-                  className="mt-1 text-[12.5px]"
-                  style={{ color: "var(--color-ink-2)" }}
-                >
-                  אין אירועים חדשים שראויים לדיווח.
-                  {output.scannedSources.length > 0 && (
-                    <> נסרקו: {output.scannedSources.join(", ")}.</>
-                  )}
-                </p>
-              </div>
-            )}
-
-            {/* Hero alert */}
-            {hero && (
-              <div
-                className="mb-4 rounded-[14px] p-4"
-                style={{
-                  background: SEVERITY_STYLES[hero.severity].bg,
-                  border: `1px solid ${SEVERITY_STYLES[hero.severity].border}`,
-                }}
-              >
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span
-                    className="rounded-md px-2 py-0.5 text-[11px] font-semibold"
-                    style={{
-                      color: SEVERITY_STYLES[hero.severity].text,
-                      background: "rgba(255,255,255,0.7)",
-                    }}
-                  >
-                    {SEVERITY_LABELS_HE[hero.severity]}
-                  </span>
-                  <span
-                    className="text-[11px]"
-                    style={{ color: "var(--color-ink-3)" }}
-                  >
-                    {CATEGORY_LABELS_HE[hero.category]} · {hero.source} ·{" "}
-                    {formatOccurredAt(hero.occurredAt)}
-                  </span>
-                </div>
-                <h3
-                  className="mb-1 text-[16px] font-semibold tracking-tight"
+                <h2
+                  className="mb-1.5 text-[22px] font-bold tracking-[-0.02em]"
                   style={{ color: "var(--color-ink)" }}
                 >
-                  {hero.title}
-                </h3>
+                  סוכן מעקב
+                </h2>
                 <p
                   className="text-[13px] leading-relaxed"
                   style={{ color: "var(--color-ink-2)" }}
                 >
-                  {hero.context}
+                  {output.scanSummary}
                 </p>
-              </div>
-            )}
-
-            {/* Other alerts */}
-            {others.length > 0 && (
-              <div className="space-y-2">
-                <h4
-                  className="text-[10.5px] font-medium uppercase tracking-wider"
-                  style={{ color: "var(--color-ink-3)" }}
-                >
-                  עוד {others.length}{" "}
-                  {others.length === 1 ? "התראה" : "התראות"}
-                </h4>
-                {others.map((alert, i) => (
-                  <div
-                    key={i}
-                    className="rounded-[12px] p-3"
+                {isMocked && (
+                  <span
+                    className="mt-2 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-semibold"
                     style={{
-                      background: SEVERITY_STYLES[alert.severity].bg,
-                      border: `1px solid ${
-                        SEVERITY_STYLES[alert.severity].border
-                      }`,
+                      background: "rgba(224, 169, 61, 0.12)",
+                      color: "var(--color-sys-amber)",
                     }}
                   >
-                    <div className="mb-1 flex flex-wrap items-center gap-2">
-                      <span
-                        className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold"
-                        style={{
-                          color: SEVERITY_STYLES[alert.severity].text,
-                        }}
-                      >
-                        {SEVERITY_LABELS_HE[alert.severity]}
-                      </span>
-                      <span
-                        className="text-[10.5px]"
-                        style={{ color: "var(--color-ink-3)" }}
-                      >
-                        {CATEGORY_LABELS_HE[alert.category]} · {alert.source} ·{" "}
-                        {formatOccurredAt(alert.occurredAt)}
-                      </span>
-                    </div>
-                    <p
-                      className="text-[13px] font-medium"
-                      style={{ color: "var(--color-ink)" }}
-                    >
-                      {alert.title}
-                    </p>
-                    <p
-                      className="mt-0.5 text-[11.5px] leading-relaxed"
-                      style={{ color: "var(--color-ink-2)" }}
-                    >
-                      {alert.context}
-                    </p>
-                  </div>
-                ))}
+                    <FlaskConical size={10} strokeWidth={2} />
+                    Mock data
+                  </span>
+                )}
               </div>
-            )}
 
-            {/* Footer */}
-            <div
-              className="mt-6 flex items-center justify-between border-t pt-4"
-              style={{ borderColor: "var(--color-hairline)" }}
-            >
-              <span
-                className="text-[12.5px]"
-                style={{ color: "var(--color-ink-3)" }}
+              {/* No-op state */}
+              {isNoOp && (
+                <div
+                  className="rounded-[14px] p-6 text-center"
+                  style={{
+                    background: "var(--color-sys-green-soft)",
+                    border: "1px solid rgba(48, 179, 107, 0.20)",
+                  }}
+                >
+                  <Sprout
+                    size={32}
+                    strokeWidth={1.5}
+                    className="mx-auto mb-2"
+                    style={{ color: "var(--color-sys-green)" }}
+                  />
+                  <h3
+                    className="text-[16px] font-semibold"
+                    style={{ color: "var(--color-sys-green)" }}
+                  >
+                    הכל שקט
+                  </h3>
+                  <p
+                    className="mt-1 text-[12.5px]"
+                    style={{ color: "var(--color-ink-2)" }}
+                  >
+                    אין אירועים חדשים שראויים לדיווח.
+                    {output.scannedSources.length > 0 && (
+                      <> נסרקו: {output.scannedSources.join(", ")}.</>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              {/* Hero alert */}
+              {hero && (
+                <div
+                  className="mb-4 rounded-[14px] p-4"
+                  style={{
+                    background: SEVERITY_STYLES[hero.severity].bg,
+                    border: `1px solid ${
+                      SEVERITY_STYLES[hero.severity].border
+                    }`,
+                  }}
+                >
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span
+                      className="rounded-md px-2 py-0.5 text-[11px] font-semibold"
+                      style={{
+                        color: SEVERITY_STYLES[hero.severity].text,
+                        background: "rgba(255,255,255,0.7)",
+                      }}
+                    >
+                      {SEVERITY_LABELS_HE[hero.severity]}
+                    </span>
+                    <span
+                      className="text-[11px]"
+                      style={{ color: "var(--color-ink-3)" }}
+                    >
+                      {CATEGORY_LABELS_HE[hero.category]} · {hero.source} ·{" "}
+                      {formatOccurredAt(hero.occurredAt)}
+                    </span>
+                  </div>
+                  <h3
+                    className="mb-1 text-[16px] font-semibold tracking-tight"
+                    style={{ color: "var(--color-ink)" }}
+                  >
+                    {hero.title}
+                  </h3>
+                  <p
+                    className="text-[13px] leading-relaxed"
+                    style={{ color: "var(--color-ink-2)" }}
+                  >
+                    {hero.context}
+                  </p>
+                </div>
+              )}
+
+              {/* Other alerts */}
+              {others.length > 0 && (
+                <div className="space-y-2">
+                  <h4
+                    className="text-[10.5px] font-medium uppercase tracking-wider"
+                    style={{ color: "var(--color-ink-3)" }}
+                  >
+                    עוד {others.length}{" "}
+                    {others.length === 1 ? "התראה" : "התראות"}
+                  </h4>
+                  {others.map((alert, i) => (
+                    <div
+                      key={i}
+                      className="rounded-[12px] p-3"
+                      style={{
+                        background: SEVERITY_STYLES[alert.severity].bg,
+                        border: `1px solid ${
+                          SEVERITY_STYLES[alert.severity].border
+                        }`,
+                      }}
+                    >
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <span
+                          className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold"
+                          style={{
+                            color: SEVERITY_STYLES[alert.severity].text,
+                          }}
+                        >
+                          {SEVERITY_LABELS_HE[alert.severity]}
+                        </span>
+                        <span
+                          className="text-[10.5px]"
+                          style={{ color: "var(--color-ink-3)" }}
+                        >
+                          {CATEGORY_LABELS_HE[alert.category]} · {alert.source} ·{" "}
+                          {formatOccurredAt(alert.occurredAt)}
+                        </span>
+                      </div>
+                      <p
+                        className="text-[13px] font-medium"
+                        style={{ color: "var(--color-ink)" }}
+                      >
+                        {alert.title}
+                      </p>
+                      <p
+                        className="mt-0.5 text-[11.5px] leading-relaxed"
+                        style={{ color: "var(--color-ink-2)" }}
+                      >
+                        {alert.context}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Footer */}
+              <div
+                className="mt-6 flex items-center justify-between gap-3 border-t pt-4"
+                style={{ borderColor: "var(--color-hairline)" }}
               >
-                {output.totalCount > 0
-                  ? `סה"כ ${output.totalCount} ${
-                      output.totalCount === 1 ? "התראה" : "התראות"
-                    } · נסרקו ${output.scannedSources.length} מקורות`
-                  : `נסרקו ${output.scannedSources.length} מקורות`}
-              </span>
-              <button
-                onClick={close}
-                className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[13px] font-medium text-white transition-all"
-                style={{
-                  background: "var(--color-sys-blue)",
-                  boxShadow: "var(--shadow-cta)",
-                }}
-              >
-                סגור
-              </button>
+                <span
+                  className="text-[12.5px]"
+                  style={{ color: "var(--color-ink-3)" }}
+                >
+                  {output.totalCount > 0
+                    ? `סה"כ ${output.totalCount} ${
+                        output.totalCount === 1 ? "התראה" : "התראות"
+                      }`
+                    : `נסרקו ${output.scannedSources.length} מקורות`}
+                </span>
+                <button
+                  onClick={close}
+                  className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[13px] font-medium text-white transition-all"
+                  style={{
+                    background: "var(--color-sys-blue)",
+                    boxShadow: "var(--shadow-cta)",
+                  }}
+                >
+                  סגור
+                </button>
+              </div>
             </div>
           </div>
         </div>
