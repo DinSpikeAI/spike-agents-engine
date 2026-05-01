@@ -39,7 +39,15 @@ import type { RunInput, RunResult } from "./types";
 // ─────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────
-
+// ─────────────────────────────────────────────────────────────
+// Default expiry for outbound drafts that aren't date-bound.
+// Reviews replies, sales follow-ups, and other "evergreen" drafts
+// can sit in the inbox for 3 days before auto-expiring.
+// Date-bound drafts (e.g., social_post for today's morning slot)
+// MUST override expires_at in their own runner — see social/run.ts
+// where it's set to end-of-today.
+// ─────────────────────────────────────────────────────────────
+const DEFAULT_DRAFT_EXPIRY_HOURS = 72;
 export type ActionType = "never_auto" | "requires_approval" | "autosend_safe";
 
 export type DraftType =
@@ -267,8 +275,9 @@ export async function runAgentWithSafety<TOutput>(
       dpa_accepted_at_run: tenantCtx.dpaAccepted,
     },
     external_target: safety.externalTarget ?? null,
-    expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
-    defamation_risk: defamation?.risk ?? null,
+expires_at: new Date(
+      Date.now() + DEFAULT_DRAFT_EXPIRY_HOURS * 60 * 60 * 1000
+    ).toISOString(),    defamation_risk: defamation?.risk ?? null,
     defamation_flagged_phrases: defamation?.flagged_phrases ?? null,
     contains_pii: piiDetected.length > 0,
     pii_scrubbed: piiDetected.length > 0,
