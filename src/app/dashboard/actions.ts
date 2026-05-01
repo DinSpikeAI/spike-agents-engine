@@ -160,6 +160,102 @@ async function loadReviewEventsAsReviews(
 }
 
 // ─────────────────────────────────────────────────────────────
+// Hot Leads — load source leads from public.events (Day 19)
+// ─────────────────────────────────────────────────────────────
+//
+// Reads recent lead_received events for the tenant and adapts them into
+// the MockLead[] shape the Hot Leads agent expects. Sources include
+// whatsapp, instagram_dm, website_form, email — anything that wrote a
+// lead-style event. Falls back to an empty array on any error.
+
+async function loadLeadEventsAsLeads(
+  tenantId: string,
+  lookbackHours = 72,
+  maxRows = 30
+): Promise<MockLead[]> {
+  const db = createAdminClient();
+
+  const since = new Date(
+    Date.now() - lookbackHours * 60 * 60 * 1000
+  ).toISOString();
+
+  const { data, error } = await db
+    .from("events")
+    .select("id, provider, payload, received_at")
+    .eq("tenant_id", tenantId)
+    .eq("event_type", "lead_received")
+    .gte("received_at", since)
+    .order("received_at", { ascending: false })
+    .limit(maxRows);
+
+  if (error) {
+    console.error("[loadLeadEventsAsLeads] DB error:", error);
+    return [];
+  }
+
+  type LeadRow = {
+    id: string;
+    provider: string | null;
+    payload: Record<string, unknown> | null;
+    received_at: string;
+  };
+
+  // Map common provider names to the MockLead source enum.
+  // Anything unrecognized falls through to "website_form" as the safe default.
+  const sourceMap: Record<string, MockLead["source"]> = {
+    whatsapp: "whatsapp",
+    instagram: "instagram_dm",
+    instagram_dm: "instagram_dm",
+    website_form: "website_form",
+    website: "website_form",
+    email: "email",
+  };
+
+  const rows = (data ?? []) as LeadRow[];
+
+  return rows
+    .map((row) => {
+      const p = row.payload ?? {};
+      const displayName =
+        typeof p.name === "string"
+          ? p.name
+          : typeof p.sender === "string"
+            ? p.sender
+            : null;
+      const rawMessage =
+        typeof p.summary === "string"
+          ? p.summary
+          : typeof p.message === "string"
+            ? p.message
+            : null;
+      const sourceHandle =
+        typeof p.phone === "string"
+          ? p.phone
+          : typeof p.email === "string"
+            ? p.email
+            : typeof p.handle === "string"
+              ? p.handle
+              : "";
+
+      // Required: a name and a message. Anything else can be defaulted.
+      if (!displayName || !rawMessage) return null;
+
+      const source: MockLead["source"] =
+        sourceMap[row.provider ?? ""] ?? "website_form";
+
+      return {
+        id: row.id,
+        source,
+        displayName,
+        sourceHandle,
+        rawMessage,
+        receivedAt: row.received_at,
+      };
+    })
+    .filter((l): l is MockLead => l !== null);
+}
+
+// ─────────────────────────────────────────────────────────────
 // Manager Agent — weekly lock state
 // ─────────────────────────────────────────────────────────────
 //
@@ -485,51 +581,18 @@ export async function triggerHotLeadsAgentAction(): Promise<{
       return { success: false, error: limit.message ?? "הסוכן רץ לאחרונה." };
     }
 
-    const mockLeads: MockLead[] = [
-      {
-        id: "mock-lead-001",
-        source: "whatsapp",
-        displayName: "דנה כהן",
-        sourceHandle: "+972501234567",
-        rawMessage: "שלום, אני מחפשת לקנות סלמון נורבגי טרי, 2 ק'ג, היום. תקציב עד ₪450. אפשר?",
-        receivedAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-      },
-      {
-        id: "mock-lead-002",
-        source: "instagram_dm",
-        displayName: "Mohammed Khalil",
-        sourceHandle: "@mhd_khalil",
-        rawMessage: "היי, ראיתי את הדגם XYZ-44 בעמוד שלכם. מעוניין להזמין שניים. תקציב 1500 שקל. כמה זמן משלוח?",
-        receivedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: "mock-lead-003",
-        source: "website_form",
-        displayName: "תמר שמעוני",
-        sourceHandle: "tamar.sh@gmail.com",
-        rawMessage: "שלום, מעוניינת לקבל מידע על השירותים שלכם. תוכלו לשלוח לי קטלוג?",
-        receivedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: "mock-lead-004",
-        source: "instagram_dm",
-        displayName: "Ivan Petrov",
-        sourceHandle: "@ivan_p_il",
-        rawMessage: "Hi, where are you located? what hours?",
-        receivedAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: "mock-lead-005",
-        source: "email",
-        displayName: "Marketing Pro Ltd",
-        sourceHandle: "ceo@marketingpro-deals.biz",
-        rawMessage:
-          "Dear Business Owner, We can boost your Google ranking to #1 for only $99/month. Limited time offer! Click here: bit.ly/seo-boost-now. Reply STOP to unsubscribe.",
-        receivedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      },
-    ];
+    // Load real lead events from public.events (Day 19).
+    const leads = await loadLeadEventsAsLeads(tenant.tenantId);
 
-    const result = await runHotLeadsAgent(tenant.tenantId, mockLeads, "manual");
+    if (leads.length === 0) {
+      return {
+        success: false,
+        error:
+          "אין לידים חדשים לסיווג. לידים יוזנו אוטומטית כשתחבר אינטגרציה (וואטסאפ, אינסטגרם, טופס באתר).",
+      };
+    }
+
+    const result = await runHotLeadsAgent(tenant.tenantId, leads, "manual");
     return { success: true, result };
   } catch (err) {
     const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
