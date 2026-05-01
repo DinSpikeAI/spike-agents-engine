@@ -94,6 +94,72 @@ async function checkAgentRateLimit(
 }
 
 // ─────────────────────────────────────────────────────────────
+// Reviews — load source reviews from public.events (Day 19)
+// ─────────────────────────────────────────────────────────────
+//
+// Reads recent google_business / review_received events for the tenant
+// and adapts them into the MockReview[] shape the Reviews agent expects.
+// Falls back to an empty array on any error so the trigger can return
+// a clean no-op instead of a crash.
+
+async function loadReviewEventsAsReviews(
+  tenantId: string,
+  lookbackHours = 72,
+  maxRows = 20
+): Promise<MockReview[]> {
+  const db = createAdminClient();
+
+  const since = new Date(
+    Date.now() - lookbackHours * 60 * 60 * 1000
+  ).toISOString();
+
+  const { data, error } = await db
+    .from("events")
+    .select("id, payload, received_at")
+    .eq("tenant_id", tenantId)
+    .eq("provider", "google_business")
+    .eq("event_type", "review_received")
+    .gte("received_at", since)
+    .order("received_at", { ascending: false })
+    .limit(maxRows);
+
+  if (error) {
+    console.error("[loadReviewEventsAsReviews] DB error:", error);
+    return [];
+  }
+
+  type ReviewRow = {
+    id: string;
+    payload: Record<string, unknown> | null;
+    received_at: string;
+  };
+
+  const rows = (data ?? []) as ReviewRow[];
+
+  return rows
+    .map((row) => {
+      const p = row.payload ?? {};
+      const reviewerName =
+        typeof p.reviewerName === "string" ? p.reviewerName : null;
+      const rating = typeof p.rating === "number" ? p.rating : null;
+      const text = typeof p.reviewText === "string" ? p.reviewText : null;
+
+      // Drop rows missing any required field — silent skip is correct here
+      // because the Reviews agent's prompt cannot work with partial data.
+      if (!reviewerName || rating === null || !text) return null;
+
+      return {
+        id: row.id,
+        reviewerName,
+        rating,
+        text,
+        occurredAt: row.received_at,
+      };
+    })
+    .filter((r): r is MockReview => r !== null);
+}
+
+// ─────────────────────────────────────────────────────────────
 // Manager Agent — weekly lock state
 // ─────────────────────────────────────────────────────────────
 //
@@ -381,31 +447,18 @@ export async function triggerReviewsAgentAction(): Promise<{
       return { success: false, error: limit.message ?? "הסוכן רץ לאחרונה." };
     }
 
-    const mockReviews: MockReview[] = [
-      {
-        id: "mock-google-001",
-        reviewerName: "רחלי כהן",
-        rating: 5,
-        text: "חוויה מצוינת! הצוות היה אדיב מאוד, השירות מהיר, והמוצר בדיוק כמו שתואר באתר. בהחלט אחזור ואמליץ לחברות.",
-        occurredAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: "mock-google-002",
-        reviewerName: "אורי פרידמן",
-        rating: 3,
-        text: "המוצר היה בסדר אבל המשלוח התעכב ביומיים יותר ממה שהוצג. הצוות לא יידע אותי מראש על העיכוב — זה היה מאכזב. השירות עצמו היה אדיב.",
-        occurredAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: "mock-google-003",
-        reviewerName: "Anonymous Customer",
-        rating: 1,
-        text: "בזבוז כסף! המוצר הגיע פגום והצוות לא רצה לקבל אותו בחזרה. הם פשוט גנבו לי את הכסף. אנשים, אל תקנו פה!!!",
-        occurredAt: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
-      },
-    ];
+    // Load real review events from public.events (Day 19).
+    const reviews = await loadReviewEventsAsReviews(tenant.tenantId);
 
-    const result = await runReviewsAgent(tenant.tenantId, mockReviews, "manual");
+    if (reviews.length === 0) {
+      return {
+        success: false,
+        error:
+          "אין ביקורות חדשות לטיפול. ביקורות חדשות מ-Google Business יוזנו אוטומטית כשתחבר את האינטגרציה.",
+      };
+    }
+
+    const result = await runReviewsAgent(tenant.tenantId, reviews, "manual");
     return { success: true, result };
   } catch (err) {
     const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
