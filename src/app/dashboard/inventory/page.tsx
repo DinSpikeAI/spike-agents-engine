@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requireOnboarded } from "@/lib/auth/require-onboarded";
 import { isAdminEmail } from "@/lib/admin/auth";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { AppleBg } from "@/components/ui/apple-bg";
@@ -27,6 +28,9 @@ function formatDate(iso: string): string {
 }
 
 export default async function InventoryPage() {
+  // Block access if user hasn't completed onboarding yet.
+  await requireOnboarded();
+
   const supabase = await createClient();
   const {
     data: { user },

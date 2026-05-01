@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { requireOnboarded } from "@/lib/auth/require-onboarded";
 import { isAdminEmail } from "@/lib/admin/auth";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Topbar } from "@/components/dashboard/topbar";
@@ -102,6 +103,10 @@ const AGENTS = [
 ];
 
 export default async function DashboardPage() {
+  // Block access if user hasn't completed onboarding yet.
+  // requireOnboarded() also handles the not-logged-in case (redirects to /login).
+  await requireOnboarded();
+
   const supabase = await createClient();
   const {
     data: { user },
