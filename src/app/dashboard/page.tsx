@@ -194,7 +194,6 @@ export default async function DashboardPage() {
           <Topbar
             greeting={greeting}
             userName={userName}
-            activeAgents={9}
             pendingApprovals={pendingCount}
             lastUpdate="לפני 12 דק׳"
           />
@@ -220,19 +219,13 @@ export default async function DashboardPage() {
           )}
 
           {/* Section header */}
-          <div className="mb-3 flex items-center justify-between pt-2">
+          <div className="mb-3 flex items-center pt-2">
             <h2
               className="text-[19px] font-semibold tracking-[-0.01em]"
               style={{ color: "var(--color-ink)" }}
             >
               הסוכנים שלך
             </h2>
-            <span
-              className="text-[12px]"
-              style={{ color: "var(--color-ink-3)" }}
-            >
-              {AGENTS.length} פעילים
-            </span>
           </div>
 
           {/* Agent grid */}
@@ -258,11 +251,12 @@ export default async function DashboardPage() {
                   <span
                     className="rounded-full px-2 py-0.5 text-[10.5px] font-medium"
                     style={{
-                      background: "var(--color-sys-green-soft)",
-                      color: "var(--color-sys-green)",
+                      background: "rgba(224, 169, 61, 0.12)",
+                      color: "var(--color-sys-amber)",
                     }}
+                    title="הסוכן רץ עם נתוני הדגמה. אינטגרציות אמיתיות יחוברו בהמשך."
                   >
-                    פעיל
+                    הדגמה
                   </span>
                 </div>
                 <div>

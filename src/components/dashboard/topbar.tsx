@@ -1,9 +1,8 @@
-import { Search, Bell } from "lucide-react";
+import { Search, Bell, FlaskConical } from "lucide-react";
 
 interface TopbarProps {
   greeting: string;
   userName: string;
-  activeAgents: number;
   pendingApprovals: number;
   lastUpdate: string;
 }
@@ -11,9 +10,8 @@ interface TopbarProps {
 export function Topbar({
   greeting,
   userName,
-  activeAgents,
   pendingApprovals,
-  lastUpdate,
+  lastUpdate: _lastUpdate,
 }: TopbarProps) {
   const today = new Date();
   const dayNames = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
@@ -38,7 +36,6 @@ export function Topbar({
     hour: "2-digit",
     minute: "2-digit",
   });
-
   const dateString = `יום ${dayName}, ${date} ב${monthName} · ${time}`;
 
   return (
@@ -80,6 +77,39 @@ export function Topbar({
         </button>
       </header>
 
+      {/* Demo mode banner */}
+      <div
+        className="mb-5 flex items-start gap-3 rounded-[14px] px-4 py-3"
+        style={{
+          background: "rgba(224, 169, 61, 0.08)",
+          border: "1px solid rgba(224, 169, 61, 0.22)",
+        }}
+      >
+        <div
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full"
+          style={{
+            background: "rgba(224, 169, 61, 0.15)",
+            color: "var(--color-sys-amber)",
+          }}
+        >
+          <FlaskConical size={14} strokeWidth={2} />
+        </div>
+        <div className="flex-1">
+          <div
+            className="text-[13px] font-semibold"
+            style={{ color: "var(--color-ink)" }}
+          >
+            חשבון הדגמה
+          </div>
+          <div
+            className="mt-0.5 text-[12px] leading-relaxed"
+            style={{ color: "var(--color-ink-2)" }}
+          >
+            הסוכנים מציגים תוצאות עם נתוני הדגמה. אינטגרציות אמיתיות (Google Reviews, WhatsApp, Instagram) יחוברו בהמשך.
+          </div>
+        </div>
+      </div>
+
       {/* Greeting hero */}
       <section className="mb-[22px]">
         <div
@@ -98,8 +128,11 @@ export function Topbar({
           className="text-[13.5px]"
           style={{ color: "var(--color-ink-2)" }}
         >
-          {activeAgents} סוכנים פעילים · {pendingApprovals}{" "}
-          {pendingApprovals === 1 ? "פריט מחכה" : "פריטים מחכים"} לאישורך
+          {pendingApprovals > 0
+            ? `${pendingApprovals} ${
+                pendingApprovals === 1 ? "פריט מחכה" : "פריטים מחכים"
+              } לאישורך`
+            : "אין פריטים שמחכים לאישורך"}
         </div>
       </section>
     </>
