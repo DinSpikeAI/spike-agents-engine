@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* =================================================================
-   Spike Engine — Calm Frosted (Direction D)
+   Spike Engine — Calm Frosted (Direction D) — v2 polish
    Apple-style design system: layered tints, frosted glass, system colors.
    "Calm is the brand."
    ================================================================= */
@@ -35,6 +35,14 @@
   --color-sys-pink:        #D6336C;
   --color-sys-amber:       #E0A93D;
 
+  /* === v2: Category accents (subtle agent-group tinting) === */
+  --color-cat-routine:     rgba(184, 206, 255, 0.20);  /* Morning, Watcher */
+  --color-cat-routine-fg:  rgba(10, 70, 160, 0.85);
+  --color-cat-content:     rgba(214, 189, 233, 0.22);  /* Reviews, Social, Sales */
+  --color-cat-content-fg:  rgba(120, 60, 160, 0.85);
+  --color-cat-insight:     rgba(178, 221, 206, 0.24);  /* Hot Leads, Manager, Inventory */
+  --color-cat-insight-fg:  rgba(20, 120, 80, 0.90);
+
   /* === Radii === */
   --radius-sm: 8px;
   --radius-md: 11px;
@@ -45,6 +53,16 @@
   --shadow-glass:      0 1px 0 rgba(255,255,255,0.6) inset, 0 8px 28px rgba(15,20,30,0.06), 0 1px 3px rgba(15,20,30,0.04);
   --shadow-glass-deep: 0 1px 0 rgba(255,255,255,0.7) inset, 0 12px 40px rgba(15,20,30,0.08), 0 2px 6px rgba(15,20,30,0.05);
   --shadow-cta:        0 1px 0 rgba(255,255,255,0.3) inset, 0 8px 22px rgba(10,132,255,0.32);
+
+  /* === v2: Hover & focus shadows for interactive cards === */
+  --shadow-glass-hover:    0 1px 0 rgba(255,255,255,0.7) inset, 0 16px 44px rgba(15,20,30,0.10), 0 3px 8px rgba(15,20,30,0.05);
+  --shadow-cta-hover:      0 1px 0 rgba(255,255,255,0.4) inset, 0 12px 30px rgba(10,132,255,0.42);
+
+  /* === v2: Motion === */
+  --ease-soft: cubic-bezier(0.32, 0.72, 0.32, 1);
+  --duration-fast: 150ms;
+  --duration-base: 240ms;
+  --duration-slow: 400ms;
 
   /* === Type === */
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Heebo", system-ui, sans-serif;
@@ -103,4 +121,76 @@ body {
 
 .spike-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(15, 20, 30, 0.2);
+}
+
+/* =================================================================
+   v2: Reusable utilities for the agent grid + interactive cards
+   ================================================================= */
+
+/* Agent card — base interactive lift on hover */
+.agent-card {
+  transition: transform var(--duration-base) var(--ease-soft),
+              box-shadow var(--duration-base) var(--ease-soft);
+}
+
+.agent-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glass-hover);
+}
+
+/* Agent emoji tile — gentle scale on parent hover */
+.agent-card .agent-tile {
+  transition: transform var(--duration-base) var(--ease-soft);
+}
+
+.agent-card:hover .agent-tile {
+  transform: scale(1.06) rotate(-2deg);
+}
+
+/* Section header divider — subtle line that fades */
+.section-divider {
+  background: linear-gradient(
+    to left,
+    transparent 0%,
+    var(--color-hairline) 20%,
+    var(--color-hairline) 80%,
+    transparent 100%
+  );
+  height: 1px;
+}
+
+/* Reduced motion — respect user preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .agent-card:hover {
+    transform: none;
+  }
+  .agent-card:hover .agent-tile {
+    transform: none;
+  }
+}
+
+/* =================================================================
+   Mascot float — gentle idle animation for hero placements
+   ================================================================= */
+
+@keyframes spike-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+.mascot-float {
+  animation: spike-float 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-float {
+    animation: none !important;
+  }
 }

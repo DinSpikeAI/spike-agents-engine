@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 export interface OnboardingFormData {
   ownerName: string;
   businessName: string;
-  vertical: "beauty" | "restaurant" | "retail" | "services" | "other";
+  vertical: "beauty" | "restaurant" | "retail" | "services" | "general";
   gender: "male" | "female" | "neutral";
 }
 
@@ -66,7 +66,7 @@ export async function saveOnboardingAction(
   if (businessName.length === 0 || businessName.length > 120) {
     return { success: false, error: "אנא הזן שם עסק תקין (עד 120 תווים)" };
   }
-  if (!["beauty", "restaurant", "retail", "services", "other"].includes(data.vertical)) {
+  if (!["beauty", "restaurant", "retail", "services", "general"].includes(data.vertical)) {
     return { success: false, error: "תחום לא תקין" };
   }
   if (!["male", "female", "neutral"].includes(data.gender)) {

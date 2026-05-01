@@ -36,7 +36,20 @@ function getGreeting(): string {
 }
 
 // Agent metadata — desc + role + status from research handoff
-const AGENTS = [
+// Categories: routine (daily ops), content (drafts for owner), insight (analysis)
+type AgentCategory = "routine" | "content" | "insight";
+
+interface AgentMeta {
+  id: string;
+  emoji: string;
+  name: string;
+  role: string;
+  desc: string;
+  button: string;
+  category: AgentCategory;
+}
+
+const AGENTS: AgentMeta[] = [
   {
     id: "manager",
     emoji: "🧠",
@@ -44,6 +57,7 @@ const AGENTS = [
     role: "דוח שבועי",
     desc: "סוקר את כל הסוכנים שלך בשבוע האחרון, מזהה חריגות איכות, חישוב מדדי צמיחה והמלצה אחת לפעולה.",
     button: "manager",
+    category: "insight",
   },
   {
     id: "morning",
@@ -52,6 +66,7 @@ const AGENTS = [
     role: "תדריך יומי",
     desc: "תדריך בוקר עם 3 פעולות לעדיפות ראשונה, על בסיס הלידים והפניות מאתמול.",
     button: "morning",
+    category: "routine",
   },
   {
     id: "watcher",
@@ -60,6 +75,7 @@ const AGENTS = [
     role: "התראות בזמן אמת",
     desc: "מסמן לידים תקועים, פניות שלא נענו ושיחות שמצריכות תגובה היום.",
     button: "watcher",
+    category: "routine",
   },
   {
     id: "reviews",
@@ -68,6 +84,7 @@ const AGENTS = [
     role: "טיוטות תגובה",
     desc: "מנסח תגובות לביקורות בגוגל ופייסבוק, בודק טון ומחכה לאישורך לפני שליחה.",
     button: "reviews",
+    category: "content",
   },
   {
     id: "leads",
@@ -76,6 +93,7 @@ const AGENTS = [
     role: "סיווג לידים",
     desc: "מסווג לידים נכנסים ל־Cold / Warm / Hot / Burning לפי התנהגות בפועל.",
     button: "leads",
+    category: "insight",
   },
   {
     id: "social",
@@ -84,6 +102,7 @@ const AGENTS = [
     role: "פוסטים יומיים",
     desc: "מכין 3 טיוטות פוסטים יומיים בעברית לאינסטגרם ופייסבוק. אתה מאשר ושולח בעצמך.",
     button: "social",
+    category: "content",
   },
   {
     id: "sales",
@@ -92,6 +111,7 @@ const AGENTS = [
     role: "פולואו־אפ",
     desc: "מאתר לידים שתקועים יותר מ־3 ימים ומכין follow-up עם קישור ישיר ל-WhatsApp.",
     button: "sales",
+    category: "content",
   },
   {
     id: "inventory",
@@ -100,8 +120,40 @@ const AGENTS = [
     role: "ניתוח מלאי",
     desc: "מנתח קובץ CSV של המלאי, מחשב ימי כיסוי לכל מוצר ומסמן פריטים שדורשים תשומת לב.",
     button: "inventory",
+    category: "insight",
   },
 ];
+
+// Category visual metadata — drives section headers and tile accents.
+const CATEGORY_META: Record<
+  AgentCategory,
+  { label: string; tagline: string; bg: string; fg: string; tileBg: string }
+> = {
+  routine: {
+    label: "שגרה יומית",
+    tagline: "מה שצריך להתחיל איתו את היום",
+    bg: "var(--color-cat-routine)",
+    fg: "var(--color-cat-routine-fg)",
+    tileBg:
+      "linear-gradient(135deg, rgba(232,239,255,0.95), rgba(225,234,250,0.7))",
+  },
+  content: {
+    label: "תוכן ושירות לקוח",
+    tagline: "טיוטות שמחכות לאישור שלך",
+    bg: "var(--color-cat-content)",
+    fg: "var(--color-cat-content-fg)",
+    tileBg:
+      "linear-gradient(135deg, rgba(248,243,255,0.95), rgba(240,232,250,0.7))",
+  },
+  insight: {
+    label: "ניתוח ותובנות",
+    tagline: "מה קורה בעסק ולאן מתקדמים",
+    bg: "var(--color-cat-insight)",
+    fg: "var(--color-cat-insight-fg)",
+    tileBg:
+      "linear-gradient(135deg, rgba(238,250,244,0.95), rgba(225,245,235,0.7))",
+  },
+};
 
 export default async function DashboardPage() {
   // Block access if user hasn't completed onboarding yet.
@@ -266,73 +318,91 @@ export default async function DashboardPage() {
             </Link>
           )}
 
-          {/* Section header */}
-          <div className="mb-3 flex items-center pt-2">
-            <h2
-              className="text-[19px] font-semibold tracking-[-0.01em]"
-              style={{ color: "var(--color-ink)" }}
-            >
-              הסוכנים שלך
-            </h2>
-          </div>
+          {/* Agents by category — three logical groups */}
+          {(["routine", "content", "insight"] as AgentCategory[]).map(
+            (cat, catIdx) => {
+              const meta = CATEGORY_META[cat];
+              const agentsInCat = AGENTS.filter((a) => a.category === cat);
+              if (agentsInCat.length === 0) return null;
 
-          {/* Agent grid */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {AGENTS.map((agent) => (
-              <Glass
-                key={agent.id}
-                className="flex flex-col gap-2.5 p-[18px]"
-              >
-                <div className="flex items-start justify-between">
-                  <div
-                    className="flex h-11 w-11 items-center justify-center rounded-[12px] text-[22px]"
-                    style={{
-                      background:
-                        "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(245,247,252,0.7))",
-                      border: "1px solid rgba(255,255,255,0.9)",
-                      boxShadow:
-                        "0 4px 12px rgba(15,20,30,0.06), inset 0 1px 0 rgba(255,255,255,0.6)",
-                    }}
-                  >
-                    {agent.emoji}
+              return (
+                <section key={cat} className={catIdx === 0 ? "pt-2" : "pt-7"}>
+                  {/* Section header */}
+                  <div className="mb-3 flex items-baseline gap-3">
+                    <h2
+                      className="text-[17px] font-semibold tracking-[-0.01em]"
+                      style={{ color: "var(--color-ink)" }}
+                    >
+                      {meta.label}
+                    </h2>
+                    <span
+                      className="text-[12px]"
+                      style={{ color: "var(--color-ink-3)" }}
+                    >
+                      {meta.tagline}
+                    </span>
+                    <div className="section-divider flex-1" />
                   </div>
-                  <span
-                    className="rounded-full px-2 py-0.5 text-[10.5px] font-medium"
-                    style={{
-                      background: "rgba(224, 169, 61, 0.12)",
-                      color: "var(--color-sys-amber)",
-                    }}
-                    title="הסוכן רץ עם נתוני הדגמה. אינטגרציות אמיתיות יחוברו בהמשך."
-                  >
-                    הדגמה
-                  </span>
-                </div>
-                <div>
-                  <div
-                    className="text-[15.5px] font-semibold tracking-tight"
-                    style={{ color: "var(--color-ink)" }}
-                  >
-                    {agent.name}
+
+                  {/* Agent grid */}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {agentsInCat.map((agent) => (
+                      <Glass
+                        key={agent.id}
+                        className="agent-card flex flex-col gap-2.5 p-[18px]"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div
+                            className="agent-tile flex h-11 w-11 items-center justify-center rounded-[12px] text-[22px]"
+                            style={{
+                              background: meta.tileBg,
+                              border: "1px solid rgba(255,255,255,0.9)",
+                              boxShadow:
+                                "0 4px 12px rgba(15,20,30,0.06), inset 0 1px 0 rgba(255,255,255,0.6)",
+                            }}
+                          >
+                            {agent.emoji}
+                          </div>
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[10.5px] font-medium"
+                            style={{
+                              background: meta.bg,
+                              color: meta.fg,
+                            }}
+                          >
+                            {meta.label}
+                          </span>
+                        </div>
+                        <div>
+                          <div
+                            className="text-[15.5px] font-semibold tracking-tight"
+                            style={{ color: "var(--color-ink)" }}
+                          >
+                            {agent.name}
+                          </div>
+                          <div
+                            className="mt-0.5 text-[11.5px]"
+                            style={{ color: "var(--color-ink-3)" }}
+                          >
+                            {agent.role}
+                          </div>
+                        </div>
+                        <div
+                          className="text-[12.5px] leading-[1.55]"
+                          style={{ color: "var(--color-ink-2)" }}
+                        >
+                          {agent.desc}
+                        </div>
+                        <div className="mt-auto pt-2.5">
+                          {renderButton(agent.button)}
+                        </div>
+                      </Glass>
+                    ))}
                   </div>
-                  <div
-                    className="mt-0.5 text-[11.5px]"
-                    style={{ color: "var(--color-ink-3)" }}
-                  >
-                    {agent.role}
-                  </div>
-                </div>
-                <div
-                  className="text-[12.5px] leading-[1.55]"
-                  style={{ color: "var(--color-ink-2)" }}
-                >
-                  {agent.desc}
-                </div>
-                <div className="mt-auto pt-2.5">
-                  {renderButton(agent.button)}
-                </div>
-              </Glass>
-            ))}
-          </div>
+                </section>
+              );
+            }
+          )}
         </main>
 
         <WhatsAppFab />

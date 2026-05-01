@@ -14,7 +14,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 
-type Vertical = "beauty" | "restaurant" | "retail" | "services" | "other";
+type Vertical = "beauty" | "restaurant" | "retail" | "services" | "general";
 type Gender = "male" | "female" | "neutral";
 
 const VERTICALS: Array<{ id: Vertical; label: string; Icon: typeof Sparkles }> = [
@@ -22,7 +22,7 @@ const VERTICALS: Array<{ id: Vertical; label: string; Icon: typeof Sparkles }> =
   { id: "restaurant", label: "מסעדה / בית קפה", Icon: UtensilsCrossed },
   { id: "retail", label: "חנות / מסחר", Icon: ShoppingBag },
   { id: "services", label: "שירותים מקצועיים", Icon: Briefcase },
-  { id: "other", label: "אחר", Icon: MoreHorizontal },
+  { id: "general", label: "אחר", Icon: MoreHorizontal },
 ];
 
 const GENDERS: Array<{ id: Gender; label: string; sub: string }> = [

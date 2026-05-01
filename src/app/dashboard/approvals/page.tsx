@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/dashboard/sidebar";
 import { AppleBg } from "@/components/ui/apple-bg";
 import { Glass } from "@/components/ui/glass";
 import { ApprovalsList } from "@/components/dashboard/approvals-list";
+import { Mascot } from "@/components/ui/mascot";
 import { listPendingDrafts } from "@/app/dashboard/actions";
 import { Inbox, CheckCircle2 } from "lucide-react";
 
@@ -126,20 +127,17 @@ export default async function ApprovalsPage() {
           {/* Body — empty state OR the list */}
           {pendingCount === 0 ? (
             <Glass className="p-10 text-center">
-              <CheckCircle2
-                size={40}
-                strokeWidth={1.25}
-                className="mx-auto mb-3"
-                style={{ color: "var(--color-sys-green)" }}
-              />
+              <div className="flex justify-center">
+                <Mascot pose="phone-right" size={140} />
+              </div>
               <h2
-                className="mb-1 text-[16px] font-semibold"
+                className="mb-1 mt-3 text-[18px] font-semibold tracking-[-0.01em]"
                 style={{ color: "var(--color-ink)" }}
               >
-                הכל מאושר
+                הכל מאושר ✨
               </h2>
               <p
-                className="text-[13px]"
+                className="mx-auto max-w-[400px] text-[13px] leading-relaxed"
                 style={{ color: "var(--color-ink-2)" }}
               >
                 אין טיוטות שממתינות לאישור כרגע. הסוכנים יוסיפו טיוטות חדשות

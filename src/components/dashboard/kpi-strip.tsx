@@ -1,4 +1,5 @@
 import { Glass } from "@/components/ui/glass";
+import { Inbox, Activity, Wallet } from "lucide-react";
 
 interface KpiStripProps {
   pendingApprovals: number;
@@ -27,7 +28,16 @@ export function KpiStrip({
       ? Math.min(100, Math.round((monthlySpend / monthlyCap) * 100))
       : 0;
 
-  const kpis = [
+  type Kpi = {
+    label: string;
+    value: string;
+    sub: string;
+    Icon: typeof Inbox;
+    isPrimary: boolean;
+    utilPct?: number;
+  };
+
+  const kpis: Kpi[] = [
     {
       label: "מחכים לאישור",
       value: String(pendingApprovals),
@@ -35,8 +45,9 @@ export function KpiStrip({
         pendingApprovals === 0
           ? "תיבת האישורים ריקה"
           : pendingApprovals === 1
-          ? "פריט מחכה לי"
-          : "פריטים מחכים לי",
+            ? "פריט מחכה לי"
+            : "פריטים מחכים לי",
+      Icon: Inbox,
       isPrimary: true,
     },
     {
@@ -46,14 +57,16 @@ export function KpiStrip({
         todaysActions === 0
           ? "עדיין לא רץ סוכן היום"
           : todaysActions === 1
-          ? "טיוטה הוכנה היום"
-          : "טיוטות הוכנו היום",
+            ? "טיוטה הוכנה היום"
+            : "טיוטות הוכנו היום",
+      Icon: Activity,
       isPrimary: false,
     },
     {
       label: "עלות חודשית",
       value: spendDisplay,
       sub: spendSub,
+      Icon: Wallet,
       isPrimary: false,
       utilPct: spendUtilPct,
     },
@@ -61,51 +74,78 @@ export function KpiStrip({
 
   return (
     <div className="mb-[18px] grid grid-cols-1 gap-3 sm:grid-cols-3">
-      {kpis.map((k, i) => (
-        <Glass key={i} deep={k.isPrimary} className="px-[18px] py-4">
-          <div
-            className="text-[11.5px] font-medium"
-            style={{ color: "var(--color-ink-3)" }}
-          >
-            {k.label}
-          </div>
-
-          <div
-            className="mt-2.5 text-[30px] font-semibold tracking-[-0.03em]"
-            style={{ color: "var(--color-ink)" }}
-          >
-            {k.value}
-          </div>
-
-          <div
-            className="mt-0.5 text-[12px]"
-            style={{ color: "var(--color-ink-2)" }}
-          >
-            {k.sub}
-          </div>
-
-          {/* Utilization bar — only on the spend card */}
-          {k.utilPct !== undefined && monthlyCap > 0 && (
-            <div
-              className="mt-2.5 h-1 overflow-hidden rounded-full"
-              style={{ background: "rgba(15,20,30,0.06)" }}
-            >
+      {kpis.map((k, i) => {
+        const Icon = k.Icon;
+        return (
+          <Glass key={i} deep={k.isPrimary} className="px-[18px] py-4">
+            <div className="flex items-center justify-between">
               <div
-                className="h-full transition-all"
+                className="text-[11.5px] font-medium"
+                style={{ color: "var(--color-ink-3)" }}
+              >
+                {k.label}
+              </div>
+              <div
+                className="flex h-6 w-6 items-center justify-center rounded-md"
                 style={{
-                  width: `${k.utilPct}%`,
-                  background:
-                    k.utilPct > 80
-                      ? "var(--color-sys-pink)"
-                      : k.utilPct > 50
-                      ? "var(--color-sys-amber)"
-                      : "var(--color-sys-green)",
+                  background: k.isPrimary
+                    ? "var(--color-sys-blue-soft)"
+                    : "rgba(15,20,30,0.04)",
+                  color: k.isPrimary
+                    ? "var(--color-sys-blue)"
+                    : "var(--color-ink-3)",
                 }}
-              />
+              >
+                <Icon size={12} strokeWidth={1.75} />
+              </div>
             </div>
-          )}
-        </Glass>
-      ))}
+
+            <div
+              className="mt-2 text-[32px] font-semibold leading-none tracking-[-0.035em]"
+              style={{ color: "var(--color-ink)" }}
+            >
+              {k.value}
+            </div>
+
+            <div
+              className="mt-1 text-[12px]"
+              style={{ color: "var(--color-ink-2)" }}
+            >
+              {k.sub}
+            </div>
+
+            {/* Utilization bar — only on the spend card */}
+            {k.utilPct !== undefined && monthlyCap > 0 && (
+              <div className="mt-3">
+                <div
+                  className="h-1 overflow-hidden rounded-full"
+                  style={{ background: "rgba(15,20,30,0.06)" }}
+                >
+                  <div
+                    className="h-full transition-all"
+                    style={{
+                      width: `${k.utilPct}%`,
+                      background:
+                        k.utilPct > 80
+                          ? "var(--color-sys-pink)"
+                          : k.utilPct > 50
+                            ? "var(--color-sys-amber)"
+                            : "var(--color-sys-green)",
+                      transition: "width var(--duration-slow) var(--ease-soft)",
+                    }}
+                  />
+                </div>
+                <div
+                  className="mt-1 text-[10.5px] font-medium tabular-nums"
+                  style={{ color: "var(--color-ink-3)" }}
+                >
+                  {k.utilPct}% נוצל
+                </div>
+              </div>
+            )}
+          </Glass>
+        );
+      })}
     </div>
   );
 }

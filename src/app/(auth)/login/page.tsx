@@ -1,11 +1,12 @@
 // src/app/(auth)/login/page.tsx
 //
 // Hebrew Magic Link login page — Calm Frosted edition.
-// AppleBg + Glass card + System Blue CTA (matching dashboard aesthetic).
+// AppleBg + Glass card + System Blue CTA + Spike mascot hero.
 
 import { LoginForm } from "./login-form";
 import { AppleBg } from "@/components/ui/apple-bg";
 import { Glass } from "@/components/ui/glass";
+import { Mascot } from "@/components/ui/mascot";
 
 export const metadata = {
   title: "התחבר — Spike",
@@ -14,18 +15,53 @@ export const metadata = {
 export default function LoginPage() {
   return (
     <div
-      className="relative min-h-screen"
+      className="relative min-h-screen overflow-hidden"
       dir="rtl"
       style={{ color: "var(--color-ink)" }}
     >
       <AppleBg />
 
-      <main className="relative z-10 flex min-h-screen items-center justify-center p-4">
-        <div className="w-full max-w-[420px]">
-          {/* Logo + brand */}
-          <div className="mb-8 flex flex-col items-center text-center">
+      <main className="relative z-10 mx-auto flex min-h-screen max-w-[1100px] items-center justify-center gap-12 p-4 md:p-8">
+        {/* Spike hero — visible on tablet+ only */}
+        <div className="hidden flex-1 items-center justify-center md:flex">
+          <div className="relative">
+            <Mascot pose="laptop" size={360} float priority />
+
+            {/* Soft glow halo behind Spike */}
             <div
-              className="mb-4 flex h-12 w-12 items-center justify-center rounded-[14px] text-[20px] font-bold text-white"
+              aria-hidden
+              className="pointer-events-none absolute inset-0 -z-10"
+              style={{
+                background:
+                  "radial-gradient(ellipse at center, rgba(184,206,255,0.55), rgba(184,206,255,0) 70%)",
+                transform: "scale(1.4)",
+              }}
+            />
+
+            {/* Tagline below Spike */}
+            <div
+              className="mt-3 text-center text-[13px] leading-relaxed"
+              style={{ color: "var(--color-ink-3)" }}
+            >
+              <div
+                className="text-[15px] font-semibold"
+                style={{ color: "var(--color-ink)" }}
+              >
+                שמונה סוכנים. שקט אחד.
+              </div>
+              <div className="mt-1">
+                הצוות השקט שעובד מאחורי הקלעים על העסק שלך.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Login form — full width on mobile, half on desktop */}
+        <div className="w-full max-w-[420px]">
+          {/* Logo + brand — visible everywhere */}
+          <div className="mb-7 flex flex-col items-center text-center md:items-start md:text-right">
+            <div
+              className="mb-4 flex h-11 w-11 items-center justify-center rounded-[12px] text-[18px] font-bold text-white"
               style={{
                 background: "linear-gradient(135deg, #0A84FF, #5856D6)",
                 boxShadow:
@@ -35,16 +71,16 @@ export default function LoginPage() {
               S
             </div>
             <h1
-              className="text-[28px] font-bold tracking-[-0.025em]"
+              className="text-[26px] font-bold tracking-[-0.025em]"
               style={{ color: "var(--color-ink)" }}
             >
-              Spike Engine
+              ברוך הבא ל-Spike Engine
             </h1>
             <p
               className="mt-1.5 text-[13.5px]"
               style={{ color: "var(--color-ink-3)" }}
             >
-              הצוות השקט שעובד מאחורי הקלעים
+              הזן את האימייל שלך ונשלח לך קישור־קסם
             </p>
           </div>
 
@@ -54,10 +90,10 @@ export default function LoginPage() {
           </Glass>
 
           <p
-            className="mt-5 text-center text-[11.5px]"
+            className="mt-5 text-center text-[11.5px] md:text-right"
             style={{ color: "var(--color-ink-3)" }}
           >
-            כניסה דרך קישור-קסם נשלח למייל. אין סיסמאות.
+            כניסה דרך קישור־קסם נשלח למייל. אין סיסמאות.
           </p>
         </div>
       </main>
