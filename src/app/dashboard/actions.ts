@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runMorningAgent } from "@/lib/agents/morning/run";
+import type { MorningPromptContext } from "@/lib/agents/morning/prompt";
 import { runWatcherAgent } from "@/lib/agents/watcher/run";
 import { runReviewsAgent, type ReviewsRunResult } from "@/lib/agents/reviews/run";
 import { runHotLeadsAgent, type HotLeadsRunResult } from "@/lib/agents/hot_leads/run";
@@ -256,6 +257,126 @@ async function loadLeadEventsAsLeads(
 }
 
 // ─────────────────────────────────────────────────────────────
+// Morning — load briefing context from real data (Day 19)
+// ─────────────────────────────────────────────────────────────
+//
+// The Morning agent's prompt expects a structured context object
+// describing yesterday's metrics, today's schedule, pending tasks,
+// and recent updates. We populate as much as we can from the DB:
+//
+//   - yesterdayMetrics.leads ← count of lead_received events in last 24h
+//   - pendingTasks            ← rows from drafts where status='pending'
+//   - recentUpdates           ← short Hebrew bullets of notable events
+//                               (negative reviews, hot leads, urgent msgs)
+//
+// Fields with no data source today (todaysEvents, revenue, orders,
+// visitors) are returned empty so the prompt knows to skip them.
+// When integrations land (Google Calendar, Cardcom, Analytics), those
+// fields wire in here without touching anything else.
+
+async function loadMorningContext(
+  tenantId: string
+): Promise<Partial<MorningPromptContext>> {
+  const db = createAdminClient();
+
+  // Load tenant identity for greeting.
+  const { data: tenant } = await db
+    .from("tenants")
+    .select("name, config")
+    .eq("id", tenantId)
+    .maybeSingle();
+
+  const config = (tenant?.config ?? {}) as Record<string, unknown>;
+  const ownerName =
+    typeof config.owner_name === "string" ? config.owner_name : "בעל העסק";
+  const businessName =
+    typeof tenant?.name === "string" ? tenant.name : "העסק שלי";
+
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  // ─── Yesterday metrics: leads in last 24h ──────────────────
+  const { count: leadsCount } = await db
+    .from("events")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("event_type", "lead_received")
+    .gte("received_at", since24h);
+
+  // ─── Pending tasks: drafts awaiting approval ───────────────
+  const { data: pendingDrafts } = await db
+    .from("drafts")
+    .select("type, content")
+    .eq("tenant_id", tenantId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const pendingTasks = (pendingDrafts ?? []).map((d) => {
+    const content = (d.content ?? {}) as Record<string, unknown>;
+    const recipientName =
+      typeof content.reviewerName === "string"
+        ? content.reviewerName
+        : typeof content.leadDisplayName === "string"
+          ? content.leadDisplayName
+          : null;
+
+    let title: string;
+    if (d.type === "review_reply") {
+      title = recipientName
+        ? `תגובה לביקורת של ${recipientName}`
+        : "תגובה לביקורת ממתינה לאישור";
+    } else if (d.type === "sales_followup") {
+      title = recipientName
+        ? `פולואו-אפ למכירה: ${recipientName}`
+        : "פולואו-אפ מכירה ממתין לאישור";
+    } else if (d.type === "social_post") {
+      title = "פוסט לרשתות חברתיות ממתין לאישור";
+    } else {
+      title = "טיוטה ממתינה לאישור";
+    }
+
+    return {
+      title,
+      priority: "medium" as const,
+    };
+  });
+
+  // ─── Recent updates: notable events from last 24h ──────────
+  // We grab a small sample of high-signal events and turn each into a
+  // one-line Hebrew bullet. The Morning prompt summarizes them further.
+  const { data: notableEvents } = await db
+    .from("events")
+    .select("provider, event_type, payload")
+    .eq("tenant_id", tenantId)
+    .gte("received_at", since24h)
+    .order("received_at", { ascending: false })
+    .limit(8);
+
+  const recentUpdates: string[] = [];
+  for (const ev of notableEvents ?? []) {
+    const p = (ev.payload ?? {}) as Record<string, unknown>;
+    const summary = typeof p.summary === "string" ? p.summary : null;
+    if (!summary) continue;
+    // Truncate so the prompt stays compact
+    const trimmed = summary.length > 140 ? summary.slice(0, 137) + "..." : summary;
+    recentUpdates.push(trimmed);
+    if (recentUpdates.length >= 5) break;
+  }
+
+  return {
+    ownerName,
+    businessName,
+    todaysEvents: [], // No calendar integration yet
+    yesterdayMetrics: {
+      leads: leadsCount ?? 0,
+      // revenue / orders / visitors left undefined — no data source yet
+    },
+    pendingTasks,
+    recentUpdates,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
 // Manager Agent — weekly lock state
 // ─────────────────────────────────────────────────────────────
 //
@@ -464,7 +585,10 @@ export async function triggerMorningAgentAction(): Promise<{
       return { success: false, error: limit.message ?? "הסוכן רץ לאחרונה." };
     }
 
-    const result = await runMorningAgent(tenant.tenantId, "manual");
+    // Load real context for the morning briefing (Day 19).
+    const context = await loadMorningContext(tenant.tenantId);
+
+    const result = await runMorningAgent(tenant.tenantId, "manual", context);
     return { success: true, result };
   } catch (err) {
     const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
