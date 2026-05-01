@@ -7,10 +7,14 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes (Pro plan limit)
 
 /**
- * Social Agent daily cron — Day 14
+ * Social Agent daily cron — Day 14 (schedule corrected Day 17)
  *
- * Scheduled: 30 5 * * 0-4,6  (05:30 UTC daily, skip Friday in Israel)
+ * Scheduled: 30 5 * * 0-4  (05:30 UTC, Sun-Thu only)
  * Israel local time: 07:30 IST winter / 08:30 IST summer
+ * Skip Friday + Saturday (Israeli weekend) — most retail / beauty /
+ * dental businesses are closed on Saturday, so a "we're open" post
+ * would land wrong. Emergency-service verticals will get an opt-in
+ * flag in tenant.config in a later iteration.
  *
  * For each active tenant with social agent enabled:
  *   - Run social agent
