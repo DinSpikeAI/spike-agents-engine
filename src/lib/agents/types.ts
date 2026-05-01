@@ -331,3 +331,96 @@ export interface MockBehavior {
   forceStatus?: RunStatus;
   delayMs?: number;
 }
+// ═══════════════════════════════════════════════════════════════
+// APPEND THIS BLOCK TO THE END OF src/lib/agents/types.ts
+// (just before the closing of the file, after MockBehavior)
+// ═══════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────
+// Inventory Agent — Day 18
+// ─────────────────────────────────────────────────────────────
+//
+// The Inventory Agent analyzes a tenant's product stock based on
+// CSV uploads. The owner exports a CSV from their POS / inventory
+// system (AP, Tranzila, Rivhit, Caspit, etc.) and uploads it.
+//
+// Pipeline:
+//   1. Parse CSV → InventoryProduct[]
+//   2. Code-side analysis: compute daysOfCoverage per product
+//   3. LLM (Sonnet 4.6 + thinking 2K) prioritizes which products
+//      need attention and writes Hebrew insights for each
+//   4. Owner sees: "סלמון נורבגי — נשארו 3 ימים"
+//
+// IMPORTANT: The agent reports status only. It does NOT recommend
+// "order X units from Y supplier" — that crosses the AI-marks-owner-
+// decides line. The owner sees facts and decides.
+
+export type ProductStatus =
+  | "critical"      // 0-1 days of coverage
+  | "low"           // 2-5 days
+  | "ok"            // 6-30 days
+  | "overstocked"   // 30+ days (capital tied up)
+  | "no_movement";  // dailyAvg ~ 0
+
+export interface InventoryProduct {
+  productName: string;
+  productCode: string | null;
+  currentStock: number;
+  soldLast30Days: number;
+  unit: string | null;
+  safetyStock: number | null;
+}
+
+export interface ProductAnalysis {
+  productName: string;
+  productCode: string | null;
+  currentStock: number;
+  unit: string | null;
+  dailyAvgSales: number;
+  daysOfCoverage: number | null;
+  status: ProductStatus;
+}
+
+/** Per-product output from the LLM — adds the Hebrew insight to the analysis. */
+export interface InventoryProductInsight {
+  productName: string;
+  productCode: string | null;
+  currentStock: number;
+  unit: string | null;
+  dailyAvgSales: number;
+  daysOfCoverage: number | null;
+  status: ProductStatus;
+  /** Hebrew one-line insight for this product. */
+  insight: string;
+  /** Priority for owner attention (1 = highest). */
+  priority: number;
+}
+
+export interface InventoryAgentOutput {
+  /** Hebrew one-line summary of overall inventory health. */
+  summary: string;
+
+  /** Total products analyzed. */
+  totalProducts: number;
+
+  /** Counts by status — for the dashboard glance. */
+  counts: {
+    critical: number;
+    low: number;
+    ok: number;
+    overstocked: number;
+    noMovement: number;
+  };
+
+  /**
+   * All products with insights, sorted by priority.
+   * critical + low items appear first.
+   */
+  products: InventoryProductInsight[];
+
+  /**
+   * Hebrew prose summary highlighting top concerns.
+   * E.g., "3 מוצרים נמצאים במצב קריטי. הבולטים: ..."
+   */
+  topConcernsHe: string;
+}
