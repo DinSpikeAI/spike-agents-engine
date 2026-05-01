@@ -1,81 +1,154 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { isAdminEmail } from "@/lib/admin/auth";
 import { Sidebar } from "@/components/dashboard/sidebar";
-import { listClassifiedLeads } from "@/app/dashboard/actions";
+import { listClassifiedLeads, listPendingDrafts } from "@/app/dashboard/actions";
 import { LeadsBoard } from "@/components/dashboard/leads-board";
+import { AppleBg } from "@/components/ui/apple-bg";
+import { Glass } from "@/components/ui/glass";
+import { ArrowRight, Flame, ShieldCheck } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function LeadsPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     redirect("/login");
   }
 
   const userEmail = user.email ?? "";
-  const result = await listClassifiedLeads();
+  const [result, draftsResult] = await Promise.all([
+    listClassifiedLeads(),
+    listPendingDrafts(),
+  ]);
+
+  const pendingCount = draftsResult.success
+    ? draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0
+    : 0;
 
   return (
     <div
       className="relative min-h-screen"
       dir="rtl"
-      style={{ background: "var(--spike-bg)", color: "var(--spike-text)" }}
+      style={{ color: "var(--color-ink)" }}
     >
-      <Sidebar userEmail={userEmail} />
+      <AppleBg />
 
-      <div className="md:mr-[248px]">
-        <main className="spike-scroll mx-auto max-w-[1400px] px-6 pb-20 pt-8 md:px-10">
+      <Sidebar
+        userEmail={userEmail}
+        isAdmin={isAdminEmail(userEmail)}
+        pendingCount={pendingCount}
+      />
+
+      <div className="md:mr-[232px]">
+        <main className="spike-scroll mx-auto max-w-[1280px] px-6 pb-20 pt-8 md:px-10">
           {/* Header */}
-          <div className="mb-8 flex items-center justify-between">
-            <div>
-              <Link
-                href="/dashboard"
-                className="text-sm text-slate-400 hover:text-slate-200"
-              >
-                ← חזרה לסקירה
-              </Link>
-              <h1 className="mt-2 text-3xl font-bold text-slate-100">
-                לידים חמים
-              </h1>
-              <p className="mt-1 text-sm text-slate-400">
-                כל הפניות הנכנסות מסווגות לפי פוטנציאל סגירה. הסיווג מתבסס אך
-                ורק על ההתנהגות בהודעה — לא על שם או דמוגרפיה.
-              </p>
-            </div>
+          <div className="mb-6">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-1.5 text-[12.5px] transition-colors"
+              style={{ color: "var(--color-ink-3)" }}
+            >
+              <ArrowRight size={12} strokeWidth={1.75} />
+              חזרה לסקירה
+            </Link>
+            <h1
+              className="mt-3 text-[32px] font-bold leading-tight tracking-[-0.025em]"
+              style={{ color: "var(--color-ink)" }}
+            >
+              לידים חמים
+            </h1>
+            <p
+              className="mt-1.5 text-[13.5px] leading-relaxed"
+              style={{ color: "var(--color-ink-2)" }}
+            >
+              כל הפניות הנכנסות מסווגות לפי פוטנציאל סגירה. הסיווג מתבסס אך ורק
+              על ההתנהגות בהודעה — לא על שם או דמוגרפיה.
+            </p>
           </div>
 
           {/* Bias notice */}
-          <div className="mb-6 rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-xs text-blue-200">
-            <span className="font-semibold">🛡️ הגנת אפליה: </span>
-            הסוכן מקבל רק טקסט ההודעה ומאפייני התנהגות (אורך, מילות כוונה,
-            סימני דחיפות). הוא לא רואה שמות, מספרי טלפון, תמונות או handles.
-            ביקורת הטיות חודשית רצה ב-Day 13.
-          </div>
+          <Glass className="mb-6 flex items-start gap-3 p-3.5">
+            <div
+              className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[8px]"
+              style={{
+                background: "var(--color-sys-blue-soft)",
+                color: "var(--color-sys-blue)",
+              }}
+            >
+              <ShieldCheck size={14} strokeWidth={1.75} />
+            </div>
+            <div className="flex-1 text-[12px] leading-relaxed">
+              <span
+                className="font-semibold"
+                style={{ color: "var(--color-ink)" }}
+              >
+                הגנת אפליה:{" "}
+              </span>
+              <span style={{ color: "var(--color-ink-2)" }}>
+                הסוכן מקבל רק טקסט ההודעה ומאפייני התנהגות (אורך, מילות כוונה,
+                סימני דחיפות). הוא לא רואה שמות, מספרי טלפון, תמונות או handles.
+                ביקורת הטיות חודשית רצה ב-Day 13.
+              </span>
+            </div>
+          </Glass>
 
           {/* Content */}
           {!result.success ? (
-            <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300">
-              ⚠️ שגיאה בטעינת הלידים: {result.error}
-            </div>
+            <Glass className="p-5">
+              <div
+                className="text-[13px]"
+                style={{ color: "var(--color-sys-pink)" }}
+              >
+                ⚠️ שגיאה בטעינת הלידים: {result.error}
+              </div>
+            </Glass>
           ) : (result.leads ?? []).length === 0 ? (
-            <div className="rounded-xl border border-slate-700 bg-slate-900/50 p-12 text-center">
-              <div className="mb-3 text-5xl">🎯</div>
-              <h2 className="text-xl font-semibold text-slate-200">
+            <Glass className="p-12 text-center">
+              <div
+                className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-[14px]"
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(245,247,252,0.7))",
+                  border: "1px solid rgba(255,255,255,0.9)",
+                  boxShadow:
+                    "0 4px 12px rgba(15,20,30,0.06), inset 0 1px 0 rgba(255,255,255,0.6)",
+                }}
+              >
+                <Flame
+                  size={24}
+                  strokeWidth={1.5}
+                  style={{ color: "var(--color-ink-3)" }}
+                />
+              </div>
+              <h2
+                className="text-[18px] font-semibold tracking-tight"
+                style={{ color: "var(--color-ink)" }}
+              >
                 אין לידים מסווגים
               </h2>
-              <p className="mt-2 text-sm text-slate-400">
+              <p
+                className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed"
+                style={{ color: "var(--color-ink-2)" }}
+              >
                 הרץ סוכן לידים חמים מהדשבורד כדי לראות לידים כאן.
               </p>
               <Link
                 href="/dashboard"
-                className="mt-4 inline-block rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-orange-400"
+                className="mt-5 inline-flex items-center gap-2 rounded-[10px] px-4 py-2 text-[13px] font-medium text-white transition-all"
+                style={{
+                  background: "var(--color-sys-blue)",
+                  boxShadow: "var(--shadow-cta)",
+                }}
               >
                 חזרה לדשבורד
               </Link>
-            </div>
+            </Glass>
           ) : (
             <LeadsBoard leads={result.leads ?? []} />
           )}

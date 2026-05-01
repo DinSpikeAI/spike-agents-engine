@@ -8,6 +8,19 @@ import type {
   SystemHealthSignal,
   ManagerRecommendation,
 } from "@/lib/agents/types";
+import { Glass } from "@/components/ui/glass";
+import {
+  Bot,
+  Search,
+  Heart,
+  TrendingUp,
+  AlertTriangle,
+  Pencil,
+  Clock,
+  Settings as SettingsIcon,
+  Check,
+  Lightbulb,
+} from "lucide-react";
 
 const AGENT_LABELS: Record<string, string> = {
   morning: "סוכן הבוקר",
@@ -32,16 +45,34 @@ const SEVERITY_STYLES: Record<
   "minor" | "moderate" | "critical",
   { bg: string; border: string; text: string; label: string }
 > = {
-  minor:    { bg: "rgba(59, 130, 246, 0.10)", border: "rgba(59, 130, 246, 0.40)", text: "#93C5FD", label: "קל" },
-  moderate: { bg: "rgba(252, 211, 77, 0.10)", border: "rgba(252, 211, 77, 0.40)", text: "#FDE68A", label: "בינוני" },
-  critical: { bg: "rgba(239, 68, 68, 0.10)",  border: "rgba(239, 68, 68, 0.40)",  text: "#FCA5A5", label: "קריטי" },
+  minor: {
+    bg: "var(--color-sys-blue-soft)",
+    border: "rgba(10, 132, 255, 0.25)",
+    text: "var(--color-sys-blue)",
+    label: "קל",
+  },
+  moderate: {
+    bg: "rgba(224, 169, 61, 0.12)",
+    border: "rgba(224, 169, 61, 0.30)",
+    text: "var(--color-sys-amber)",
+    label: "בינוני",
+  },
+  critical: {
+    bg: "rgba(214, 51, 108, 0.10)",
+    border: "rgba(214, 51, 108, 0.30)",
+    text: "var(--color-sys-pink)",
+    label: "קריטי",
+  },
 };
 
-const REC_TYPE_LABELS: Record<string, { label: string; icon: string }> = {
-  prompt_tweak:     { label: "שיפור prompt", icon: "✏️" },
-  scheduling:       { label: "שינוי תזמון", icon: "⏰" },
-  configuration:    { label: "שינוי הגדרה", icon: "⚙️" },
-  no_action_needed: { label: "אין צורך בפעולה", icon: "✓" },
+const REC_TYPE_META: Record<
+  string,
+  { label: string; Icon: typeof Pencil }
+> = {
+  prompt_tweak: { label: "שיפור prompt", Icon: Pencil },
+  scheduling: { label: "שינוי תזמון", Icon: Clock },
+  configuration: { label: "שינוי הגדרה", Icon: SettingsIcon },
+  no_action_needed: { label: "אין צורך בפעולה", Icon: Check },
 };
 
 function formatDate(iso: string): string {
@@ -66,55 +97,90 @@ export function ManagerReportCard({
   isLatest: boolean;
 }) {
   const r = report.report as unknown as ManagerAgentOutput;
+  const isCritical = report.has_critical_issues;
 
   return (
-    <div
-      className={`rounded-xl p-6 ${
-        isLatest ? "border-2" : "border"
-      } ${
-        report.has_critical_issues
-          ? "border-red-500/40 bg-red-500/5"
-          : "border-slate-700 bg-slate-900/60"
-      }`}
+    <Glass
+      deep={isLatest}
+      className="p-6"
+      style={
+        isCritical
+          ? {
+              borderColor: "rgba(214, 51, 108, 0.35)",
+              boxShadow:
+                "0 1px 0 rgba(255,255,255,0.6) inset, 0 8px 28px rgba(214,51,108,0.10), 0 1px 3px rgba(15,20,30,0.05)",
+            }
+          : undefined
+      }
     >
       {/* Header */}
       <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <div className="mb-1 flex items-center gap-2 text-xs text-slate-500">
-            <span>חלון ניתוח: {formatDate(report.window_start)} → {formatDate(report.window_end)}</span>
+        <div className="flex-1 min-w-0">
+          <div
+            className="mb-1.5 text-[11px]"
+            style={{ color: "var(--color-ink-3)" }}
+          >
+            חלון ניתוח: {formatDate(report.window_start)} →{" "}
+            {formatDate(report.window_end)}
           </div>
-          <h2 className="text-xl font-bold text-slate-100">{r.summary}</h2>
+          <h2
+            className="text-[19px] font-semibold tracking-[-0.01em]"
+            style={{ color: "var(--color-ink)" }}
+          >
+            {r.summary}
+          </h2>
         </div>
-        {report.has_critical_issues && (
-          <div className="rounded-md bg-red-500/15 border border-red-500/40 px-3 py-1 text-xs font-bold text-red-300">
-            ⚠️ דחוף
+        {isCritical && (
+          <div
+            className="flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold"
+            style={{
+              background: "rgba(214, 51, 108, 0.10)",
+              border: "1px solid rgba(214, 51, 108, 0.30)",
+              color: "var(--color-sys-pink)",
+            }}
+          >
+            <AlertTriangle size={11} strokeWidth={2} />
+            דחוף
           </div>
         )}
       </div>
 
       <div className="space-y-5">
         {/* 1. Status Summary */}
-        <Section title="סטטוס סוכנים" icon="🤖">
-          <div className="mb-2 text-xs text-slate-400">
-            {r.status_summary.totalSucceeded} ריצות הצליחו · {r.status_summary.totalFailed} נכשלו
+        <Section title="סטטוס סוכנים" Icon={Bot}>
+          <div
+            className="mb-2 text-[11.5px]"
+            style={{ color: "var(--color-ink-3)" }}
+          >
+            {r.status_summary.totalSucceeded} ריצות הצליחו ·{" "}
+            {r.status_summary.totalFailed} נכשלו
           </div>
           {r.status_summary.agents.length === 0 ? (
-            <p className="text-sm text-slate-500">לא היו ריצות סוכנים בחלון</p>
+            <p
+              className="text-[12.5px]"
+              style={{ color: "var(--color-ink-3)" }}
+            >
+              לא היו ריצות סוכנים בחלון
+            </p>
           ) : (
             <div className="space-y-1">
               {r.status_summary.agents.map((a: AgentStatusEntry) => {
-                // successCount is not a field in the schema — derive it.
                 const successCount = a.runCount - a.failureCount;
                 return (
                   <div
                     key={a.agentId}
-                    className="flex items-center justify-between rounded bg-slate-950/40 px-3 py-1.5 text-sm"
+                    className="flex items-center justify-between rounded-md px-3 py-1.5 text-[12.5px]"
+                    style={{ background: "rgba(255,255,255,0.5)" }}
                   >
-                    <span className="text-slate-200">
+                    <span style={{ color: "var(--color-ink)" }}>
                       {AGENT_LABELS[a.agentId] ?? a.agentId}
                     </span>
-                    <span className="text-xs text-slate-400">
-                      {successCount}/{a.runCount} {STATUS_LABELS[a.status] ?? a.status}
+                    <span
+                      className="text-[11px]"
+                      style={{ color: "var(--color-ink-3)" }}
+                    >
+                      {successCount}/{a.runCount}{" "}
+                      {STATUS_LABELS[a.status] ?? a.status}
                     </span>
                   </div>
                 );
@@ -124,11 +190,18 @@ export function ManagerReportCard({
         </Section>
 
         {/* 2. Quality Findings */}
-        <Section title="בקרת איכות" icon="🔍">
-          <div className="mb-2 text-xs text-slate-400">
-            נדגמו {r.quality_findings.draftsSampled} טיוטות · {r.quality_findings.findings.length} סומנו
+        <Section title="בקרת איכות" Icon={Search}>
+          <div
+            className="mb-2 text-[11.5px]"
+            style={{ color: "var(--color-ink-3)" }}
+          >
+            נדגמו {r.quality_findings.draftsSampled} טיוטות ·{" "}
+            {r.quality_findings.findings.length} סומנו
           </div>
-          <p className="mb-3 text-sm text-slate-300">
+          <p
+            className="mb-3 text-[12.5px] leading-relaxed"
+            style={{ color: "var(--color-ink-2)" }}
+          >
             {r.quality_findings.overallQualityHe}
           </p>
           {r.quality_findings.findings.length > 0 && (
@@ -138,19 +211,34 @@ export function ManagerReportCard({
                 return (
                   <div
                     key={f.draftId}
-                    className="rounded-lg p-3"
-                    style={{ background: style.bg, border: `1px solid ${style.border}` }}
+                    className="rounded-md p-3"
+                    style={{
+                      background: style.bg,
+                      border: `1px solid ${style.border}`,
+                    }}
                   >
-                    <div className="mb-1 flex items-center gap-2 text-xs">
-                      <span style={{ color: style.text }} className="font-semibold">
+                    <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px]">
+                      <span
+                        className="font-semibold"
+                        style={{ color: style.text }}
+                      >
                         {style.label}
                       </span>
-                      <span className="text-slate-500">·</span>
-                      <span className="text-slate-400">{f.issueType}</span>
-                      <span className="text-slate-500">·</span>
-                      <span className="text-slate-500">{f.draftId.slice(0, 8)}</span>
+                      <span style={{ color: "var(--color-ink-3)" }}>·</span>
+                      <span style={{ color: "var(--color-ink-2)" }}>
+                        {f.issueType}
+                      </span>
+                      <span style={{ color: "var(--color-ink-3)" }}>·</span>
+                      <span style={{ color: "var(--color-ink-3)" }}>
+                        {f.draftId.slice(0, 8)}
+                      </span>
                     </div>
-                    <p className="text-sm text-slate-200">{f.reasonHe}</p>
+                    <p
+                      className="text-[12.5px]"
+                      style={{ color: "var(--color-ink)" }}
+                    >
+                      {f.reasonHe}
+                    </p>
                   </div>
                 );
               })}
@@ -159,52 +247,84 @@ export function ManagerReportCard({
         </Section>
 
         {/* 3. System Health */}
-        <Section title="בריאות מערכת" icon="❤️">
-          <div className="mb-2 flex items-center gap-3 text-xs text-slate-400">
+        <Section title="בריאות מערכת" Icon={Heart}>
+          <div
+            className="mb-2 flex flex-wrap items-center gap-3 text-[11.5px]"
+            style={{ color: "var(--color-ink-3)" }}
+          >
             <span>עלות בחלון: ₪{r.system_health.costWindowIls.toFixed(3)}</span>
             {r.system_health.costAnomalyDetected && (
-              <span className="rounded bg-amber-500/15 border border-amber-500/40 px-2 py-0.5 text-amber-300">
+              <span
+                className="rounded-md px-2 py-0.5 text-[10.5px] font-semibold"
+                style={{
+                  background: "rgba(224, 169, 61, 0.12)",
+                  border: "1px solid rgba(224, 169, 61, 0.30)",
+                  color: "var(--color-sys-amber)",
+                }}
+              >
                 חריגת עלות
               </span>
             )}
           </div>
-          <p className="mb-3 text-sm text-slate-300">{r.system_health.overallHealthHe}</p>
+          <p
+            className="mb-3 text-[12.5px] leading-relaxed"
+            style={{ color: "var(--color-ink-2)" }}
+          >
+            {r.system_health.overallHealthHe}
+          </p>
           {r.system_health.signals.length > 0 && (
             <div className="space-y-2">
-              {r.system_health.signals.map((s: SystemHealthSignal, idx: number) => {
-                const style = SEVERITY_STYLES[s.severity];
-                return (
-                  <div
-                    key={idx}
-                    className="rounded-lg p-3"
-                    style={{ background: style.bg, border: `1px solid ${style.border}` }}
-                  >
-                    <div className="mb-1 flex items-center gap-2 text-xs">
-                      <span style={{ color: style.text }} className="font-semibold">
-                        {style.label}
-                      </span>
-                      <span className="text-slate-500">·</span>
-                      <span className="text-slate-400">{s.anomalyType}</span>
-                      {s.agentId && (
-                        <>
-                          <span className="text-slate-500">·</span>
-                          <span className="text-slate-400">
-                            {AGENT_LABELS[s.agentId] ?? s.agentId}
-                          </span>
-                        </>
-                      )}
+              {r.system_health.signals.map(
+                (s: SystemHealthSignal, idx: number) => {
+                  const style = SEVERITY_STYLES[s.severity];
+                  return (
+                    <div
+                      key={idx}
+                      className="rounded-md p-3"
+                      style={{
+                        background: style.bg,
+                        border: `1px solid ${style.border}`,
+                      }}
+                    >
+                      <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px]">
+                        <span
+                          className="font-semibold"
+                          style={{ color: style.text }}
+                        >
+                          {style.label}
+                        </span>
+                        <span style={{ color: "var(--color-ink-3)" }}>·</span>
+                        <span style={{ color: "var(--color-ink-2)" }}>
+                          {s.anomalyType}
+                        </span>
+                        {s.agentId && (
+                          <>
+                            <span style={{ color: "var(--color-ink-3)" }}>
+                              ·
+                            </span>
+                            <span style={{ color: "var(--color-ink-2)" }}>
+                              {AGENT_LABELS[s.agentId] ?? s.agentId}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <p
+                        className="text-[12.5px]"
+                        style={{ color: "var(--color-ink)" }}
+                      >
+                        {s.descriptionHe}
+                      </p>
                     </div>
-                    <p className="text-sm text-slate-200">{s.descriptionHe}</p>
-                  </div>
-                );
-              })}
+                  );
+                }
+              )}
             </div>
           )}
         </Section>
 
         {/* 4. Growth Metrics */}
-        <Section title="מדדי צמיחה" icon="📈">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+        <Section title="מדדי צמיחה" Icon={TrendingUp}>
+          <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
             <Metric
               label="שיעור אישור"
               value={formatPercent(r.growth_metrics.approvalRate)}
@@ -228,7 +348,10 @@ export function ManagerReportCard({
               critical={r.growth_metrics.staleBlazingLeadsCount > 0}
             />
           </div>
-          <p className="text-sm text-slate-300">
+          <p
+            className="text-[12.5px] leading-relaxed"
+            style={{ color: "var(--color-ink-2)" }}
+          >
             {r.growth_metrics.interpretationHe}
           </p>
         </Section>
@@ -237,10 +360,16 @@ export function ManagerReportCard({
         <RecommendationBlock rec={r.recommendation} />
       </div>
 
-      <div className="mt-4 border-t border-slate-700 pt-3 text-xs text-slate-500">
+      <div
+        className="mt-4 border-t pt-3 text-[11px]"
+        style={{
+          borderColor: "var(--color-hairline)",
+          color: "var(--color-ink-3)",
+        }}
+      >
         דוח נוצר: {formatDate(report.created_at)}
       </div>
-    </div>
+    </Glass>
   );
 }
 
@@ -250,17 +379,30 @@ export function ManagerReportCard({
 
 function Section({
   title,
-  icon,
+  Icon,
   children,
 }: {
   title: string;
-  icon: string;
+  Icon: typeof Bot;
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-slate-700 bg-slate-950/30 p-4">
-      <h3 className="mb-2 flex items-center gap-2 text-base font-semibold text-slate-100">
-        <span>{icon}</span>
+    <div
+      className="rounded-[14px] p-4"
+      style={{
+        background: "rgba(255,255,255,0.5)",
+        border: "1px solid var(--color-hairline)",
+      }}
+    >
+      <h3
+        className="mb-2.5 flex items-center gap-2 text-[14px] font-semibold tracking-tight"
+        style={{ color: "var(--color-ink)" }}
+      >
+        <Icon
+          size={14}
+          strokeWidth={1.75}
+          style={{ color: "var(--color-ink-2)" }}
+        />
         {title}
       </h3>
       {children}
@@ -279,54 +421,104 @@ function Metric({
   warning?: boolean;
   critical?: boolean;
 }) {
-  const colorClass = critical
-    ? "text-red-300"
+  const valueColor = critical
+    ? "var(--color-sys-pink)"
     : warning
-    ? "text-amber-300"
-    : "text-slate-100";
+    ? "var(--color-sys-amber)"
+    : "var(--color-ink)";
   return (
-    <div className="rounded bg-slate-900/60 px-3 py-2">
-      <div className="text-[10px] text-slate-500 mb-0.5">{label}</div>
-      <div className={`text-lg font-bold ${colorClass}`}>{value}</div>
+    <div
+      className="rounded-md px-3 py-2"
+      style={{ background: "rgba(255,255,255,0.7)" }}
+    >
+      <div
+        className="mb-0.5 text-[10px]"
+        style={{ color: "var(--color-ink-3)" }}
+      >
+        {label}
+      </div>
+      <div
+        className="text-[18px] font-semibold tracking-[-0.02em]"
+        style={{ color: valueColor }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
 
 function RecommendationBlock({ rec }: { rec: ManagerRecommendation }) {
-  const meta = REC_TYPE_LABELS[rec.type] ?? { label: rec.type, icon: "💡" };
+  const meta = REC_TYPE_META[rec.type] ?? { label: rec.type, Icon: Lightbulb };
   const isNoAction = rec.type === "no_action_needed";
+  const RecIcon = meta.Icon;
+
   return (
     <div
-      className="rounded-lg p-4"
+      className="rounded-[14px] p-4"
       style={{
         background: isNoAction
-          ? "rgba(34, 197, 94, 0.06)"
-          : "rgba(139, 92, 246, 0.08)",
+          ? "var(--color-sys-green-soft)"
+          : "var(--color-sys-blue-soft)",
         border: isNoAction
-          ? "1px solid rgba(34, 197, 94, 0.30)"
-          : "1px solid rgba(139, 92, 246, 0.30)",
+          ? "1px solid rgba(48, 179, 107, 0.25)"
+          : "1px solid rgba(10, 132, 255, 0.25)",
       }}
     >
-      <div className="mb-2 flex items-center gap-2 text-xs">
-        <span className="text-base">{meta.icon}</span>
-        <span className={isNoAction ? "text-emerald-300" : "text-violet-300"}>
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[11.5px]">
+        <RecIcon
+          size={13}
+          strokeWidth={1.75}
+          style={{
+            color: isNoAction
+              ? "var(--color-sys-green)"
+              : "var(--color-sys-blue)",
+          }}
+        />
+        <span
+          className="font-semibold"
+          style={{
+            color: isNoAction
+              ? "var(--color-sys-green)"
+              : "var(--color-sys-blue)",
+          }}
+        >
           {meta.label}
         </span>
         {rec.targetAgent && (
           <>
-            <span className="text-slate-500">·</span>
-            <span className="text-slate-400">
+            <span style={{ color: "var(--color-ink-3)" }}>·</span>
+            <span style={{ color: "var(--color-ink-2)" }}>
               {AGENT_LABELS[rec.targetAgent] ?? rec.targetAgent}
             </span>
           </>
         )}
       </div>
-      <h4 className="mb-1 text-base font-bold text-slate-100">{rec.titleHe}</h4>
-      <p className="mb-2 text-sm text-slate-300">{rec.detailHe}</p>
+      <h4
+        className="mb-1 text-[15px] font-semibold tracking-tight"
+        style={{ color: "var(--color-ink)" }}
+      >
+        {rec.titleHe}
+      </h4>
+      <p
+        className="mb-2 text-[12.5px] leading-relaxed"
+        style={{ color: "var(--color-ink-2)" }}
+      >
+        {rec.detailHe}
+      </p>
       {!isNoAction && (
-        <div className="rounded bg-slate-950/40 px-3 py-2 text-xs">
-          <span className="font-medium text-slate-400">פעולה מוצעת: </span>
-          <span className="text-slate-200">{rec.suggestedActionHe}</span>
+        <div
+          className="rounded-md px-3 py-2 text-[11.5px]"
+          style={{ background: "rgba(255,255,255,0.6)" }}
+        >
+          <span
+            className="font-medium"
+            style={{ color: "var(--color-ink-3)" }}
+          >
+            פעולה מוצעת:{" "}
+          </span>
+          <span style={{ color: "var(--color-ink)" }}>
+            {rec.suggestedActionHe}
+          </span>
         </div>
       )}
     </div>

@@ -8,53 +8,57 @@ import {
   type ClassifiedLead,
 } from "@/app/dashboard/actions";
 import type { LeadBucket } from "@/lib/agents/types";
+import { Glass } from "@/components/ui/glass";
+import { Check, X, Phone, Mail, Camera, MessageCircle, Globe } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
-// Bucket styling
+// Bucket styling — Calm Frosted edition
+// Subtle accent colors, no neon. Status conveyed through label + icon.
 // ─────────────────────────────────────────────────────────────
 
 const BUCKET_CONFIG: Record<
   LeadBucket,
-  { label: string; emoji: string; bg: string; border: string; text: string; order: number }
+  {
+    label: string;
+    emoji: string;
+    accent: string;
+    accentSoft: string;
+    order: number;
+  }
 > = {
   blazing: {
     label: "בוער",
     emoji: "🔥",
-    bg: "rgba(239, 68, 68, 0.10)",
-    border: "rgba(239, 68, 68, 0.40)",
-    text: "#FCA5A5",
+    accent: "var(--color-sys-pink)",
+    accentSoft: "rgba(214, 51, 108, 0.10)",
     order: 1,
   },
   hot: {
     label: "חם",
     emoji: "🟠",
-    bg: "rgba(249, 115, 22, 0.10)",
-    border: "rgba(249, 115, 22, 0.40)",
-    text: "#FDBA74",
+    accent: "var(--color-sys-amber)",
+    accentSoft: "rgba(224, 169, 61, 0.12)",
     order: 2,
   },
   warm: {
     label: "פושר",
     emoji: "🟡",
-    bg: "rgba(252, 211, 77, 0.10)",
-    border: "rgba(252, 211, 77, 0.40)",
-    text: "#FDE68A",
+    accent: "#C99D2E",
+    accentSoft: "rgba(201, 157, 46, 0.10)",
     order: 3,
   },
   cold: {
     label: "קר",
     emoji: "🔵",
-    bg: "rgba(59, 130, 246, 0.10)",
-    border: "rgba(59, 130, 246, 0.40)",
-    text: "#93C5FD",
+    accent: "var(--color-sys-blue)",
+    accentSoft: "var(--color-sys-blue-soft)",
     order: 4,
   },
   spam_or_unclear: {
     label: "ספאם / לא ברור",
     emoji: "🚫",
-    bg: "rgba(100, 116, 139, 0.10)",
-    border: "rgba(100, 116, 139, 0.40)",
-    text: "#94A3B8",
+    accent: "var(--color-ink-3)",
+    accentSoft: "rgba(114, 121, 136, 0.10)",
     order: 5,
   },
 };
@@ -68,16 +72,13 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Contact link logic — turns the handle into a tappable action
-// based on the channel. Owner taps → their phone/mail/IG opens
-// with the recipient pre-filled. We do NOT auto-call/auto-send;
-// the owner still presses "send" themselves.
+// Contact link logic
 // ─────────────────────────────────────────────────────────────
 
 interface ContactAction {
   href: string;
   display: string;
-  icon: string;
+  Icon: typeof Phone;
   label: string;
 }
 
@@ -90,14 +91,12 @@ function buildContactAction(
   switch (source) {
     case "whatsapp":
     case "phone_call_transcript": {
-      // Israeli mobile normalization: 0501234567 → 972501234567
       const digits = handle.replace(/\D/g, "");
       const intl = digits.startsWith("972")
         ? digits
         : digits.startsWith("0")
         ? `972${digits.slice(1)}`
         : digits;
-      // Pretty display: 050-123-4567
       const local = digits.startsWith("972") ? `0${digits.slice(3)}` : digits;
       const display =
         local.length === 10
@@ -106,7 +105,7 @@ function buildContactAction(
       return {
         href: source === "whatsapp" ? `https://wa.me/${intl}` : `tel:+${intl}`,
         display,
-        icon: source === "whatsapp" ? "💬" : "📞",
+        Icon: source === "whatsapp" ? MessageCircle : Phone,
         label: source === "whatsapp" ? "פתח WhatsApp" : "חייג",
       };
     }
@@ -115,7 +114,7 @@ function buildContactAction(
       return {
         href: `mailto:${handle}`,
         display: handle,
-        icon: "✉️",
+        Icon: Mail,
         label: "שלח email",
       };
     }
@@ -125,25 +124,24 @@ function buildContactAction(
       return {
         href: `https://instagram.com/${username}`,
         display: `@${username}`,
-        icon: "📷",
+        Icon: Camera,
         label: "פתח Instagram",
       };
     }
 
     case "website_form":
-      // Website forms usually leave an email; treat as email if it looks like one.
       if (handle.includes("@")) {
         return {
           href: `mailto:${handle}`,
           display: handle,
-          icon: "✉️",
+          Icon: Mail,
           label: "שלח email",
         };
       }
       return {
         href: "#",
         display: handle,
-        icon: "🌐",
+        Icon: Globe,
         label: "פרטי קשר",
       };
 
@@ -188,64 +186,101 @@ function LeadCard({
   const contact = buildContactAction(lead.source, lead.source_handle);
 
   return (
-    <div
-      className="rounded-xl p-4"
-      style={{
-        background: config.bg,
-        border: `1px solid ${config.border}`,
-      }}
-    >
+    <Glass className="p-4">
       {/* Header: source + age */}
-      <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
+      <div
+        className="mb-2 flex items-center justify-between text-[11px]"
+        style={{ color: "var(--color-ink-3)" }}
+      >
         <span>{SOURCE_LABELS[lead.source] ?? lead.source}</span>
         <span>{ageLabel}</span>
       </div>
 
       {/* Display name + clickable contact */}
       <div className="mb-3">
-        <div className="text-sm font-bold text-slate-100">
+        <div
+          className="text-[14px] font-semibold tracking-tight"
+          style={{ color: "var(--color-ink)" }}
+        >
           {lead.display_name ?? "אנונימי"}
         </div>
         {contact && (
           <a
             href={contact.href}
             target={contact.href.startsWith("http") ? "_blank" : undefined}
-            rel={contact.href.startsWith("http") ? "noopener noreferrer" : undefined}
-            className="mt-1 inline-flex items-center gap-1 rounded bg-slate-800/60 px-2 py-0.5 text-xs text-slate-200 hover:bg-slate-700"
+            rel={
+              contact.href.startsWith("http")
+                ? "noopener noreferrer"
+                : undefined
+            }
+            className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] transition-colors hover:bg-white"
             dir="ltr"
-            style={{ direction: "ltr", unicodeBidi: "embed" }}
+            style={{
+              direction: "ltr",
+              unicodeBidi: "embed",
+              background: "rgba(255,255,255,0.7)",
+              borderColor: "var(--color-hairline)",
+              color: "var(--color-ink-2)",
+            }}
             title={contact.label}
           >
-            <span>{contact.icon}</span>
+            <contact.Icon size={11} strokeWidth={1.75} />
             <span>{contact.display}</span>
           </a>
         )}
       </div>
 
       {/* Message preview */}
-      <p className="mb-3 text-sm text-slate-300 leading-relaxed line-clamp-3">
+      <p
+        className="mb-3 line-clamp-3 text-[12.5px] leading-relaxed"
+        style={{ color: "var(--color-ink-2)" }}
+      >
         {lead.raw_message}
       </p>
 
       {/* Behavior signals row */}
       <div className="mb-3 flex flex-wrap gap-1 text-[10px]">
         {intentCount > 0 && (
-          <span className="rounded bg-slate-700/50 px-1.5 py-0.5 text-slate-300">
+          <span
+            className="rounded-md px-1.5 py-0.5"
+            style={{
+              background: "rgba(15,20,30,0.05)",
+              color: "var(--color-ink-2)",
+            }}
+          >
             כוונה ×{intentCount}
           </span>
         )}
         {urgencyCount > 0 && (
-          <span className="rounded bg-red-700/30 px-1.5 py-0.5 text-red-200">
+          <span
+            className="rounded-md px-1.5 py-0.5"
+            style={{
+              background: "rgba(214, 51, 108, 0.08)",
+              color: "var(--color-sys-pink)",
+            }}
+          >
             דחיפות ×{urgencyCount}
           </span>
         )}
         {hasProduct && (
-          <span className="rounded bg-emerald-700/30 px-1.5 py-0.5 text-emerald-200">
+          <span
+            className="rounded-md px-1.5 py-0.5"
+            style={{
+              background: "var(--color-sys-green-soft)",
+              color: "var(--color-sys-green)",
+            }}
+          >
             מוצר ספציפי
           </span>
         )}
         {hasBudget && (
-          <span className="rounded bg-cyan-700/30 px-1.5 py-0.5 text-cyan-200">
+          <span
+            className="rounded-md px-1.5 py-0.5"
+            style={{
+              background: "var(--color-sys-blue-soft)",
+              color: "var(--color-sys-blue)",
+            }}
+          >
             תקציב
           </span>
         )}
@@ -253,19 +288,36 @@ function LeadCard({
 
       {/* Reason from LLM */}
       {lead.reason && (
-        <div className="mb-2 rounded border border-slate-700 bg-slate-950/50 p-2">
-          <div className="mb-0.5 text-[10px] font-medium text-slate-500">
+        <div
+          className="mb-2 rounded-md p-2"
+          style={{
+            background: "rgba(15,20,30,0.04)",
+            border: "1px solid var(--color-hairline)",
+          }}
+        >
+          <div
+            className="mb-0.5 text-[10px] font-medium"
+            style={{ color: "var(--color-ink-3)" }}
+          >
             למה זה?
           </div>
-          <div className="text-xs text-slate-300">{lead.reason}</div>
+          <div
+            className="text-[11.5px]"
+            style={{ color: "var(--color-ink-2)" }}
+          >
+            {lead.reason}
+          </div>
         </div>
       )}
 
       {/* Suggested action */}
       {lead.suggested_action && (
         <div
-          className="mb-3 rounded p-2 text-xs"
-          style={{ background: config.bg, color: config.text }}
+          className="mb-3 rounded-md p-2 text-[11.5px]"
+          style={{
+            background: config.accentSoft,
+            color: config.accent,
+          }}
         >
           <span className="font-semibold">המלצה: </span>
           {lead.suggested_action}
@@ -277,19 +329,30 @@ function LeadCard({
         <button
           onClick={onContact}
           disabled={isPending}
-          className="flex-1 rounded bg-teal-500 px-2 py-1 text-xs font-semibold text-slate-900 hover:bg-teal-400 disabled:opacity-50"
+          className="flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11.5px] font-semibold text-white transition-all disabled:opacity-50"
+          style={{
+            background: "var(--color-sys-green)",
+            boxShadow: "0 4px 12px rgba(48,179,107,0.28)",
+          }}
         >
-          ✓ סומן ככת
+          <Check size={11} strokeWidth={2.5} />
+          סומן ככת
         </button>
         <button
           onClick={onDismiss}
           disabled={isPending}
-          className="flex-1 rounded border border-slate-600 bg-slate-800 px-2 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+          className="flex flex-1 items-center justify-center gap-1 rounded-md border px-2 py-1.5 text-[11.5px] font-medium transition-all disabled:opacity-50"
+          style={{
+            background: "rgba(255,255,255,0.7)",
+            borderColor: "var(--color-hairline)",
+            color: "var(--color-ink-2)",
+          }}
         >
-          ✕ דחה
+          <X size={11} strokeWidth={2} />
+          דחה
         </button>
       </div>
-    </div>
+    </Glass>
   );
 }
 
@@ -345,24 +408,33 @@ export function LeadsBoard({ leads }: { leads: ClassifiedLead[] }) {
           const items = grouped[bucket];
           return (
             <div key={bucket} className="space-y-3">
-              <div
-                className="rounded-lg p-3 text-center"
-                style={{
-                  background: config.bg,
-                  border: `1px solid ${config.border}`,
-                }}
-              >
-                <div className="text-2xl">{config.emoji}</div>
-                <div className="text-sm font-bold" style={{ color: config.text }}>
+              {/* Column header */}
+              <Glass deep className="px-3 py-2.5 text-center">
+                <div className="text-[20px] leading-none">{config.emoji}</div>
+                <div
+                  className="mt-1 text-[13px] font-semibold tracking-tight"
+                  style={{ color: config.accent }}
+                >
                   {config.label}
                 </div>
-                <div className="text-xs text-slate-500">
+                <div
+                  className="text-[11px]"
+                  style={{ color: "var(--color-ink-3)" }}
+                >
                   {items.length} {items.length === 1 ? "ליד" : "לידים"}
                 </div>
-              </div>
+              </Glass>
+
+              {/* Cards */}
               <div className="space-y-3">
                 {items.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-slate-700 p-4 text-center text-xs text-slate-500">
+                  <div
+                    className="rounded-[14px] border border-dashed p-4 text-center text-[11.5px]"
+                    style={{
+                      borderColor: "var(--color-hairline-s)",
+                      color: "var(--color-ink-3)",
+                    }}
+                  >
                     אין לידים
                   </div>
                 ) : (
@@ -382,23 +454,29 @@ export function LeadsBoard({ leads }: { leads: ClassifiedLead[] }) {
         })}
       </div>
 
+      {/* Spam/unclear collapsed section */}
       {grouped.spam_or_unclear.length > 0 && (
-        <details className="rounded-xl border border-slate-700 bg-slate-900/50 p-4">
-          <summary className="cursor-pointer text-sm font-medium text-slate-400 hover:text-slate-200">
-            🚫 ספאם / לא ברור ({grouped.spam_or_unclear.length})
-          </summary>
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {grouped.spam_or_unclear.map((lead) => (
-              <LeadCard
-                key={lead.id}
-                lead={lead}
-                onContact={() => handleContact(lead.id)}
-                onDismiss={() => handleDismiss(lead.id)}
-                isPending={isPending && actioningId === lead.id}
-              />
-            ))}
-          </div>
-        </details>
+        <Glass className="p-4">
+          <details>
+            <summary
+              className="cursor-pointer text-[13px] font-medium transition-colors"
+              style={{ color: "var(--color-ink-2)" }}
+            >
+              🚫 ספאם / לא ברור ({grouped.spam_or_unclear.length})
+            </summary>
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {grouped.spam_or_unclear.map((lead) => (
+                <LeadCard
+                  key={lead.id}
+                  lead={lead}
+                  onContact={() => handleContact(lead.id)}
+                  onDismiss={() => handleDismiss(lead.id)}
+                  isPending={isPending && actioningId === lead.id}
+                />
+              ))}
+            </div>
+          </details>
+        </Glass>
       )}
     </div>
   );
