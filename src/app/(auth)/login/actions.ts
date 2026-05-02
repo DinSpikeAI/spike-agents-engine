@@ -11,7 +11,6 @@ import { createClient } from "@/lib/supabase/server";
 import { headers } from "next/headers";
 
 export async function sendMagicLink(email: string) {
-  // Validation
   if (!email || !email.includes("@") || email.length < 5) {
     return { error: "כתובת מייל לא תקינה" };
   }
@@ -24,9 +23,6 @@ export async function sendMagicLink(email: string) {
 
   const supabase = await createClient();
 
-  // Send magic link + OTP code.
-  // Supabase email template should include both {{ .ConfirmationURL }} and
-  // {{ .Token }}. The user can use whichever works (link OR 6-digit code).
   const { error } = await supabase.auth.signInWithOtp({
     email: email.trim().toLowerCase(),
     options: {
@@ -53,40 +49,77 @@ export async function sendMagicLink(email: string) {
 
 /**
  * Verifies a 6-digit OTP code that the user copied from their email.
- * This is the fallback when the magic link doesn't work
- * (e.g., on mobile, in-app browsers, or after email scanner consumed the link).
+ *
+ * KNOWN SUPABASE BUG: For first-time users, the type "magiclink" returns
+ * "Token has expired or is invalid" even with a fresh, valid token.
+ * The workaround is a fallback chain: try "email" first (modern, works for
+ * existing users), then "magiclink" (legacy), then "signup" (first-time).
+ *
+ * See: https://github.com/supabase/gotrue/issues/876
  */
 export async function verifyOtpCode(email: string, token: string) {
   if (!email || !email.includes("@")) {
     return { error: "כתובת מייל לא תקינה" };
   }
 
-  // Sanitize the OTP — strip non-digits, must be exactly 6 chars
   const cleanToken = token.replace(/\D/g, "");
   if (cleanToken.length !== 6) {
     return { error: "הקוד חייב להיות 6 ספרות" };
   }
 
+  const cleanEmail = email.trim().toLowerCase();
   const supabase = await createClient();
 
-  const { error } = await supabase.auth.verifyOtp({
-    email: email.trim().toLowerCase(),
-    token: cleanToken,
-    type: "email",
-  });
+  // Fallback chain — Supabase's auth API is inconsistent for first-time users.
+  // We try the modern "email" type first; if that fails with token-related
+  // errors, fall through to "magiclink" (legacy alias) and "signup" (new user).
+  const types: Array<"email" | "magiclink" | "signup"> = [
+    "email",
+    "magiclink",
+    "signup",
+  ];
 
-  if (error) {
-    console.error("[verifyOtpCode]", error);
+  let lastError: { message: string } | null = null;
 
-    if (error.message.includes("expired")) {
-      return { error: "הקוד פג תוקף. בקש קוד חדש." };
+  for (const type of types) {
+    const { error } = await supabase.auth.verifyOtp({
+      email: cleanEmail,
+      token: cleanToken,
+      type,
+    });
+
+    if (!error) {
+      return { success: true };
     }
-    if (error.message.includes("invalid") || error.message.includes("Token")) {
-      return { error: "קוד שגוי. בדוק את המייל ונסה שוב." };
-    }
 
-    return { error: "שגיאה באימות הקוד. נסה שוב." };
+    lastError = error;
+
+    // If error is rate limit or "user not found" — bail out, don't retry
+    const isFatalError =
+      error.message.includes("rate limit") ||
+      error.message.includes("not found") ||
+      error.message.includes("invalid email");
+
+    if (isFatalError) break;
+
+    // Otherwise, log and try the next type
+    console.warn(
+      `[verifyOtpCode] type "${type}" failed: ${error.message}, trying next…`
+    );
   }
 
-  return { success: true };
+  // All types failed — return friendly error based on last failure
+  console.error("[verifyOtpCode] all types failed", lastError);
+
+  if (lastError?.message.includes("expired")) {
+    return { error: "הקוד פג תוקף. בקש קוד חדש." };
+  }
+  if (
+    lastError?.message.toLowerCase().includes("invalid") ||
+    lastError?.message.toLowerCase().includes("token")
+  ) {
+    return { error: "קוד שגוי. בדוק את המייל ונסה שוב." };
+  }
+
+  return { error: "שגיאה באימות הקוד. נסה שוב." };
 }
