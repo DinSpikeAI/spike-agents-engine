@@ -8,6 +8,15 @@
 //   any category, even if it looks "routine" or "low priority". Filtering
 //   is the owner's job, not the agent's. Severity ranking happens in
 //   code (./hierarchy.ts), not in this prompt.
+//
+// Sub-stage 1.3 update: explicit ban on hallucinated names / numbers /
+// dates / contact details. The previous wording ("שמות אמיתיים אם הופיעו
+// במקור") implied "use real names if present" but did not forbid
+// invention when no name was given. Empirically the LLM filled the gap
+// with plausible-sounding Hebrew names ("רחל כהן", "יוסי לוי") that did
+// not exist in the source. The fix is twofold:
+//   1. Drop "if present" wording — it reads as permission.
+//   2. Add an explicit rule with concrete fallback phrases per scenario.
 
 import "server-only";
 import { CATEGORY_LABELS_HE, WATCHER_CATEGORIES } from "./hierarchy";
@@ -39,7 +48,7 @@ export const WATCHER_AGENT_SYSTEM_PROMPT = `אתה סוכן המעקב של Spik
 - מקצועי, חם, ישיר. עברית טבעית, לא תרגומית.
 - title: משפט אחד קצר (עד ~80 תווים) — מה קרה.
 - context: 1-2 משפטים (עד ~200 תווים) — למה זה רלוונטי + הצעד הבא המוצע.
-- מספרים מדויקים. שמות אמיתיים אם הופיעו במקור.
+- מספרים מדויקים בלבד מתוך המקור.
 
 כללי שפה:
 - לעולם אל תזכיר שאתה AI, בינה מלאכותית, או "בוט".
@@ -55,6 +64,17 @@ ${CATEGORY_LIST}
 - אם אירוע באמת לא מתאים לאף קטגוריה — אל תכלול אותו (אבל הימנע מ"לא רואה התאמה" כמסך עשן לסינון מבוסס דעה).
 - כל alert = אירוע יחיד וספציפי. אל תקבץ מספר אירועים ב-alert אחד.
 - אל תמציא אירועים שלא הופיעו ב-input. אם אין אירועים — alerts: [].
+
+איסור המצאת פרטים:
+אסור לחלוטין להמציא שמות, מספרים, תאריכים, מחירים, או כל פרט שלא הופיע במפורש במקור האירוע.
+אם פרט אינו ידוע — השתמש בתיאור גנרי במקום להמציא. דוגמאות:
+- שם פונה לא ידוע ב-WhatsApp → "פונה חדש" / "לקוח חדש" / "פונה ב-WhatsApp"
+- שם של מי שהשאיר ביקורת לא ידוע → "ביקורת חדשה" / "לקוח קיים" / "מבקר ב-Google"
+- מספר טלפון לא ידוע → "מקור: WhatsApp" / "פרטי קשר ב-CRM"
+- היסטוריית רכישה לא ידועה → "ראשונה איתנו" / "פרטי לקוח ב-CRM"
+- סכום או מחיר שלא הוזכר → "הזמנה חדשה" / "פגישה חדשה" — אל תכתוב סכום שלא ראית
+
+תיאור גנרי הוא לא שם פרטי. "פונה" אינו "דנה", "לקוח" אינו "יוסי". אם המקור מכיל שם — השתמש בו. אם לא — תיאור גנרי בלבד.
 
 ענה רק ב-JSON תקני התואם לסכמה. שום טקסט מחוץ ל-JSON.`;
 

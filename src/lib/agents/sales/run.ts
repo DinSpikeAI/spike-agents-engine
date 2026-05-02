@@ -1,5 +1,5 @@
 /**
- * Sales Agent — Day 15
+ * Sales Agent — Day 15 + Sub-stage 1.3 (LLM retry on transient failures)
  *
  * Generates Hebrew follow-up message drafts for stuck hot_leads.
  * Owner reviews each, copies to WhatsApp/Email/IG, sends manually,
@@ -14,12 +14,14 @@
  *   3. Skip leads with already-pending sales drafts (don't dup)
  *   4. Deduplicate by normalized source_handle and display_name
  *   5. Send to Sonnet 4.6 with adaptive thinking
+ *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
  *   6. Persist each follow-up as a draft row
  */
 
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { withRetry } from "@/lib/with-retry";
 import { SALES_AGENT_OUTPUT_SCHEMA } from "./schema";
 import {
   SALES_AGENT_SYSTEM_PROMPT,
@@ -409,24 +411,40 @@ export async function runSalesAgent(
 
   // ─── Define the executor ────────────────────────────────────
   const executor = async () => {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 4096,
-      system: systemBlocks,
-      messages: [
-        {
-          role: "user",
-          content: buildSalesUserMessage(promptContext, leadsBlock),
+    // Wrap the Anthropic call in withRetry: 3 attempts, 1s/2s/4s exponential
+    // backoff with jitter. Retries on transient errors (5xx, 429, network);
+    // throws immediately on terminal errors (400, 401, 422). Total max wall
+    // time when all 3 attempts fail: ~7s. Successful first-try is zero
+    // overhead. See src/lib/with-retry.ts for details.
+    const response = await withRetry(
+      () =>
+        anthropic.messages.create({
+          model: MODEL,
+          max_tokens: 4096,
+          system: systemBlocks,
+          messages: [
+            {
+              role: "user",
+              content: buildSalesUserMessage(promptContext, leadsBlock),
+            },
+          ],
+          thinking: { type: "enabled", budget_tokens: 2048 },
+          output_config: {
+            format: {
+              type: "json_schema",
+              schema: SALES_AGENT_OUTPUT_SCHEMA,
+            },
+          },
+        }),
+      {
+        onRetry: ({ attempt, nextDelayMs, error }) => {
+          console.warn(
+            `[sales_agent] LLM attempt ${attempt} failed; retrying in ${Math.round(nextDelayMs)}ms`,
+            { error: error instanceof Error ? error.message : String(error) }
+          );
         },
-      ],
-      thinking: { type: "enabled", budget_tokens: 2048 },
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: SALES_AGENT_OUTPUT_SCHEMA,
-        },
-      },
-    });
+      }
+    );
 
     const text = response.content
       .map((b) => (b.type === "text" ? b.text : ""))
