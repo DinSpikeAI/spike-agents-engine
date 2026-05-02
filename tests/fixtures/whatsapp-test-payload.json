@@ -1,0 +1,37 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "TEST_WHATSAPP_BUSINESS_ACCOUNT_ID",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "972501234567",
+              "phone_number_id": "TEST_PHONE_NUMBER_ID_001"
+            },
+            "contacts": [
+              {
+                "profile": { "name": "דנה לוי" },
+                "wa_id": "972509876543"
+              }
+            ],
+            "messages": [
+              {
+                "from": "972509876543",
+                "id": "wamid.TEST_MESSAGE_ID_001",
+                "timestamp": "1714658400",
+                "type": "text",
+                "text": {
+                  "body": "שלום, רציתי לבדוק מחירים לטיפול שיער. תוכלו לחזור אליי?"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}
