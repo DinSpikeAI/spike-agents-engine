@@ -2,7 +2,7 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-02 — Sub-stages 1.1 and 1.2 complete. WhatsApp webhook pipeline is live in development.
+> **Last updated:** 2026-05-02 — Sub-stages 1.1, 1.2, and 1.3 complete. WhatsApp webhook pipeline is live end-to-end in development with idempotency, retry logic, and quality fixes.
 
 ---
 
@@ -14,9 +14,9 @@
 - **Marketing tagline:** **"שמונה סוכנים. שקט אחד."** ("Eight agents. One quiet.") — refers to the 8 customer-facing agents. The cleanup agent is backstage.
 - **Stack:** Next.js 16.2.4 (Turbopack) + React 19.2.4 + Tailwind v4 + TypeScript · Supabase (Frankfurt) · `@anthropic-ai/sdk` (Sonnet 4.6 + Haiku 4.5; Opus 4.7 declared as future option) · Resend · Vercel · `@vercel/functions` for waitUntil background tasks.
 - **Domain:** `app.spikeai.co.il` (production) · `localhost:3000` (dev).
-- **State (May 2026):** Stage 1 of WhatsApp integration in progress. Sub-stages 1.1 (webhook receiver) and 1.2 (Watcher auto-trigger + hourly safety-net cron) are complete and deployed. Pipeline verified end-to-end at 8s latency. Pre-launch — **no real customers yet**, demo-driven path to first customer.
+- **State (May 2026):** Stage 1 of WhatsApp integration in progress. Sub-stages 1.1, 1.2, 1.3 complete. Pipeline verified end-to-end at <1s latency on happy path, with idempotency and retry. Pre-launch — **no real customers yet**, demo-driven path to first customer.
 - **Don't propose:** NPS surveys · schedule optimization for staff · contract review · crypto/Web3 · a "senior manager of agents" · OpenAI fallback · standalone mobile app · 360dialog or other BSP middlemen (we use Meta Cloud API direct).
-- **Next step:** Sub-stage 1.3 — connect Hot Leads → Sales pipeline cascade, fix Watcher prompt name-hallucination bug, add retry logic for LLM failures.
+- **Next step:** Sub-stage 1.3.5 — Anti-AI signatures audit + Sales prompt rewrite + Hot Leads → Sales cascade trigger (deferred from 1.3 because it requires the new prompt).
 
 ---
 
@@ -64,14 +64,14 @@ A full safety pipeline at `src/lib/safety/`. Every customer-facing agent's untru
 - **תיקון 13** (privacy): handled by the PII scrubber.
 
 ### 1.7 Drafts Have Expiry
-- Every draft has `expires_at`. Default: 72 hours (Day 17 audit fix #6).
+- Every draft has `expires_at`. Default: 72 hours (Day 17 audit fix #6). Sales follow-up drafts: 24 hours.
 - The cleanup agent enforces draft expiry on cron.
 
 ### 1.8 Gender Lock Is Mandatory in Hebrew Output
 - Tenants have `business_owner_gender` (זכר / נקבה).
-- Implementation: `src/lib/safety/gender-lock.ts`.
+- Implementation: `src/lib/safety/gender-lock.ts`. Used by Sales today; Reviews/Social/Manager next.
 
-### 1.9 Anti-AI-Signature Hygiene (Pending Sub-stage 1.3.5)
+### 1.9 Anti-AI-Signature Hygiene (Implemented in Sub-stage 1.3 for Watcher; full sweep in 1.3.5)
 Hebrew SMB owners can identify AI-generated content immediately. Specific anti-patterns to scrub from all drafts before owner approval:
 
 **Forbidden punctuation:**
@@ -92,7 +92,12 @@ Hebrew SMB owners can identify AI-generated content immediately. Specific anti-p
 - Drafts longer than 3 sentences (WhatsApp / DM context).
 - Openings like "מחפש/ת..." or "אני יודע ש...".
 
-Defense-in-depth: **post-processing regex** in each agent's `run.ts` (not just in the prompt) since Claude can still emit em-dashes despite explicit instructions. Implementation deferred to Sub-stage 1.3.5.
+**Forbidden hallucination** (Sub-stage 1.3 — Watcher prompt fix):
+- Names, numbers, dates, prices, contact details that did not appear in the source event.
+- Fallback phrases per scenario when data is missing: "פונה חדש", "לקוח קיים", "מקור: WhatsApp", "פרטי לקוח ב-CRM", etc.
+- Generic descriptions are not first names. "פונה" is not "דנה".
+
+Defense-in-depth: **post-processing regex** in each agent's `run.ts` (not just in the prompt) since Claude can still emit em-dashes despite explicit instructions. Implementation deferred to Sub-stage 1.3.5 across Sales, Reviews, Social.
 
 ---
 
@@ -107,6 +112,7 @@ Defense-in-depth: **post-processing regex** in each agent's `run.ts` (not just i
 - Bad idea → say it's bad. Don't soften.
 - Plan has a flaw → point it out **before** executing.
 - **"I don't know"** is preferred over a confident guess.
+- **Push back when proposals contradict CLAUDE.md.** Sub-stage 1.3 example: Dean asked for "Manager monitors Hot Leads"; this conflicted with §13 (Senior Manager Agent rejected). The correct response was to surface the conflict, propose alternatives, get explicit decision — not to silently implement.
 
 ### 2.3 PowerShell File Workflow
 1. Claude generates the **full file** in `/mnt/user-data/outputs/`.
@@ -144,14 +150,31 @@ When two route.ts files are needed in the same delivery (e.g., webhook + cron), 
 ### 2.7 Bootstrap Mode
 - Only paid expense: Anthropic API.
 - WhatsApp Business API direct = $0/month infrastructure (vs €49/mo for 360dialog BSP). Service conversations free unlimited since July 2025.
+- Verified Sub-stage 1.3 cost: **~₪0.027 per inbound WhatsApp message** (Watcher ₪0.012 + Hot Leads ₪0.015). At 100 messages/day per tenant: ~₪80/month, ~28% margin on Solo tier.
 
 ### 2.8 Verify Before Documenting
 This file was rebuilt on 2026-05-02 because the prior summary contained inferences that didn't match the codebase. **If you find a fact in this file that contradicts the code: trust the code, then update this file.**
 
-When integrating with an existing schema: **always run a quick `SELECT column_name FROM information_schema.columns` query before writing INSERTs.** Sub-stage 1.1 wasted ~20 minutes debugging two schema-mismatch errors (`type` vs `event_type`, `integrations.credentials` not existing) that a 30-second SQL audit would have caught.
+When integrating with an existing schema: **always run a quick `SELECT column_name FROM information_schema.columns` query before writing INSERTs.** Sub-stage 1.1 wasted ~20 minutes debugging two schema-mismatch errors (`type` vs `event_type`, `integrations.credentials` not existing) that a 30-second SQL audit would have caught. Sub-stage 1.3 hit this again — `hot_leads.event_id` migration didn't actually run despite "Success" message; the `PGRST204` error revealed it. Always verify with `SELECT column_name FROM information_schema.columns WHERE column_name = 'X'` after a migration.
 
 ### 2.9 Known Display Bug (Not Real)
-Claude.ai's chat sometimes wraps `INTEGRATION-NOTES.md` and similar dotted strings as malformed links. The file actually exists at `src/lib/agents/watcher/INTEGRATION-NOTES.md`. Only chat display is broken.
+Claude.ai's chat sometimes wraps `INTEGRATION-NOTES.md` and similar dotted strings as malformed links. The file actually exists at `src/lib/agents/watcher/INTEGRATION-NOTES.md`. Only chat display is broken. **Same bug affects `localhost`** — gets wrapped as `[localhost](http://localhost)` in pasted commands. PowerShell handles it (treats as array literal), but type `localhost` manually if it confuses syntax.
+
+### 2.10 PowerShell Gotchas (learned the hard way)
+- **`Tee-Object` does NOT block the prompt.** Running `npm run dev 2>&1 | Tee-Object -FilePath "dev.log"` returns control to the prompt, but if you type ANY new command in the same terminal, the dev process gets killed. Always run dev in one terminal and POSTs from a separate terminal.
+- **`Add-Content` does not add a newline before appended text.** To safely append a new env var, either prepend a newline (`-Value "`n$line"`) or use a text editor (`notepad .env.local`).
+- **`Get-Content | Select-String "<KEY>"`** — always verify after appending env vars; one missed newline corrupts everything silently.
+- **Test connection before POSTing:** `Test-NetConnection -ComputerName localhost -Port 3000 -InformationLevel Quiet` returns True/False. Use this before sending POSTs to avoid wasted debugging.
+
+### 2.11 Sub-stage Iteration Rhythm (verified pattern from Sub-stages 1.1-1.3)
+- **5-15 min:** plan + ask for verification data
+- **30-60 min:** code + self-audit
+- **5-15 min:** Move-Item + tsc + manual test
+- **5-10 min:** debug if needed (target: <2 schema mismatches per sub-stage)
+- **5 min:** commit + push
+- **Total per sub-stage:** ~1.5-2.5 hours
+
+**Sub-stages run together when same architectural pattern.** Sub-stage 1.3 was 3 parts (Hot Leads cascade + retry logic + prompt fix + Sales withRetry) — done in single session because all touched the same agent runtime + same withRetry pattern.
 
 ---
 
@@ -178,6 +201,7 @@ Claude.ai's chat sometimes wraps `INTEGRATION-NOTES.md` and similar dotted strin
 ### 3.3 LLM
 - **`@anthropic-ai/sdk`** via singleton at `src/lib/anthropic.ts` (server-only enforced)
 - **Cost tracking** in `src/lib/anthropic-pricing.ts` → writes to `cost_ledger`
+- **Retry logic** in `src/lib/with-retry.ts` (Sub-stage 1.3) — wraps `anthropic.messages.create` calls
 - Models hardcoded per agent as `const MODEL = "..." as const;` in each `run.ts`
 - The `AgentModel` type in `src/lib/agents/types.ts` permits:
   ```typescript
@@ -190,7 +214,7 @@ Claude.ai's chat sometimes wraps `INTEGRATION-NOTES.md` and similar dotted strin
 - Auth via Supabase OTP code (see §8). Magic links removed from UX 2026-05-02.
 
 ### 3.5 Background Tasks
-- **`@vercel/functions`** — for `waitUntil()` in webhook handlers. Extends function context past response so async work (LLM calls) doesn't get cut off when a quick HTTP response is required.
+- **`@vercel/functions`** (added Sub-stage 1.2) — for `waitUntil()` in webhook handlers. Extends function context past response so async work (LLM calls) doesn't get cut off when a quick HTTP response is required.
 - **Vercel Cron** — see `vercel.json`. 5 cron jobs:
   - `/api/cron/reset-monthly-spend` (1 0 1 * *)
   - `/api/cron/social` (30 5 * * 0-4)
@@ -205,7 +229,7 @@ Claude.ai's chat sometimes wraps `INTEGRATION-NOTES.md` and similar dotted strin
 
 ---
 
-## 4. Repository Layout (Audited 2026-05-02)
+## 4. Repository Layout (Audited 2026-05-02 evening)
 
 ```
 spike-engine/
@@ -223,7 +247,7 @@ spike-engine/
 │   │   │   └── actions.ts       # 1430 lines — refactor liability
 │   │   ├── api/
 │   │   │   ├── webhooks/
-│   │   │   │   └── whatsapp/route.ts   # Sub-stage 1.1 — Meta Cloud API receiver
+│   │   │   │   └── whatsapp/route.ts   # Sub-stage 1.1+1.2+1.3 — Meta Cloud API receiver
 │   │   │   └── cron/
 │   │   │       └── watcher/route.ts    # Sub-stage 1.2 — hourly safety net
 │   │   └── globals.css          # Calm Frosted design tokens
@@ -241,6 +265,7 @@ spike-engine/
 │   └── lib/
 │       ├── anthropic.ts             # Singleton SDK client (server-only)
 │       ├── anthropic-pricing.ts     # cost_ledger calculator
+│       ├── with-retry.ts            # Sub-stage 1.3 — exponential backoff utility
 │       ├── utils.ts
 │       ├── supabase/                # server.ts, client.ts, admin.ts
 │       ├── auth/                    # require-onboarded.ts guard
@@ -264,7 +289,7 @@ spike-engine/
 │           ├── manager/             # + data-collector.ts
 │           └── inventory/           # + csv-parser.ts
 ├── supabase/
-│   └── migrations/                  # 18 SQL files numbered 001–019 (one number skipped)
+│   └── migrations/                  # 19 SQL files. Latest: 020_hot_leads_event_idempotency.sql
 ├── tests/
 │   └── fixtures/
 │       └── whatsapp-test-payload.json   # Sub-stage 1.1 — Meta-shaped test payload
@@ -274,7 +299,7 @@ spike-engine/
 └── package.json
 ```
 
-**Note on `cleanup` agent:** declared in `types.ts` and `config.ts`, **but has no dedicated folder** under `src/lib/agents/`. Implementation likely lives in a cron handler or in `actions.ts`. To verify next time it's touched.
+**Note on `cleanup` agent:** declared in `types.ts` and `config.ts`, **but has no dedicated folder** under `src/lib/agents/`. Implementation likely lives in a cron handler or `actions.ts`. To verify next time it's touched.
 
 ---
 
@@ -306,18 +331,47 @@ This was wrong in earlier docs — corrected on 2026-05-02 by direct query:
 
 **Naming rule:** when adding new event types, use `<domain>_<action>` snake_case. NOT `<domain>.<action>` dot notation. Inconsistency causes silent SQL filter misses.
 
-### 5.2 Other Core Tables
+### 5.2 hot_leads Table — VERIFIED Schema (Sub-stage 1.3)
+
+19 columns. Verified 2026-05-02:
+
+| Column | Type | NOT NULL | Default |
+|--------|------|----------|---------|
+| `id` | uuid | YES | gen_random_uuid() |
+| `tenant_id` | uuid | YES | — |
+| `agent_run_id` | uuid | NO | — |
+| `source` | text | YES | — |
+| `source_handle` | text | NO | — |
+| `display_name` | text | NO | — |
+| `raw_message` | text | YES | — |
+| `received_at` | timestamptz | YES | — |
+| `score_features` | jsonb | YES | `'{}'::jsonb` |
+| `bucket` | text | NO | — |
+| `reason` | text | NO | — |
+| `suggested_action` | text | NO | — |
+| `status` | text | YES | `'classified'::text` |
+| `contacted_at` | timestamptz | NO | — |
+| `contacted_by_user_id` | uuid | NO | — |
+| `dismissed_at` | timestamptz | NO | — |
+| `dismissed_reason` | text | NO | — |
+| `created_at` | timestamptz | YES | now() |
+| `updated_at` | timestamptz | YES | now() |
+| `event_id` | text | NO | — | (added migration 020)
+
+**Idempotency (Sub-stage 1.3):** partial UNIQUE index `idx_hot_leads_tenant_event_id` on `(tenant_id, event_id) WHERE event_id IS NOT NULL`. Manual / seed leads have `event_id NULL` — unaffected. Webhook-triggered classifications use the source event's id, preventing duplicates from re-triggers.
+
+### 5.3 Other Core Tables
 
 | Table | Purpose | Key columns |
 |-------|---------|-------------|
-| `tenants` | The business (one per customer) | `id`, `name`, `vertical`, `business_owner_gender`, `config` (JSONB containing `owner_name`, `business_name`, `onboarding_completed_at`) |
+| `tenants` | The business (one per customer) | `id`, `name`, `vertical`, `business_owner_gender`, `config` (JSONB containing `owner_name`, `business_name`, `onboarding_completed_at`, `sales` config sub-object, `social` config sub-object) |
 | `user_settings` | Per-user prefs / feature flags | `user_id`, `tenant_id`, `onboarding_completed_at` |
 | `memberships` | Many-to-many user↔tenant | `user_id`, `tenant_id`, `role` |
 | `agents` | Master list (9 entries) | `id`, `slug`, `name_he`, `model` |
 | `agent_prompts` | Versioned prompts | `agent_id`, `version`, `prompt_md` |
 | `tenant_agents` | Per-tenant enablement + config | `tenant_id`, `agent_id`, `enabled` |
 | `agent_runs` | Every execution | `id`, `tenant_id`, `agent_id`, `status`, `trigger_source`, `started_at`, `finished_at`, `cost_estimate_ils`, `cost_actual_ils`, `is_mocked`, `pii_scrubbed`, `injection_attempts_detected`, `error_message` |
-| `drafts` | Awaiting owner approval | `id`, `tenant_id`, `agent_id`, `kind`, `content_he`, `status`, `expires_at` |
+| `drafts` | Awaiting owner approval | `id`, `tenant_id`, `agent_id`, `kind`, `content_he`, `status`, `expires_at`, `context` (JSONB containing `lead_id` for Sales drafts) |
 | `integrations` | Third-party connections | `tenant_id`, `provider`, others. **Schema not yet fully audited — `credentials` JSONB column does NOT exist.** Stage 2 will revisit and document. |
 | `notifications` | In-app alerts | `tenant_id`, `type`, `body_he`, `read_at` |
 | `cost_ledger` | Anthropic spend tracking | `tenant_id`, `agent_run_id`, `cost_cents` |
@@ -325,21 +379,24 @@ This was wrong in earlier docs — corrected on 2026-05-02 by direct query:
 | `outbox` | Currently unused (drafts-only) | — |
 | `idempotency_keys` | Prevent duplicate runs | `key`, `tenant_id`, `expires_at` |
 | `audit_log` | Sensitive actions | `actor_id`, `action`, `target`, `payload` |
-| `leads` | Materialized lead records | `tenant_id`, `name`, `contact`, `source`, `temperature` |
 | `manager_reports` | Weekly summaries | `tenant_id`, `week_starts_on`, `content_md` |
 | `manager_weekly_lock` | Mutex per week | `tenant_id`, `week_starts_on` |
 | `inventory_snapshots` | Parsed CSV uploads | `tenant_id`, `uploaded_at`, `items` |
 
-### 5.3 Tenant Config
+**Note on `leads` table:** earlier docs mentioned a `leads` table — verified 2026-05-02 that the actual table is `hot_leads`. No separate `leads` table exists.
+
+### 5.4 Tenant Config
 
 - `name` — business name
 - `vertical` — constraint: `general | clinic | financial | restaurant | retail | services | beauty | education`
 - `business_owner_gender` — required for Hebrew grammatical agreement
-- `config` (JSONB) contains: `owner_name`, `business_name`, `onboarding_completed_at`
+- `config` (JSONB) contains: `owner_name`, `business_name`, `onboarding_completed_at`, plus per-agent sub-objects:
+  - `config.sales` — `toneOfVoice`, `whatsappBusinessNumber`, `availabilityLink`, `servicesPricingDisclose`, `followUpAggressiveness`
+  - `config.social` — `toneOfVoice` (Sales falls back to this if its own is unset)
 
 Watcher reads `config.owner_name` directly from the JSONB column. Don't expect `tenants.owner_name` as a top-level column.
 
-### 5.4 The Events Contract — Read This Twice
+### 5.5 The Events Contract — Read This Twice
 
 **Every customer-facing agent reads from `events.payload.summary` (in Hebrew). This is the canonical contract.**
 
@@ -369,14 +426,29 @@ When a webhook integration writes to `events`:
 - `payload.summary` in Hebrew is **mandatory**.
 - Agents do not read sub-fields of `payload` directly. They read `summary`.
 - New integrations require **zero code changes** in agent files. Their only job: produce a good Hebrew `summary`.
-- Sub-fields are for the dashboard UI and materializers (e.g., `events → leads` row creation).
+- Sub-fields are for the dashboard UI and materializers (e.g., `events → hot_leads` row creation).
 
 For deep guidance on hooking up a webhook to Watcher: see `src/lib/agents/watcher/INTEGRATION-NOTES.md` (real file, despite Claude.ai's display bug — see §2.9).
 
-### 5.5 Demo Data
+### 5.6 Demo Data
 - **Demo tenant ID:** `15ef2c6e-a064-49bf-9455-217ba937ccf2`
 - **Demo tenant name:** `spikeAi`, vertical `retail`
 - **Demo user:** Dean Moshe, `din6915@gmail.com`, ID `69ea2326-a5cf-4c53-a9ec-866b70e1060f`
+
+### 5.7 PostgREST Schema Cache Lag (learned the hard way)
+
+After `ALTER TABLE` (e.g., adding a column), Supabase's REST API may continue returning `PGRST204` ("column not found in schema cache") for several minutes despite the column existing in Postgres. The `42703` from postgres followed by `PGRST204` from PostgREST is the signature.
+
+**Fix:**
+```sql
+NOTIFY pgrst, 'reload schema';
+```
+
+Always run this immediately after any migration that adds a column. Verify with:
+```sql
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'X' AND column_name = 'Y';
+```
 
 ---
 
@@ -388,16 +460,16 @@ The product surface is 8 agents. The marketing tagline **"שמונה סוכני�
 
 All 8 run on real DB events as of May 2026. Models verified directly from each `src/lib/agents/<name>/run.ts`.
 
-| # | Agent | `AgentId` | Model | Trigger | Output | Folder extras |
-|---|-------|-----------|-------|---------|--------|---------------|
-| 1 | **Manager** | `manager` | `claude-sonnet-4-6` | Weekly cron (Sunday) | `manager_reports` row | + `data-collector.ts` |
-| 2 | **Morning** | `morning` | `claude-haiku-4-5` | Daily cron (07:00 IL) | `drafts` (kind=`morning_brief`) | — |
-| 3 | **Watcher** | `watcher` | `claude-haiku-4-5` | Real-time on `events` insert (webhook) + hourly cron safety net | Classification → routes to other agents | + `hierarchy.ts`, `INTEGRATION-NOTES.md` |
-| 4 | **Reviews** | `reviews` | `claude-sonnet-4-6` | New review event | `drafts` (kind=`review_response`) | — |
-| 5 | **Hot Leads** | `hot_leads` | `claude-haiku-4-5` | New lead event | Classification: `cold` / `warm` / `hot` / `burning` | — |
-| 6 | **Social** | `social` | `claude-sonnet-4-6` | Cron 05:30 (skips Saturday — Day 17 fix #5) | `drafts` (kind=`social_post`) | — |
-| 7 | **Sales** | `sales` | `claude-sonnet-4-6` | Stale lead detection cron (07:30) | `drafts` (kind=`whatsapp_followup`) | — |
-| 8 | **Inventory** | `inventory` | `claude-sonnet-4-6` | Cron 05:30 Sun/Wed | `drafts` (kind=`inventory_analysis`) | + `csv-parser.ts` |
+| # | Agent | `AgentId` | Model | Trigger | Output | withRetry? |
+|---|-------|-----------|-------|---------|--------|-----------|
+| 1 | **Manager** | `manager` | `claude-sonnet-4-6` | Weekly cron (Sunday) | `manager_reports` row | No (1.5+) |
+| 2 | **Morning** | `morning` | `claude-haiku-4-5` | Daily cron (07:00 IL) | `drafts` (kind=`morning_brief`) | No (1.5+) |
+| 3 | **Watcher** | `watcher` | `claude-haiku-4-5` | Real-time on `events` insert (webhook) + hourly cron safety net | Classification → routes to dashboard alerts | ✅ Yes (1.3) |
+| 4 | **Reviews** | `reviews` | `claude-sonnet-4-6` | New review event | `drafts` (kind=`review_response`) | No (1.5+) |
+| 5 | **Hot Leads** | `hot_leads` | `claude-haiku-4-5` | Real-time on `events` insert (webhook) | Classification: `cold` / `warm` / `hot` / `blazing` / `spam_or_unclear`. Persists to `hot_leads` table. | ✅ Yes (1.3) |
+| 6 | **Social** | `social` | `claude-sonnet-4-6` | Cron 05:30 (skips Saturday — Day 17 fix #5) | `drafts` (kind=`social_post`) | No (1.5+) |
+| 7 | **Sales** | `sales` | `claude-sonnet-4-6` + adaptive thinking | Stale lead detection cron (07:30) | `drafts` (kind=`sales_followup`) | ✅ Yes (1.3) |
+| 8 | **Inventory** | `inventory` | `claude-sonnet-4-6` | Cron 05:30 Sun/Wed | `drafts` (kind=`inventory_analysis`) | No (1.5+) |
 
 Each customer-facing agent folder has the same shape:
 - `prompt.ts` — system prompt construction (Hebrew)
@@ -475,6 +547,46 @@ runWatcherAgent(
 ```
 
 The `context` parameter is for tests — production never passes it. Watcher loads events from DB itself.
+
+### 6.6 Hot Leads Trigger Strategy (Sub-stage 1.3)
+
+Hot Leads has **two entry points** with shared prompt + schema:
+
+1. **`runHotLeadsAgent(tenantId, leads, triggerSource, eventIdByLeadId?)`** — batch / manual / seed entry. Used by:
+   - Manual triggers from owner dashboard
+   - Seed scripts
+   - Demo workflows
+   - `runHotLeadsOnEvent` (internal delegation)
+
+2. **`runHotLeadsOnEvent(tenantId, eventId)`** — single-event entry, used by webhook (parallel to Watcher). Pipeline:
+   - SELECT existing `hot_leads` row by `(tenant_id, event_id)` — if exists, return early (idempotency)
+   - Load event from DB
+   - Build `MockLead` from `event.payload`
+   - Call `runHotLeadsAgent(tenantId, [mockLead], "webhook", { [eventId]: eventId })`
+   - The map tells `runHotLeadsAgent` to populate `hot_leads.event_id`, which (via partial UNIQUE index) prevents duplicate rows.
+
+**Bias firewall preserved:** the LLM still receives only behavior features + scrubbed message. `display_name` and `source_handle` are kept aside for the DB row only. No demographic correlation possible.
+
+**Empty-run protection:** if event has no `raw_message` or `summary`, returns `{ skipped: true, skipReason: "no_raw_message" }` before calling the LLM. Saves ₪0.001 per malformed event.
+
+### 6.7 LLM Retry Strategy (Sub-stage 1.3)
+
+`src/lib/with-retry.ts` — generic retry utility. Wraps any async call.
+
+**Defaults:** 3 attempts, 1s/2s/4s exponential delays + 0-100ms jitter.
+
+**Retryable:** `APIConnectionError`, `APIConnectionTimeoutError`, HTTP 429/500/502/503/504/529.
+
+**Non-retryable:** HTTP 400/401/403/404/422 (broken request — retry won't help).
+
+**Cost:** zero on happy path. Anthropic doesn't bill failed requests, so retries don't double-charge.
+
+**Currently wraps `anthropic.messages.create`** in:
+- Watcher (`src/lib/agents/watcher/run.ts`)
+- Hot Leads (`src/lib/agents/hot_leads/run.ts`)
+- Sales (`src/lib/agents/sales/run.ts`)
+
+**Pending:** Reviews, Social, Manager, Morning, Inventory will be wrapped in Sub-stage 1.5 (Polish) or earlier if a real failure exposes the gap.
 
 ---
 
@@ -555,23 +667,33 @@ OTP-only. All copy says **"קוד אימות"**, never "קישור". Internal fu
 
 ---
 
-## 10. WhatsApp Webhook Pipeline (Sub-stages 1.1 + 1.2 — completed 2026-05-02)
+## 10. WhatsApp Webhook Pipeline (Sub-stages 1.1, 1.2, 1.3 — completed 2026-05-02)
 
 ### 10.1 Architecture Overview
 
 ```
-Meta Cloud API → POST /api/webhooks/whatsapp → events.insert (tenant_id, payload.summary)
-                                              ↓
-                                        waitUntil(runWatcherAgent("webhook"))
-                                              ↓
-                                        Watcher classifies into category
-                                              ↓
-                                        (Sub-stage 1.3) → Hot Leads → Sales → drafts
-                                              ↓
-                                        Owner approves at /dashboard/approvals
+Meta Cloud API → POST /api/webhooks/whatsapp
+                       │
+                       ↓
+                events.insert (idempotent via PK = wamid.*)
+                       │
+            ┌──────────┴──────────┐
+            ↓                     ↓
+    waitUntil(Watcher)    waitUntil(Hot Leads)   ← parallel
+            │                     │
+            ↓                     ↓
+    Dashboard alerts      hot_leads.insert
+                            (idempotent via
+                             event_id UNIQUE)
+                                  │
+                                  ↓
+                          Future: Sales draft
+                          (Sub-stage 1.3.5)
 ```
 
-Backup: `/api/cron/watcher` every hour (catches failed real-time triggers).
+Backups:
+- `/api/cron/watcher` every hour (catches failed Watcher real-time triggers)
+- Hot Leads cron safety net pending — Sub-stage 1.5
 
 ### 10.2 BSP Decision: Meta Cloud API Direct (Not 360dialog)
 
@@ -602,8 +724,10 @@ File: `src/app/api/webhooks/whatsapp/route.ts`.
    - Build Hebrew summary via `buildHebrewSummary()`.
    - Insert into `events` with `id = whatsappMessageId` (PK = idempotency).
    - On 23505 (duplicate PK): skipped, not error.
-   - Track tenant in `tenantsToTrigger: Set<string>`.
-5. After all inserts: `waitUntil(runWatcherAgent(tenantId, "webhook").catch(log))` for each unique tenant.
+   - Track tenant in `tenantsToTrigger: Set<string>` and event in `freshEvents: Array<{tenantId, eventId}>`.
+5. After all inserts:
+   - For each tenant in `tenantsToTrigger`: `waitUntil(runWatcherAgent(tenantId, "webhook"))`.
+   - For each event in `freshEvents`: `waitUntil(runHotLeadsOnEvent(tenantId, eventId))`.
 6. Always return 200 (5xx triggers Meta retry storms).
 
 **Multi-tenancy (Stage 1):** All messages route to `DEMO_TENANT_ID` unless `X-Spike-Tenant-Override` header supplied. Stage 2 will reintroduce phone_number_id mapping against finalized `integrations` schema.
@@ -631,19 +755,26 @@ In `.env.local` for dev. Vercel env vars for production (Production + Preview sc
 
 ### 10.6 Verified Performance (2026-05-02)
 
-- End-to-end latency: **~8 seconds** webhook POST → Watcher `succeeded`
+- End-to-end webhook → response: **~1 second** on happy path
+- End-to-end webhook → Watcher complete: **~8-9 seconds** (LLM call dominates)
+- End-to-end webhook → Hot Leads complete: **~9-10 seconds** (LLM call dominates)
 - Watcher cost per run: **~₪0.012** (~$0.003 with Haiku 4.5)
+- Hot Leads cost per run: **~₪0.015** (~$0.004 with Haiku 4.5)
+- **Combined per inbound message: ~₪0.027**
+- At 100 messages/day per tenant: ~₪80/month, ~28% margin on Solo tier (₪290/month)
 - Idempotency: PRIMARY KEY collision on retries → 23505 → counted as `skipped_duplicates`
 
-### 10.7 Schema Discoveries from Sub-stage 1.1 Debug
+### 10.7 Schema Discoveries from Sub-stage 1.1-1.3 Debug
 
-Two schema mismatches caught only after running:
+Three schema mismatches caught only after running:
 
 1. **Earlier docs said `events.type`. Real column is `events.event_type`.** Fixed in route handler. PostgREST error code `PGRST204` ("column not found in schema cache").
 
 2. **Earlier docs said `integrations.credentials` JSONB.** Real column **does not exist**. Stage 2 will design and document the integrations schema. For now, all messages route to DEMO_TENANT_ID. Postgres error `42703` ("column does not exist").
 
 3. **`events.id` is `text NOT NULL` with no default.** Use the upstream message ID as the natural idempotency key. Postgres error `23502` ("null value in column id").
+
+4. **PostgREST schema cache lag (Sub-stage 1.3).** After migration 020 added `hot_leads.event_id`, the column existed in Postgres but PostgREST returned `PGRST204` for several minutes. Fixed by `NOTIFY pgrst, 'reload schema';`.
 
 **Lesson learned:** before writing INSERTs against an existing schema, run:
 ```sql
@@ -652,30 +783,63 @@ FROM information_schema.columns
 WHERE table_name = '<table>' AND table_schema = 'public'
 ORDER BY ordinal_position;
 ```
-30 seconds. Saves ~20 minutes.
+30 seconds. Saves ~20 minutes per mismatch.
 
-### 10.8 Pending — Sub-stage 1.3 (NEXT)
+### 10.8 Sub-stage 1.3 Details (completed 2026-05-02)
 
-- Wire Watcher → Hot Leads cascade (when Watcher classifies "lead.new" → trigger Hot Leads)
-- Wire Hot Leads → Sales cascade (when Hot Leads classifies `hot`/`burning` → trigger Sales)
-- Watcher prompt fix: stop hallucinating contact names not in source events (15-min fix)
-- Add retry logic with exponential backoff on Anthropic LLM calls (3 attempts: 1s, 2s, 4s)
-- Hot Leads idempotency (multiple runs currently create duplicates)
+**Three things shipped:**
 
-### 10.9 Pending — Sub-stage 1.3.5 (Anti-AI Signatures)
+1. **Hot Leads webhook trigger + idempotency** (commits `f59df9b` and migration 020):
+   - New `runHotLeadsOnEvent(tenantId, eventId)` in `hot_leads/run.ts`
+   - WhatsApp webhook fires it via `waitUntil` parallel to Watcher
+   - Migration 020: `event_id text` column + partial UNIQUE index
+   - Backward-compatible: `runHotLeadsAgent` accepts optional `eventIdByLeadId` map; manual/seed callers omit it
 
-See §1.9. Cross-cutting audit of Watcher / Hot Leads / Reviews / Social / Sales prompts to:
-1. Ban em-dash and other AI-tells in prompts
-2. Add post-processing regex in each agent's `run.ts` (defense-in-depth — prompt alone is insufficient)
-3. Forbid Hebrew AI clichés ("תודה על פנייתך" etc.)
+2. **Retry logic on LLM calls** (commit `0b8d788`):
+   - New `src/lib/with-retry.ts` — generic 3-attempt exponential backoff utility
+   - Wraps `anthropic.messages.create` in Watcher, Hot Leads, Sales
+   - Retries on 429, 500-504, 529, network errors. Throws immediately on terminal errors.
+   - Verified: zero overhead on happy path (974ms POST, identical to pre-retry)
+
+3. **Watcher prompt fix + Sales withRetry** (commit pending):
+   - Watcher prompt: explicit ban on hallucinated names/numbers/details with 5 concrete fallback phrases
+   - Sales: same `withRetry` wrap as Watcher and Hot Leads
+
+### 10.9 Pending — Sub-stage 1.3.5 (Anti-AI Signatures + Sales Cascade)
+
+This sub-stage couples three things that share the same files:
+
+1. **Sales prompt rewrite** to "מקצועי הענייני" style (sample provided by Dean):
+   - Direct, professional, no flattery, no formality overdose
+   - Forbidden punctuation (em-dash etc.) and forbidden Hebrew clichés
+   - Max 3 sentences, single emoji, no hashtags
+   - 6 example scenarios (price, cancellation, hours, complaint, positive review, unsupported service)
+   - Verify Sales schema is `{ message_text: string }` only — currently it's a much richer object designed for follow-ups; must be confirmed compatible
+
+2. **Cross-cutting anti-AI hygiene** in `run.ts` of Watcher / Hot Leads / Reviews / Social / Sales:
+   - Post-processing regex defense-in-depth (em-dash → comma, etc.)
+   - Forbidden phrases regex on first 2 sentences only (not global)
+
+3. **Hot Leads → Sales cascade trigger:**
+   - When Hot Leads classifies `bucket ∈ {hot, blazing}`, fire `waitUntil(runSalesOnEvent(tenantId, eventId))`
+   - Requires either (a) extending Sales to handle fresh leads (skip 3-day filter when triggered by event) or (b) creating new `runSalesQuickResponse` function with the new prompt
+   - Decision deferred to 1.3.5 — depends on prompt rewrite (#1)
+
+**Why deferred from 1.3:** the current Sales prompt is for stuck-lead follow-ups (3+ days). Triggering Sales on a fresh hot lead with current code would always hit the `received_at < threeDaysAgo` filter and return no_op. Cascade is meaningful only with the new prompt designed for fresh inquiries.
+
+**Estimated time:** 2-3 hours. Requires fresh prompt-engineering attention — schedule for early in a session.
 
 ### 10.10 Pending — Sub-stage 1.4 (Demo UI)
 
 Internal-only `/dashboard/demo` page. 4 prebuilt WhatsApp templates (hot lead / question / complaint / review). Owner clicks "send" → POST to webhook → real-time pipeline visible.
 
+**Demo is functional even without 1.3.5** — pipeline already works (Watcher alerts + Hot Leads classification visible in dashboards). 1.3.5 adds auto-drafted responses, which improves demo but isn't required.
+
 ### 10.11 Pending — Sub-stage 1.5 (Polish)
 
 - Verify PII scrubber on Israeli phone formats (`05X-XXXXXXX`, `0501234567`, `+972 50 123 4567`, `+972501234567`)
+- Wrap remaining 5 agents (Morning, Reviews, Social, Manager, Inventory) in `withRetry`
+- Add Hot Leads cron safety net (mirrors Watcher cron — find events without hot_leads row, classify)
 - Update INTEGRATION-NOTES.md with the actual webhook protocol
 - Final tsc + Vercel build pass
 
@@ -698,8 +862,9 @@ Internal-only `/dashboard/demo` page. 4 prebuilt WhatsApp templates (hot lead / 
 - Social skips Saturday (Day 17 fix #5)
 - Draft expiry policy (Day 17 fix #6)
 - Full safety pipeline: PII scrub + defamation guard + gender lock + injection guard
-- **NEW (Sub-stage 1.1):** WhatsApp Cloud API webhook receiver, idempotent via PK
-- **NEW (Sub-stage 1.2):** Watcher auto-triggers on inbound WhatsApp, plus hourly cron safety net
+- **Sub-stage 1.1:** WhatsApp Cloud API webhook receiver, idempotent via PK
+- **Sub-stage 1.2:** Watcher auto-triggers on inbound WhatsApp + hourly cron safety net
+- **Sub-stage 1.3:** Hot Leads auto-classifies on webhook (parallel to Watcher) + idempotency on hot_leads + LLM retry on Watcher/Hot Leads/Sales + Watcher prompt no longer hallucinates names
 
 ### 11.2 Pending — Not Blocking 🚧
 - **7 sidebar pages still 404:** הסוכנים שלי, דוחות, התראות, מרכז בקרה, אמון ופרטיות, הגדרות, מרכז ניהול
@@ -708,15 +873,16 @@ Internal-only `/dashboard/demo` page. 4 prebuilt WhatsApp templates (hot lead / 
 - Cleanup agent's exact location undocumented
 - 2 moderate npm audit vulnerabilities — don't fix-force without inspecting
 - `integrations` table schema not yet fully audited
+- 5 agents not yet wrapped in `withRetry` (Morning, Reviews, Social, Manager, Inventory)
 
 ### 11.3 Pending — Critical for Demo 🔴
-- Sub-stages 1.3 → 1.5 (see §10.8-10.11)
+- Sub-stages 1.3.5 → 1.5 (see §10.9-10.11)
 - First real customer integration (the whole point — Stage 2 follows Stage 1)
 
 ### 11.4 Pending — Pre-Production Deploy ⚠️
-- Set `CRON_SECRET` in Vercel env vars (Production + Preview)
+- Set `CRON_SECRET` in Vercel env vars (Production + Preview) — current local value: `8ac0dea1-a612-478a-a115-9accb2b3a21c`
 - Set `WHATSAPP_VERIFY_TOKEN` in Vercel env vars
-- Open Meta Business Manager + start Meta verification (2-10 day async process — Dean to do in parallel during Sub-stages 1.3-1.5)
+- Open Meta Business Manager + start Meta verification (2-10 day async process — Dean to do in parallel during Sub-stages 1.3.5-1.5)
 - Eventually: set `WHATSAPP_APP_SECRET` in Vercel (Stage 2 — when Meta verification completes)
 
 ---
@@ -734,7 +900,16 @@ Internal-only `/dashboard/demo` page. 4 prebuilt WhatsApp templates (hot lead / 
 - 17% annual discount.
 
 ### 12.2 Stage 1 (this stage) — WhatsApp First Integration
-Currently 2 of 5 sub-stages complete. Demo-ready expected ~end of week.
+
+**Sub-stage progression:**
+- 1.1 ✅ — Webhook receiver
+- 1.2 ✅ — Watcher real-time + cron safety net
+- 1.3 ✅ — Hot Leads parallel + idempotency + retry + Watcher prompt fix + Sales withRetry
+- 1.3.5 🔵 — Sales prompt rewrite + anti-AI signatures + Hot Leads → Sales cascade
+- 1.4 🔵 — Demo UI (`/dashboard/demo`)
+- 1.5 🔵 — PII scrubber audit + remaining agents withRetry + Hot Leads cron + docs
+
+Currently 3 of 5+ sub-stages complete. Demo-ready expected after 1.4.
 
 ### 12.3 Next 30 Days After Stage 1 Demo
 Once Stage 1 ships and demo works for prospects, in priority order:
@@ -759,7 +934,7 @@ Once Stage 1 ships and demo works for prospects, in priority order:
 | **Schedule optimization for staff** | Israeli labor law (rest hours, overtime, vacation) is lawyer territory. Legal risk. |
 | **Contract review** | Risk of "legal advice" liability. |
 | **Competitor scraping** | TOS violation. Legal risk. |
-| **Senior Manager Agent** (AI flagging other AIs) | AI flagging AI = bias amplification. Use monitoring + logs + evals. |
+| **Senior Manager Agent** (AI flagging other AIs) | AI flagging AI = bias amplification. Use monitoring + logs + evals. **Push back if Dean asks for this** — surfaced again in Sub-stage 1.3, redirected to retry logic + alerts. |
 | **Crypto / Web3 / Blockchain** | Not relevant to ICP. |
 | **Standalone mobile app** | Not before 100 paying customers. PWA enough. |
 | **Open-source release** | Distraction from revenue. |
@@ -810,19 +985,20 @@ Once Stage 1 ships and demo works for prospects, in priority order:
 - ❌ Ask Dean to manually edit a 1000-line file. Generate the full file.
 - ❌ Output emojis in production UI strings.
 - ❌ Tell Dean to take a break. He sets his own pace. (Exception: clean sub-stage boundaries.)
-- ❌ Hallucinate names from `events.payload` (Watcher's known bug — fix in 1.3).
+- ❌ Hallucinate names from `events.payload` (Watcher's known bug — fixed in 1.3 prompt).
 - ❌ Build a feature without `expires_at` if it lives in `drafts`.
 - ❌ Skip the safety pipeline. Use `runAgentSafe`, never raw Anthropic.
-- ❌ Propose a "senior agent that monitors other agents". Already rejected.
+- ❌ Propose a "senior agent that monitors other agents". Already rejected. Redirect to retry/alerts/logs.
 - ❌ Suggest pivoting to en-US / global SaaS. The bet is Israel.
 - ❌ Try to "complete" `src/lib/agents/cleanup/` with a stub folder.
 - ❌ Treat "9 agents" mentions in source comments as a typo. Intentional — 8 customer-facing + 1 internal.
 - ❌ Use em-dash (—) in any agent draft output. Hebrew SMBs identify it as AI.
 - ❌ Add a BSP middleman (360dialog, Twilio, Vonage). Use Meta Cloud API direct.
 - ❌ Use dot notation in `event_type` (`whatsapp.message`). Use snake_case (`whatsapp_message_received`).
+- ❌ Trigger Sales on a fresh hot_leads classification with the current Sales prompt. The current prompt expects 3+ day stuck leads. Cascade waits for 1.3.5 prompt rewrite.
 
 ### 15.2 Schema Audit Before INSERTs
-**Always run `information_schema.columns` query before writing INSERTs against an existing table.** Sub-stage 1.1 wasted ~20 minutes on schema-mismatch bugs that a 30-second SQL audit prevents.
+**Always run `information_schema.columns` query before writing INSERTs against an existing table.**
 
 ```sql
 SELECT column_name, data_type, is_nullable, column_default
@@ -830,6 +1006,13 @@ FROM information_schema.columns
 WHERE table_name = '<table>' AND table_schema = 'public'
 ORDER BY ordinal_position;
 ```
+
+**After migrations that add columns**, run:
+```sql
+NOTIFY pgrst, 'reload schema';
+```
+
+Otherwise PostgREST returns `PGRST204` ("column not found in schema cache") for several minutes.
 
 ### 15.3 When Claude Searches the Web
 - Repository: `https://github.com/DinSpikeAI/spike-agents-engine` (public)
@@ -841,11 +1024,20 @@ ORDER BY ordinal_position;
 - Self-diff after generating: confirm requested changes are present, **and only those**.
 - When delivering 2+ files of the same name (e.g., 2 `route.ts`), use distinct names in `/outputs/` and rename in `Move-Item`. Avoids Downloads collision.
 
-### 15.5 PowerShell Gotchas
-- `Add-Content` does NOT add a newline before the appended text. To safely append a new env var, either:
-  - Use `Add-Content -Value "`n$line"` with leading newline, OR
-  - Use a text editor (`notepad .env.local`) for env files.
-- A single `.env.local` line corruption can silently break everything. Always verify with `Get-Content | Select-String "<KEY>"` after appends.
+### 15.5 PowerShell Workflow (verified Sub-stages 1.1-1.3)
+- **Always 2 terminals:** dev in one, POSTs in the other.
+- **Always test connection first:** `Test-NetConnection -ComputerName localhost -Port 3000 -InformationLevel Quiet` returns True/False.
+- **Tee-Object pipeline does NOT block:** typing any command in the dev terminal kills the dev process. Don't.
+- **Add-Content does NOT add newline:** breaks `.env.local`. Use notepad or prepend `` `n ``.
+- **Verify env after appending:** `Get-Content .env.local | Select-String "<KEY>"` should show one line, not corrupted.
+- **localhost in Claude.ai chat:** wrapped as `[localhost](http://localhost)`. PowerShell handles it but type manually if confused.
+
+### 15.6 Iteration Speed Calibration
+- Sub-stage 1.1 took ~2 hours including 20-minute schema-mismatch debug.
+- Sub-stage 1.2 took ~1.5 hours (no surprises).
+- Sub-stage 1.3 took ~3 hours across 3 parts (Hot Leads cascade, retry, prompt fix + Sales withRetry).
+- **When Dean says "go faster":** reduce preamble, but never skip data-verification (3-line `Get-Content` saves 20-minute debug).
+- **When Dean says "do everything":** still ask for the data you don't have. "Verify before documenting" applies to Claude's code-generation too.
 
 ---
 
@@ -853,7 +1045,7 @@ ORDER BY ordinal_position;
 
 - **Conventional commits**, English subject, Hebrew body allowed.
 - Format: `<type>(<scope>): <subject>`
-- Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`.
+- Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`.
 
 ---
 
@@ -865,27 +1057,31 @@ If you are Claude reading this for the first time in a new conversation:
 2. ❌ Do not re-ask Dean to summarize the project.
 3. ❌ Do not suggest building anything from §13.
 4. ✅ Ask Dean: "מה הצעד הבא?" if he hasn't said.
-5. ✅ Push back if a request seems to violate §1.
+5. ✅ Push back if a request seems to violate §1 or §13.
 6. ✅ Confirm you've read this file in your first reply, in 2-3 lines max.
 
 **Sample first reply:**
-> קראתי את CLAUDE.md. מבין שאנחנו ב-Spike Engine, 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית-RTL. WhatsApp pipeline (Sub-stages 1.1+1.2) פעיל ב-dev. הצעד הבא הוא 1.3 — חיבור Hot Leads + Sales pipeline cascade. מה אתה רוצה לעשות עכשיו?
+> קראתי את CLAUDE.md. מבין שאנחנו ב-Spike Engine, 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית-RTL. WhatsApp pipeline (1.1+1.2+1.3) פעיל ב-dev עם Watcher, Hot Leads, retry, ו-idempotency. הצעד הבא 1.3.5 — Sales prompt rewrite + anti-AI signatures + Hot Leads → Sales cascade. מה אתה רוצה לעשות?
 
 ---
 
 ## 18. Appendix — References
 
-### 18.1 Migration History (18 files numbered 001–019)
+### 18.1 Migration History (19 files numbered 001–020)
 - `001_reset.sql` · `002_schema.sql` · `003_rls.sql` — initial schema, RLS, auth
 - `016_seed_watcher_events.sql` — 15 Watcher seed events
 - `017_seed_review_events.sql` — 4 Reviews seed
 - `018_seed_lead_events.sql` — 5 diverse leads
 - `019_onboarding_columns.sql` — onboarding fields on tenants
+- `020_hot_leads_event_idempotency.sql` — Sub-stage 1.3 — event_id column + partial UNIQUE index
 - (One number skipped between 003 and 016 — historical artifact)
 
 ### 18.2 Selected Commits (most recent first)
 | Hash | What |
 |------|------|
+| (pending) | feat(agents): Watcher prompt fix + Sales withRetry (Sub-stage 1.3 part 3) |
+| `0b8d788` | feat(agents): exponential-backoff retry on LLM calls (Sub-stage 1.3 part 2) |
+| `f59df9b` | feat(hot_leads): event-triggered classification (Sub-stage 1.3 part 1) |
 | `cc85952` | feat(whatsapp): trigger Watcher on inbound messages (Sub-stage 1.2) |
 | `9018a16` | chore: gitignore local dev.log |
 | `aaa2f1d` | feat(webhooks): WhatsApp Cloud API receiver (Sub-stage 1.1) |
@@ -893,9 +1089,6 @@ If you are Claude reading this for the first time in a new conversation:
 | `208ea50` | fix(auth): use only 'email' type for verifyOtp |
 | `91731e4` | feat(mobile): hi-tech mobile UX |
 | `dac7eb9` | feat(design): Phase 1+2 polish |
-| `6b56ef3` | feat(onboarding): 4-field welcome flow |
-| `703f7db` | feat(watcher): real DB-backed events |
-| `583d686` | feat(inventory): Day 18 Batch 3 UI |
 
 ### 18.3 External Links
 - Repo: https://github.com/DinSpikeAI/spike-agents-engine
