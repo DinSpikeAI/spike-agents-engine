@@ -1,7 +1,7 @@
 /**
- * Hot Leads Agent — Day 9
+ * Hot Leads Agent — Day 9 + Sub-stage 1.3 (event-triggered)
  *
- * Pipeline:
+ * Pipeline (batch / manual):
  *   1. Receive list of mock leads (with raw_message + display_name + source_handle)
  *   2. Extract behavior features in CODE (not LLM):
  *      - response_time_minutes, message_length_tokens
@@ -20,6 +20,13 @@
  *      - bucket from LLM
  *      - score_features from code (bias audit data)
  *      - reason + suggestedAction from LLM
+ *      - event_id (if provided via eventIdByLeadId map) for idempotency
+ *
+ * Sub-stage 1.3 addition — runHotLeadsOnEvent(tenantId, eventId):
+ *   Single-event entry point used by the WhatsApp webhook. Loads the event,
+ *   builds a MockLead from its payload, and calls runHotLeadsAgent with that
+ *   single lead and an event_id mapping for idempotency. Pre-flight check
+ *   skips the LLM call entirely if the event was already classified.
  */
 
 import { runAgent } from "../run-agent";
@@ -40,6 +47,18 @@ const MODEL = "claude-haiku-4-5" as const;
 
 export interface HotLeadsRunResult extends RunResult<HotLeadsAgentOutput> {
   leadIds: string[];
+}
+
+/** Result type for runHotLeadsOnEvent — distinguishes idempotent skip from a real run. */
+export interface HotLeadsOnEventResult {
+  /** True if the event was already classified and we returned without running. */
+  skipped: boolean;
+  /** Reason for skipping (idempotency, missing data, etc.) — null when ran normally. */
+  skipReason: string | null;
+  /** The hot_leads row id when ran/found; null on hard failure. */
+  leadId: string | null;
+  /** The runAgent result (null if we skipped before running). */
+  runResult: RunResult<HotLeadsAgentOutput> | null;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -121,13 +140,24 @@ function extractFeatures(lead: MockLead, scrubbedMessage: string): LeadFeatures 
 }
 
 // ─────────────────────────────────────────────────────────────
-// Main agent function
+// Main agent function (batch / manual / seeds)
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Run Hot Leads classification on a batch of leads.
+ *
+ * @param tenantId
+ * @param leads             — leads to classify
+ * @param triggerSource     — used for telemetry in agent_runs
+ * @param eventIdByLeadId   — OPTIONAL map from MockLead.id → event_id. When
+ *                            present, the event_id is written into hot_leads
+ *                            for idempotency. Manual / seed callers omit this.
+ */
 export async function runHotLeadsAgent(
   tenantId: string,
   leads: MockLead[],
-  triggerSource: "manual" | "scheduled" | "webhook" | "admin_manual" = "manual"
+  triggerSource: "manual" | "scheduled" | "webhook" | "admin_manual" = "manual",
+  eventIdByLeadId?: Record<string, string>,
 ): Promise<HotLeadsRunResult> {
   // ─── Pre-flight: extract features per lead ───────────────
   // The features object is what the LLM sees. The display_name and
@@ -231,7 +261,13 @@ ${wrappedMessage}
 
     const { lead, features } = enriched;
 
-    const leadRow = {
+    // event_id is included only when caller provided a mapping for this lead.
+    // Existing callers (manual, seed, demo) don't pass eventIdByLeadId →
+    // event_id stays absent → DB column gets NULL → partial UNIQUE index
+    // doesn't constrain → backward-compatible.
+    const mappedEventId = eventIdByLeadId?.[lead.id];
+
+    const leadRow: Record<string, unknown> = {
       tenant_id: tenantId,
       agent_run_id: runResult.runId,
       source: lead.source,
@@ -245,6 +281,9 @@ ${wrappedMessage}
       suggested_action: classification.suggestedAction,
       status: "classified",
     };
+    if (mappedEventId) {
+      leadRow.event_id = mappedEventId;
+    }
 
     const { data: insertedLead, error: insertError } = await db
       .from("hot_leads")
@@ -253,6 +292,14 @@ ${wrappedMessage}
       .single();
 
     if (insertError) {
+      // 23505 = duplicate event_id (idempotency win — another concurrent
+      // call beat us, or this is a retry). Not a real error; log and move on.
+      if (insertError.code === "23505") {
+        console.log(
+          `[hot_leads] Skipped duplicate insert for lead ${classification.leadId} (event_id=${mappedEventId ?? "unknown"})`
+        );
+        continue;
+      }
       console.error(
         `[hot_leads] Failed to persist lead ${classification.leadId}:`,
         insertError
@@ -266,5 +313,138 @@ ${wrappedMessage}
   return {
     ...runResult,
     leadIds,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sub-stage 1.3 — Single-event entry point (used by webhook)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Run Hot Leads classification on a single event by id.
+ *
+ * Loads the event from public.events, converts its payload into a MockLead,
+ * checks idempotency (skip if a hot_leads row with this event_id already
+ * exists for this tenant), and delegates to runHotLeadsAgent.
+ *
+ * Used by:
+ *   - WhatsApp webhook handler (fire-and-forget via waitUntil)
+ *   - Demo UI (Sub-stage 1.4 — the same code path)
+ *   - Manual re-classification trigger from owner dashboard (future)
+ *
+ * Returns a structured result that distinguishes skip-due-to-idempotency
+ * from skip-due-to-missing-data from a real successful run. The caller
+ * (webhook) typically logs and moves on; nothing here throws unless the
+ * event id was given but truly cannot be loaded (DB read error).
+ */
+export async function runHotLeadsOnEvent(
+  tenantId: string,
+  eventId: string,
+): Promise<HotLeadsOnEventResult> {
+  const db = createAdminClient();
+
+  // ─── Pre-flight idempotency check ────────────────────────
+  // If a hot_leads row already exists for this (tenant_id, event_id), we
+  // return immediately. This protects against:
+  //   - the cron safety net (Sub-stage 1.5+) re-triggering events the
+  //     webhook already processed
+  //   - manual re-fires from dashboards
+  //   - waitUntil restarts on Vercel
+  //
+  // There's a TOCTOU race: a parallel call might pass this check at the
+  // same time and both proceed. The UNIQUE partial index in migration 020
+  // catches the race at INSERT time (23505 error → caught in
+  // runHotLeadsAgent). Worst-case cost of the race is one wasted LLM call.
+  const { data: existing, error: existingErr } = await db
+    .from("hot_leads")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("event_id", eventId)
+    .maybeSingle();
+
+  if (existingErr) {
+    console.error(
+      `[hot_leads-trigger] Idempotency lookup failed for event ${eventId}:`,
+      existingErr
+    );
+    // Fall through and let runHotLeadsAgent handle it — better to risk
+    // a duplicate (caught by UNIQUE) than to skip a real classification.
+  } else if (existing?.id) {
+    return {
+      skipped: true,
+      skipReason: "already_classified",
+      leadId: existing.id,
+      runResult: null,
+    };
+  }
+
+  // ─── Load the event ──────────────────────────────────────
+  const { data: event, error: eventErr } = await db
+    .from("events")
+    .select("id, tenant_id, provider, event_type, payload, received_at")
+    .eq("id", eventId)
+    .eq("tenant_id", tenantId)
+    .single();
+
+  if (eventErr || !event) {
+    throw new Error(
+      `Event ${eventId} not found for tenant ${tenantId}: ${eventErr?.message ?? "no rows"}`
+    );
+  }
+
+  // ─── Build MockLead from event payload ───────────────────
+  const payload = (event.payload ?? {}) as Record<string, unknown>;
+  const rawMessage =
+    (typeof payload.raw_message === "string" ? payload.raw_message : "") ||
+    (typeof payload.summary === "string" ? payload.summary : "");
+
+  if (!rawMessage) {
+    return {
+      skipped: true,
+      skipReason: "no_raw_message",
+      leadId: null,
+      runResult: null,
+    };
+  }
+
+  // Source: prefer payload.source, fall back to provider, default "whatsapp".
+  // The source field on MockLead is typed as LeadSource, which we narrow via
+  // MockLead["source"] cast (avoids a separate import for the union type).
+  const sourceRaw =
+    (typeof payload.source === "string" ? payload.source : null) ??
+    (typeof event.provider === "string" ? event.provider : null) ??
+    "whatsapp";
+  const source = sourceRaw as MockLead["source"];
+
+  const displayName =
+    (typeof payload.contact_name === "string" && payload.contact_name) ||
+    "לקוח חדש";
+  const sourceHandle =
+    (typeof payload.contact_phone === "string" && payload.contact_phone) || "";
+
+  const mockLead: MockLead = {
+    id: event.id,
+    source,
+    displayName,
+    sourceHandle,
+    rawMessage,
+    receivedAt: event.received_at,
+  };
+
+  // ─── Delegate to runHotLeadsAgent with event_id mapping ──
+  // The map tells runHotLeadsAgent to populate hot_leads.event_id, which
+  // (via the partial UNIQUE index) prevents duplicate rows on retries.
+  const runResult = await runHotLeadsAgent(
+    tenantId,
+    [mockLead],
+    "webhook",
+    { [event.id]: event.id }
+  );
+
+  return {
+    skipped: false,
+    skipReason: null,
+    leadId: runResult.leadIds[0] ?? null,
+    runResult,
   };
 }

@@ -9,8 +9,9 @@
 //
 //   POST → Inbound message webhook. Meta delivers customer messages here.
 //          We parse, dedupe by whatsapp_message_id (used as the events.id
-//          PRIMARY KEY), write to events, and fire-and-forget the Watcher
-//          classifier via waitUntil().
+//          PRIMARY KEY), write to events, and fire-and-forget two parallel
+//          background tasks per message: Watcher classification (per tenant)
+//          and Hot Leads classification (per event).
 //
 // IDEMPOTENCY: events.id is a text PRIMARY KEY supplied by the caller.
 //   We use the WhatsApp message ID (e.g. "wamid.HBgL...") as id, which Meta
@@ -19,12 +20,20 @@
 //   throws Postgres error 23505 — we catch that as a no-op.
 //   No separate index needed; the PK is the dedup mechanism.
 //
-// WATCHER TRIGGER: after a successful insert, we call runWatcherAgent via
-//   waitUntil() so it executes after the response is sent back to Meta.
-//   This prevents Meta's 5-second response timeout from cutting off the
-//   ~10-15s LLM call. If this trigger fails (network, timeout, schema parse),
-//   the failure is logged. The hourly cron at /api/cron/watcher catches any
-//   missed classifications within an hour — see vercel.json.
+// BACKGROUND WORK (Sub-stage 1.2 + 1.3):
+//   After a successful insert, we kick off two independent tasks via
+//   waitUntil():
+//     1. runWatcherAgent(tenantId, "webhook") — once per unique tenant in
+//        this batch. Watcher classifies into category buckets for the
+//        owner dashboard (new_lead, urgent_message, payment_issue, etc.).
+//     2. runHotLeadsOnEvent(tenantId, eventId) — once per fresh event.
+//        Hot Leads scores intent into temperature buckets (cold/warm/hot/
+//        blazing/spam_or_unclear) and writes a row to hot_leads.
+//   These run in parallel — they're independent classifiers serving
+//   different UI surfaces. Failures are logged and forgotten; the hourly
+//   cron at /api/cron/watcher catches missed Watcher runs. (Hot Leads
+//   has its own idempotency via hot_leads.event_id UNIQUE; future cron
+//   safety net can use the same key.)
 //
 // STAGE 1: WHATSAPP_APP_SECRET is unset → signature verification is bypassed,
 //   so we can test with curl/Postman/the demo UI. The endpoint is reachable
@@ -47,6 +56,7 @@ import {
   buildHebrewSummary,
 } from "@/lib/webhooks/whatsapp/parser";
 import { runWatcherAgent } from "@/lib/agents/watcher/run";
+import { runHotLeadsOnEvent } from "@/lib/agents/hot_leads/run";
 import type { WhatsAppWebhookPayload } from "@/lib/webhooks/whatsapp/types";
 
 // We need Node runtime for crypto.createHmac in signature verification.
@@ -155,6 +165,11 @@ export async function POST(request: NextRequest) {
   // contains 5 messages for the same tenant, one Watcher run sees them all.)
   const tenantsToTrigger = new Set<string>();
 
+  // Track each freshly inserted event for per-event Hot Leads classification.
+  // Unlike Watcher (per-tenant aggregator), Hot Leads scores each lead
+  // independently — so we run it once per event.
+  const freshEvents: Array<{ tenantId: string; eventId: string }> = [];
+
   for (const msg of messages) {
     // Stage 1: every message lands on DEMO_TENANT_ID unless explicitly
     // overridden via header. Stage 2 will reintroduce phone_number_id-based
@@ -219,6 +234,7 @@ export async function POST(request: NextRequest) {
 
     inserted += 1;
     tenantsToTrigger.add(tenantId);
+    freshEvents.push({ tenantId, eventId: msg.whatsappMessageId });
   }
 
   // ─── Fire-and-forget Watcher trigger ─────────────────────────────
@@ -240,6 +256,30 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // ─── Fire-and-forget Hot Leads trigger (per event) ───────────────
+  // Hot Leads classifies the intent of each individual lead. Unlike Watcher
+  // (which batches across a tenant's recent events), Hot Leads runs once
+  // per inbound message — that's the unit it scores.
+  //
+  // Idempotency: runHotLeadsOnEvent does a SELECT on hot_leads(tenant_id,
+  // event_id) before running. If a row exists, it returns early without
+  // calling the LLM. The partial UNIQUE index from migration 020 backstops
+  // the SELECT-then-INSERT race.
+  //
+  // Failures are logged. Retry logic is planned for Sub-stage 1.3 (after
+  // this PR) and will live inside runHotLeadsOnEvent / its dependencies.
+  for (const { tenantId, eventId } of freshEvents) {
+    waitUntil(
+      runHotLeadsOnEvent(tenantId, eventId).catch((err) => {
+        console.error("[whatsapp-webhook] Hot Leads trigger failed", {
+          tenantId,
+          eventId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }),
+    );
+  }
+
   // Always return 200 to Meta. Internal failures are logged, never surfaced
   // to the webhook caller — Meta retries aggressively on 5xx.
   return NextResponse.json(
@@ -250,6 +290,7 @@ export async function POST(request: NextRequest) {
       skipped_duplicates: skippedDuplicates,
       errored,
       watcher_triggered: tenantsToTrigger.size,
+      hot_leads_triggered: freshEvents.length,
     },
     { status: 200 },
   );
