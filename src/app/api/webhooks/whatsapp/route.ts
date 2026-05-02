@@ -9,7 +9,8 @@
 //
 //   POST → Inbound message webhook. Meta delivers customer messages here.
 //          We parse, dedupe by whatsapp_message_id (used as the events.id
-//          PRIMARY KEY), and write to events.
+//          PRIMARY KEY), write to events, and fire-and-forget the Watcher
+//          classifier via waitUntil().
 //
 // IDEMPOTENCY: events.id is a text PRIMARY KEY supplied by the caller.
 //   We use the WhatsApp message ID (e.g. "wamid.HBgL...") as id, which Meta
@@ -17,6 +18,13 @@
 //   our 5xx, etc.), the second insert hits the existing primary key and
 //   throws Postgres error 23505 — we catch that as a no-op.
 //   No separate index needed; the PK is the dedup mechanism.
+//
+// WATCHER TRIGGER: after a successful insert, we call runWatcherAgent via
+//   waitUntil() so it executes after the response is sent back to Meta.
+//   This prevents Meta's 5-second response timeout from cutting off the
+//   ~10-15s LLM call. If this trigger fails (network, timeout, schema parse),
+//   the failure is logged. The hourly cron at /api/cron/watcher catches any
+//   missed classifications within an hour — see vercel.json.
 //
 // STAGE 1: WHATSAPP_APP_SECRET is unset → signature verification is bypassed,
 //   so we can test with curl/Postman/the demo UI. The endpoint is reachable
@@ -31,12 +39,14 @@
 //   X-Spike-Tenant-Override header lets you direct messages to any tenant.
 
 import { NextRequest, NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyMetaSignature } from "@/lib/webhooks/whatsapp/signature";
 import {
   extractMessages,
   buildHebrewSummary,
 } from "@/lib/webhooks/whatsapp/parser";
+import { runWatcherAgent } from "@/lib/agents/watcher/run";
 import type { WhatsAppWebhookPayload } from "@/lib/webhooks/whatsapp/types";
 
 // We need Node runtime for crypto.createHmac in signature verification.
@@ -140,6 +150,11 @@ export async function POST(request: NextRequest) {
   let skippedDuplicates = 0;
   let errored = 0;
 
+  // Track which tenants had at least one fresh insert — we trigger Watcher
+  // once per tenant per request, not once per message. (If a single batch
+  // contains 5 messages for the same tenant, one Watcher run sees them all.)
+  const tenantsToTrigger = new Set<string>();
+
   for (const msg of messages) {
     // Stage 1: every message lands on DEMO_TENANT_ID unless explicitly
     // overridden via header. Stage 2 will reintroduce phone_number_id-based
@@ -169,6 +184,10 @@ export async function POST(request: NextRequest) {
     // message. A retry from Meta will collide on the PK and surface as
     // Postgres error 23505, which we catch below as skippedDuplicates.
     //
+    // event_type follows the snake_case convention used by all existing
+    // event types in the DB (lead_received, review_received, message_received,
+    // etc.). We use whatsapp_message_received here, not "whatsapp.message".
+    //
     // Schema (verified 2026-05-02): id text NOT NULL, tenant_id uuid,
     // provider text, event_type text, payload jsonb, received_at timestamptz.
     const { error } = await supabase
@@ -177,7 +196,7 @@ export async function POST(request: NextRequest) {
         id: msg.whatsappMessageId,
         tenant_id: tenantId,
         provider: "whatsapp",
-        event_type: "whatsapp.message",
+        event_type: "whatsapp_message_received",
         payload: eventPayload,
       });
 
@@ -199,10 +218,26 @@ export async function POST(request: NextRequest) {
     }
 
     inserted += 1;
+    tenantsToTrigger.add(tenantId);
+  }
 
-    // Sub-stage 1.2 will hook in here:
-    //   await runWatcherOnEvent(msg.whatsappMessageId);
-    // For Sub-stage 1.1 we just record the row.
+  // ─── Fire-and-forget Watcher trigger ─────────────────────────────
+  // For each tenant that received a fresh event in this batch, kick off
+  // runWatcherAgent in the background. waitUntil() extends the function
+  // context past the response, so the LLM call doesn't get cut off when
+  // we return 200 to Meta within the 5-second window.
+  //
+  // Failures are logged and forgotten — the hourly cron at
+  // /api/cron/watcher will catch any missed classification within an hour.
+  for (const tenantId of tenantsToTrigger) {
+    waitUntil(
+      runWatcherAgent(tenantId, "webhook").catch((err) => {
+        console.error("[whatsapp-webhook] Watcher trigger failed", {
+          tenantId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }),
+    );
   }
 
   // Always return 200 to Meta. Internal failures are logged, never surfaced
@@ -214,6 +249,7 @@ export async function POST(request: NextRequest) {
       inserted,
       skipped_duplicates: skippedDuplicates,
       errored,
+      watcher_triggered: tenantsToTrigger.size,
     },
     { status: 200 },
   );
