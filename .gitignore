@@ -43,3 +43,6 @@ next-env.d.ts
 # Backup files
 *.bak
 *.bak.*
+
+# Local dev logs from Tee-Object
+dev.log
