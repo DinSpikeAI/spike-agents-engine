@@ -1,12 +1,14 @@
 /**
  * Watcher Agent — Day 6 (Real Anthropic + code-side classification)
  *                + Day 19 (real DB-backed events)
+ *                + Sub-stage 1.3 (LLM retry on transient failures)
  *
  * Pipeline:
  *   1. Load tenant context (name, owner) from public.tenants
  *   2. Load recent events from public.events (last 24h, max 50)
  *   3. If 0 events → return no_op without calling LLM (saves ₪)
  *   4. LLM classifies each event into a category (no severity)
+ *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
  *   5. Code adds severity from CATEGORY_SEVERITY lookup (./hierarchy.ts)
  *   6. Code sorts: severity asc, then occurredAt desc within tier
  *   7. If LLM returns empty alerts → status: "no_op" (not failure!)
@@ -27,6 +29,7 @@
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { withRetry } from "@/lib/with-retry";
 import { WATCHER_AGENT_OUTPUT_SCHEMA } from "./schema";
 import {
   WATCHER_AGENT_SYSTEM_PROMPT,
@@ -217,26 +220,42 @@ export async function runWatcherAgent(
   // If recentEvents is empty, the LLM returns alerts: [] cleanly and the
   // status becomes no_op — no special-casing needed here.
   const executor = async () => {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 1024,
-      system: [
-        {
-          type: "text",
-          text: WATCHER_AGENT_SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
+    // Wrap the Anthropic call in withRetry: 3 attempts, 1s/2s/4s exponential
+    // backoff with jitter. Retries on transient errors (5xx, 429, network);
+    // throws immediately on terminal errors (400, 401, 422). Total max wall
+    // time when all 3 attempts fail: ~7s. Successful first-try is zero
+    // overhead. See src/lib/with-retry.ts for details.
+    const response = await withRetry(
+      () =>
+        anthropic.messages.create({
+          model: MODEL,
+          max_tokens: 1024,
+          system: [
+            {
+              type: "text",
+              text: WATCHER_AGENT_SYSTEM_PROMPT,
+              cache_control: { type: "ephemeral", ttl: "1h" },
+            },
+          ],
+          messages: [
+            { role: "user", content: buildWatcherUserMessage(promptContext) },
+          ],
+          output_config: {
+            format: {
+              type: "json_schema",
+              schema: WATCHER_AGENT_OUTPUT_SCHEMA,
+            },
+          },
+        }),
+      {
+        onRetry: ({ attempt, nextDelayMs, error }) => {
+          console.warn(
+            `[watcher] LLM attempt ${attempt} failed; retrying in ${Math.round(nextDelayMs)}ms`,
+            { error: error instanceof Error ? error.message : String(error) }
+          );
         },
-      ],
-      messages: [
-        { role: "user", content: buildWatcherUserMessage(promptContext) },
-      ],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: WATCHER_AGENT_OUTPUT_SCHEMA,
-        },
-      },
-    });
+      }
+    );
 
     const text = response.content
       .map((b) => (b.type === "text" ? b.text : ""))

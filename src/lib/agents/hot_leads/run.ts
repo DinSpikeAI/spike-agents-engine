@@ -1,5 +1,5 @@
 /**
- * Hot Leads Agent — Day 9 + Sub-stage 1.3 (event-triggered)
+ * Hot Leads Agent — Day 9 + Sub-stage 1.3 (event-triggered + LLM retry)
  *
  * Pipeline (batch / manual):
  *   1. Receive list of mock leads (with raw_message + display_name + source_handle)
@@ -15,6 +15,7 @@
  *      include their own number/email)
  *   4. Wrap message + features in <LEAD> tags. NO name. NO handle.
  *   5. Send to Haiku 4.5 with bucketed enum schema
+ *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
  *   6. Persist each classification to hot_leads table:
  *      - display_name + source_handle from input (owner UI display)
  *      - bucket from LLM
@@ -22,7 +23,7 @@
  *      - reason + suggestedAction from LLM
  *      - event_id (if provided via eventIdByLeadId map) for idempotency
  *
- * Sub-stage 1.3 addition — runHotLeadsOnEvent(tenantId, eventId):
+ * Sub-stage 1.3 — runHotLeadsOnEvent(tenantId, eventId):
  *   Single-event entry point used by the WhatsApp webhook. Loads the event,
  *   builds a MockLead from its payload, and calls runHotLeadsAgent with that
  *   single lead and an event_id mapping for idempotency. Pre-flight check
@@ -32,6 +33,7 @@
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { withRetry } from "@/lib/with-retry";
 import { HOT_LEADS_OUTPUT_SCHEMA } from "./schema";
 import { HOT_LEADS_SYSTEM_PROMPT, buildHotLeadsUserMessage } from "./prompt";
 import { scrubPii } from "@/lib/safety/pii-scrubber";
@@ -191,29 +193,45 @@ ${wrappedMessage}
 
   // ─── Define the executor ─────────────────────────────────
   const executor = async () => {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 1024,
-      system: [
-        {
-          type: "text",
-          text: HOT_LEADS_SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
+    // Wrap the Anthropic call in withRetry: 3 attempts, 1s/2s/4s exponential
+    // backoff with jitter. Retries on transient errors (5xx, 429, network);
+    // throws immediately on terminal errors (400, 401, 422). Total max wall
+    // time when all 3 attempts fail: ~7s. Successful first-try is zero
+    // overhead. See src/lib/with-retry.ts for details.
+    const response = await withRetry(
+      () =>
+        anthropic.messages.create({
+          model: MODEL,
+          max_tokens: 1024,
+          system: [
+            {
+              type: "text",
+              text: HOT_LEADS_SYSTEM_PROMPT,
+              cache_control: { type: "ephemeral", ttl: "1h" },
+            },
+          ],
+          messages: [
+            {
+              role: "user",
+              content: buildHotLeadsUserMessage(wrappedBlock),
+            },
+          ],
+          output_config: {
+            format: {
+              type: "json_schema",
+              schema: HOT_LEADS_OUTPUT_SCHEMA,
+            },
+          },
+        }),
+      {
+        onRetry: ({ attempt, nextDelayMs, error }) => {
+          console.warn(
+            `[hot_leads] LLM attempt ${attempt} failed; retrying in ${Math.round(nextDelayMs)}ms`,
+            { error: error instanceof Error ? error.message : String(error) }
+          );
         },
-      ],
-      messages: [
-        {
-          role: "user",
-          content: buildHotLeadsUserMessage(wrappedBlock),
-        },
-      ],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: HOT_LEADS_OUTPUT_SCHEMA,
-        },
-      },
-    });
+      }
+    );
 
     const text = response.content
       .map((b) => (b.type === "text" ? b.text : ""))
