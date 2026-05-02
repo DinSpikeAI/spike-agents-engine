@@ -3,6 +3,10 @@
 // Hebrew Magic Link login page — Calm Frosted edition.
 // AppleBg + Glass card + System Blue CTA + Spike mascot hero.
 //
+// Responsive behavior:
+//   - Mobile (< md): mascot appears compact above the form
+//   - Desktop (md+): mascot is the hero on the left side
+//
 // LoginForm is wrapped in Suspense because it uses useSearchParams(),
 // which requires a Suspense boundary in Next.js 16 static rendering.
 
@@ -58,12 +62,11 @@ export default function LoginPage() {
       <AppleBg />
 
       <main className="relative z-10 mx-auto flex min-h-screen max-w-[1100px] items-center justify-center gap-12 p-4 md:p-8">
-        {/* Spike hero — visible on tablet+ only */}
+        {/* Desktop hero — Spike mascot with laptop (lg+) */}
         <div className="hidden flex-1 items-center justify-center md:flex">
           <div className="relative">
             <Mascot pose="laptop" size={360} float priority />
 
-            {/* Soft glow halo behind Spike */}
             <div
               aria-hidden
               className="pointer-events-none absolute inset-0 -z-10"
@@ -74,7 +77,6 @@ export default function LoginPage() {
               }}
             />
 
-            {/* Tagline below Spike */}
             <div
               className="mt-3 text-center text-[13px] leading-relaxed"
               style={{ color: "var(--color-ink-3)" }}
@@ -94,10 +96,27 @@ export default function LoginPage() {
 
         {/* Login form — full width on mobile, half on desktop */}
         <div className="w-full max-w-[420px]">
-          {/* Logo + brand — visible everywhere */}
-          <div className="mb-7 flex flex-col items-center text-center md:items-start md:text-right">
+          {/* Mobile-only mascot — compact, above the form */}
+          <div className="mb-3 flex justify-center md:hidden">
+            <div className="relative">
+              <Mascot pose="phone-right" size={140} priority />
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 -z-10"
+                style={{
+                  background:
+                    "radial-gradient(ellipse at center, rgba(184,206,255,0.5), rgba(184,206,255,0) 70%)",
+                  transform: "scale(1.4)",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Brand block */}
+          <div className="mb-6 flex flex-col items-center text-center md:mb-7 md:items-start md:text-right">
+            {/* Logo "S" pill — desktop only (mascot replaces it on mobile) */}
             <div
-              className="mb-4 flex h-11 w-11 items-center justify-center rounded-[12px] text-[18px] font-bold text-white"
+              className="mb-4 hidden h-11 w-11 items-center justify-center rounded-[12px] text-[18px] font-bold text-white md:flex"
               style={{
                 background: "linear-gradient(135deg, #0A84FF, #5856D6)",
                 boxShadow:
@@ -107,13 +126,13 @@ export default function LoginPage() {
               S
             </div>
             <h1
-              className="text-[26px] font-bold tracking-[-0.025em]"
+              className="text-[22px] font-bold tracking-[-0.025em] sm:text-[26px]"
               style={{ color: "var(--color-ink)" }}
             >
               ברוך הבא ל-Spike Engine
             </h1>
             <p
-              className="mt-1.5 text-[13.5px]"
+              className="mt-1.5 text-[13px] sm:text-[13.5px]"
               style={{ color: "var(--color-ink-3)" }}
             >
               הזן את האימייל שלך ונשלח לך קישור־קסם
@@ -121,7 +140,7 @@ export default function LoginPage() {
           </div>
 
           {/* Glass form card */}
-          <Glass deep className="p-6">
+          <Glass deep className="p-5 sm:p-6">
             <Suspense fallback={<LoginFormSkeleton />}>
               <LoginForm />
             </Suspense>

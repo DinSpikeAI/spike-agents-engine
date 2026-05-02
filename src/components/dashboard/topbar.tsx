@@ -40,9 +40,9 @@ export function Topbar({
 
   return (
     <>
-      {/* Top utility bar */}
+      {/* Desktop-only utility bar (hidden on mobile — replaced by MobileHeader) */}
       <header
-        className="sticky top-0 z-10 mb-6 -mx-6 flex h-14 items-center gap-3.5 px-6 md:-mx-10 md:px-10"
+        className="sticky top-0 z-10 mb-6 -mx-6 hidden h-14 items-center gap-3.5 px-6 md:-mx-10 md:flex md:px-10"
         style={{
           background: "var(--color-glass-soft)",
           backdropFilter: "blur(30px) saturate(180%)",
@@ -73,13 +73,17 @@ export function Topbar({
             borderColor: "var(--color-hairline)",
           }}
         >
-          <Bell size={14} strokeWidth={1.5} style={{ color: "var(--color-ink-2)" }} />
+          <Bell
+            size={14}
+            strokeWidth={1.5}
+            style={{ color: "var(--color-ink-2)" }}
+          />
         </button>
       </header>
 
-      {/* Demo mode banner */}
+      {/* Demo mode banner — compact on mobile */}
       <div
-        className="mb-5 flex items-start gap-3 rounded-[14px] px-4 py-3"
+        className="mb-4 flex items-start gap-3 rounded-[14px] px-3.5 py-2.5 sm:mb-5 sm:px-4 sm:py-3"
         style={{
           background: "rgba(224, 169, 61, 0.08)",
           border: "1px solid rgba(224, 169, 61, 0.22)",
@@ -105,27 +109,28 @@ export function Topbar({
             className="mt-0.5 text-[12px] leading-relaxed"
             style={{ color: "var(--color-ink-2)" }}
           >
-            הסוכנים מציגים תוצאות עם נתוני הדגמה. אינטגרציות אמיתיות (Google Reviews, WhatsApp, Instagram) יחוברו בהמשך.
+            הסוכנים מציגים תוצאות עם נתוני הדגמה. אינטגרציות אמיתיות (Google
+            Reviews, WhatsApp, Instagram) יחוברו בהמשך.
           </div>
         </div>
       </div>
 
-      {/* Greeting hero */}
-      <section className="mb-[22px]">
+      {/* Greeting hero — responsive sizing */}
+      <section className="mb-5 sm:mb-[22px]">
         <div
-          className="text-[12px] font-medium"
+          className="text-[11.5px] font-medium sm:text-[12px]"
           style={{ color: "var(--color-ink-3)" }}
         >
           {dateString}
         </div>
         <h1
-          className="my-1 text-[36px] font-bold leading-tight tracking-[-0.03em]"
+          className="my-1 text-[26px] font-bold leading-[1.15] tracking-[-0.025em] sm:text-[36px] sm:leading-tight sm:tracking-[-0.03em]"
           style={{ color: "var(--color-ink)" }}
         >
           {greeting}, {userName}.
         </h1>
         <div
-          className="text-[13.5px]"
+          className="text-[12.5px] sm:text-[13.5px]"
           style={{ color: "var(--color-ink-2)" }}
         >
           {pendingApprovals > 0

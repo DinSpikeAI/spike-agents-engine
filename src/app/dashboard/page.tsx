@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireOnboarded } from "@/lib/auth/require-onboarded";
 import { isAdminEmail } from "@/lib/admin/auth";
 import { Sidebar } from "@/components/dashboard/sidebar";
+import { MobileHeader } from "@/components/dashboard/mobile-header";
+import { BottomNav } from "@/components/dashboard/bottom-nav";
 import { Topbar } from "@/components/dashboard/topbar";
 import { KpiStrip } from "@/components/dashboard/kpi-strip";
 import { ApprovalBanner } from "@/components/dashboard/approval-banner";
@@ -293,8 +295,17 @@ export default async function DashboardPage() {
         pendingCount={pendingCount}
       />
 
+      {/* Mobile-only sticky header with hamburger menu */}
+      <MobileHeader
+        userEmail={userEmail}
+        ownerName={ownerName}
+        businessName={businessName}
+        isAdmin={isAdminEmail(userEmail)}
+        pendingCount={pendingCount}
+      />
+
       <div className="md:mr-[232px]">
-        <main className="spike-scroll mx-auto max-w-[1280px] px-6 pb-20 pt-2 md:px-10">
+        <main className="spike-scroll mx-auto max-w-[1280px] px-4 pb-[96px] pt-3 sm:px-6 md:px-10 md:pb-20 md:pt-2">
           <Topbar
             greeting={greeting}
             userName={userName}
@@ -336,7 +347,7 @@ export default async function DashboardPage() {
                       {meta.label}
                     </h2>
                     <span
-                      className="text-[12px]"
+                      className="hidden text-[12px] sm:inline"
                       style={{ color: "var(--color-ink-3)" }}
                     >
                       {meta.tagline}
@@ -349,7 +360,7 @@ export default async function DashboardPage() {
                     {agentsInCat.map((agent) => (
                       <Glass
                         key={agent.id}
-                        className="agent-card flex flex-col gap-2.5 p-[18px]"
+                        className="agent-card flex flex-col gap-2.5 p-[14px] sm:p-[18px]"
                       >
                         <div className="flex items-start justify-between">
                           <div
@@ -407,6 +418,9 @@ export default async function DashboardPage() {
 
         <WhatsAppFab />
       </div>
+
+      {/* Mobile-only bottom navigation tabs */}
+      <BottomNav pendingCount={pendingCount} />
     </div>
   );
 }

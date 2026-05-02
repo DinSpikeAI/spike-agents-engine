@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireOnboarded } from "@/lib/auth/require-onboarded";
 import { isAdminEmail } from "@/lib/admin/auth";
 import { Sidebar } from "@/components/dashboard/sidebar";
+import { MobileHeader } from "@/components/dashboard/mobile-header";
+import { BottomNav } from "@/components/dashboard/bottom-nav";
 import { AppleBg } from "@/components/ui/apple-bg";
 import { Glass } from "@/components/ui/glass";
 import { ApprovalsList } from "@/components/dashboard/approvals-list";
@@ -84,8 +86,17 @@ export default async function ApprovalsPage() {
         pendingCount={pendingCount}
       />
 
+      {/* Mobile-only sticky header with hamburger menu */}
+      <MobileHeader
+        userEmail={userEmail}
+        ownerName={ownerName}
+        businessName={businessName}
+        isAdmin={isAdminEmail(userEmail)}
+        pendingCount={pendingCount}
+      />
+
       <div className="md:mr-[232px]">
-        <main className="spike-scroll mx-auto max-w-[1280px] px-6 pb-20 pt-8 md:px-10">
+        <main className="spike-scroll mx-auto max-w-[1280px] px-4 pb-[96px] pt-5 sm:px-6 md:px-10 md:pb-20 md:pt-8">
           {/* Page header */}
           <div className="mb-7">
             <div className="mb-2 flex items-center gap-3">
@@ -149,6 +160,9 @@ export default async function ApprovalsPage() {
           )}
         </main>
       </div>
+
+      {/* Mobile-only bottom navigation tabs */}
+      <BottomNav pendingCount={pendingCount} />
     </div>
   );
 }
