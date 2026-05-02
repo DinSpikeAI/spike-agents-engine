@@ -105,7 +105,7 @@ export function LoginForm() {
             className="mt-2 text-[13px] leading-relaxed"
             style={{ color: "var(--color-ink-2)" }}
           >
-            שלחנו קישור התחברות + קוד אימות ל-
+            שלחנו קוד אימות ל-
             <br />
             <span
               className="font-semibold"
@@ -119,7 +119,7 @@ export function LoginForm() {
             className="mt-1 text-[11.5px] leading-relaxed"
             style={{ color: "var(--color-ink-3)" }}
           >
-            לחץ על הקישור או הזן את הקוד מ-6 הספרות למטה
+            הזן את הקוד מ-6 הספרות למטה
           </p>
         </div>
 
@@ -238,7 +238,7 @@ export function LoginForm() {
             className="mt-1 text-[12.5px]"
             style={{ color: "var(--color-ink-3)" }}
           >
-            הזן את המייל שלך ונשלח לך קישור־קסם וקוד אימות
+            הזן את המייל שלך ונשלח לך קוד אימות
           </p>
         </div>
 
@@ -303,7 +303,7 @@ export function LoginForm() {
           ) : (
             <>
               <Mail size={13} strokeWidth={1.75} />
-              שלח לי קישור וקוד
+              שלח לי קוד
             </>
           )}
         </button>

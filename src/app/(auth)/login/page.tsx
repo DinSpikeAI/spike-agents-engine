@@ -135,7 +135,7 @@ export default function LoginPage() {
               className="mt-1.5 text-[13px] sm:text-[13.5px]"
               style={{ color: "var(--color-ink-3)" }}
             >
-              הזן את האימייל שלך ונשלח לך קישור־קסם
+              הזן את האימייל שלך ונשלח לך קוד אימות
             </p>
           </div>
 
@@ -150,7 +150,7 @@ export default function LoginPage() {
             className="mt-5 text-center text-[11.5px] md:text-right"
             style={{ color: "var(--color-ink-3)" }}
           >
-            כניסה דרך קישור־קסם נשלח למייל. אין סיסמאות.
+            כניסה דרך קוד אימות שנשלח למייל. אין סיסמאות.
           </p>
         </div>
       </main>
