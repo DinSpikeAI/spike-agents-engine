@@ -2,7 +2,11 @@
 //
 // Hebrew Magic Link login page — Calm Frosted edition.
 // AppleBg + Glass card + System Blue CTA + Spike mascot hero.
+//
+// LoginForm is wrapped in Suspense because it uses useSearchParams(),
+// which requires a Suspense boundary in Next.js 16 static rendering.
 
+import { Suspense } from "react";
 import { LoginForm } from "./login-form";
 import { AppleBg } from "@/components/ui/apple-bg";
 import { Glass } from "@/components/ui/glass";
@@ -11,6 +15,38 @@ import { Mascot } from "@/components/ui/mascot";
 export const metadata = {
   title: "התחבר — Spike",
 };
+
+// Skeleton shown while LoginForm hydrates with searchParams
+function LoginFormSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div>
+        <div
+          className="h-[18px] w-20 rounded"
+          style={{ background: "rgba(15,20,30,0.06)" }}
+        />
+        <div
+          className="mt-2 h-[12px] w-48 rounded"
+          style={{ background: "rgba(15,20,30,0.04)" }}
+        />
+      </div>
+      <div>
+        <div
+          className="mb-1.5 h-[12px] w-16 rounded"
+          style={{ background: "rgba(15,20,30,0.04)" }}
+        />
+        <div
+          className="h-[42px] w-full rounded-[10px]"
+          style={{ background: "rgba(255,255,255,0.6)" }}
+        />
+      </div>
+      <div
+        className="h-[42px] w-full rounded-[10px]"
+        style={{ background: "var(--color-sys-blue)", opacity: 0.5 }}
+      />
+    </div>
+  );
+}
 
 export default function LoginPage() {
   return (
@@ -86,7 +122,9 @@ export default function LoginPage() {
 
           {/* Glass form card */}
           <Glass deep className="p-6">
-            <LoginForm />
+            <Suspense fallback={<LoginFormSkeleton />}>
+              <LoginForm />
+            </Suspense>
           </Glass>
 
           <p
