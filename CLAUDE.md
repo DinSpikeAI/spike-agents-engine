@@ -2,23 +2,24 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-03 (end of session 3) — Sub-stages 1.1, 1.2, 1.3, 1.3.5, and 1.4 complete. Full real-time WhatsApp pipeline + internal Demo UI working end-to-end. Verified Hebrew output. ~10s end-to-end latency, ~₪0.04 per hot lead.
+> **Last updated:** 2026-05-03 (end of Sub-stage 1.5.5 — **Stage 1 COMPLETE**) — Sub-stages 1.1, 1.2, 1.3, 1.3.5, 1.4, 1.4.5, 1.5.1, **1.5.2, 1.5.3, 1.5.4, 1.5.5** all complete and live in production. Full real-time WhatsApp pipeline + Demo UI + admin sidebar + retry on all 8 customer-facing agents + cleanup cron + recovery cron + comprehensive anti-AI sweep + Israeli phone PII coverage. Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead.
 
 ---
 
 ## 0. TL;DR
 
-- **What:** Multi-tenant SaaS in **Hebrew RTL** for Israeli SMBs (salons, restaurants, clinics, retail, 3–15 location chains). 8 customer-facing AI agents draft proposals; the business owner approves before anything sends. A 9th internal agent (`cleanup`) does housekeeping — never visible to the user.
+- **What:** Multi-tenant SaaS in **Hebrew RTL** for Israeli SMBs (salons, restaurants, clinics, retail, 3-15 location chains). 8 customer-facing AI agents draft proposals; the business owner approves before anything sends. A 9th internal agent (`cleanup`) does housekeeping — never visible to the user. **All 9 are implemented and live in production.**
 - **Founder / sole dev:** Dean Moshe (`din6915@gmail.com`). Bootstrap mode. Hebrew speaker.
 - **The Iron Rule above all others:** **"AI מסמן, בעלים מחליט"** — AI flags, owner decides. Drafts only. Never auto-send.
 - **Marketing tagline:** **"שמונה סוכנים. שקט אחד."** ("Eight agents. One quiet.") — refers to the 8 customer-facing agents.
-- **Stack:** Next.js 16.2.4 (Turbopack) + React 19.2.4 + Tailwind v4 + TypeScript · Supabase (Frankfurt) · `@anthropic-ai/sdk` (Sonnet 4.6 + Haiku 4.5) · Resend · Vercel · `@vercel/functions` for waitUntil background tasks.
-- **Repo:** https://github.com/DinSpikeAI/spike-agents-engine
+- **Stack:** Next.js 16.2.4 (Turbopack) + React 19.2.4 + Tailwind v4 + TypeScript · Supabase (Frankfurt) · `@anthropic-ai/sdk@0.91.1` (Sonnet 4.6 + Haiku 4.5) · Resend · Vercel · `@vercel/functions@3.5.0` for waitUntil background tasks.
+- **Repo (engine):** https://github.com/DinSpikeAI/spike-agents-engine
+- **Repo (landing):** https://github.com/DinSpikeAI/spike-agents — separate marketing site (Next.js 16, Tailwind v4, RTL, Web3Forms). Don't confuse the two.
 - **Local dev:** `C:\Users\Din\Desktop\spike-engine`
 - **Domain:** `app.spikeai.co.il` (production) · `localhost:3000` (dev).
-- **State (May 2026):** Stage 1 of WhatsApp integration almost done. Sub-stages 1.1, 1.2, 1.3, 1.3.5, 1.4 complete. Full pipeline works end-to-end: WhatsApp → events.insert → Watcher + Hot Leads (parallel) → if hot/burning, Sales QuickResponse cascade → Hebrew draft. Internal Demo UI at `/dashboard/demo` for prospect demos. Pre-launch — no real customers yet.
+- **State (May 2026):** **Stage 1 COMPLETE.** Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. Verified live in production. Pre-launch — no real customers yet.
 - **Don't propose:** NPS surveys · schedule optimization for staff · contract review · crypto/Web3 · "senior manager of agents" · OpenAI fallback · standalone mobile app · 360dialog or other BSP middlemen.
-- **Next step:** Sub-stage 1.4.5 (sidebar link) OR Sub-stage 1.5 (Polish — withRetry on 5 remaining agents, anti-AI sweep, PII audit, Hot Leads cron safety net).
+- **Next up (Stage 2):** Meta Business verification + Embedded Signup UI + production WhatsApp templates. See §12.3.
 
 ---
 
@@ -44,30 +45,29 @@ Full pipeline at `src/lib/safety/`. Every customer-facing agent's untrusted inpu
 
 | Module | Purpose |
 |--------|---------|
-| `pii-scrubber.ts` | Phones, emails, IDs, credit cards, addresses (Hebrew-aware). תיקון 13. |
+| `pii-scrubber.ts` | Phones (all IL formats), emails, IDs (8-9 digits), credit cards, IBAN. תיקון 13. |
 | `defamation-guard.ts` | לשון הרע detection for review responses. |
 | `gender-lock.ts` | Hebrew זכר/נקבה agreement. |
 | `prompt-injection-guard.ts` | `detectInjectionAttempt()` against untrusted text. |
-
-`sanitizeUntrustedInput()` chains: `scrubPii → wrapUntrustedInput → detectInjectionAttempt`. Never call Anthropic directly with untrusted text.
+| `anti-ai-strip.ts` | Strips em-dash, en-dash, inline hashtags from LLM output. |
 
 ### 1.6 Israeli Regulation Built In
 - **סעיף 30א** anti-spam: no marketing without prior opt-in
 - **לשון הרע**: handled in Reviews safety pipeline
-- **תיקון 13** privacy: handled by PII scrubber
+- **תיקון 13** privacy: handled by PII scrubber (IL phone formats audited 1.5.5)
 
 ### 1.7 Drafts Have Expiry
-Default 72h. Sales follow-up + Sales QuickResponse: 24h. Cleanup agent enforces.
+Default 72h. Sales follow-up + Sales QuickResponse: 24h. **Cleanup cron (1.5.4) enforces** — runs daily at `0 0 * * *` UTC and sets `status='expired'` on any pending drafts past `expires_at`.
 
 ### 1.8 Gender Lock Mandatory in Hebrew Output
-Tenants have `business_owner_gender`. Used by Sales (both entry points) today; Reviews/Social/Manager pending in 1.5.
+Tenants have `business_owner_gender`. Used by Sales (both entry points); Reviews/Social/Manager pending future polish.
 
-### 1.9 Anti-AI-Signature Hygiene (Watcher 1.3 + Sales QR 1.3.5; full sweep in 1.5)
+### 1.9 Anti-AI-Signature Hygiene (1.3 + 1.3.5 + 1.5.1 hotfix + **1.5.3 sweep**)
 
 **Forbidden punctuation:**
 - em-dash (—) — strongest AI tell. Replace with period/comma/hyphen.
 - en-dash (–) mid-sentence
-- hashtags (#)
+- hashtags (#) entirely
 - multiple emojis (≤1 per message)
 
 **Forbidden Hebrew phrases:**
@@ -80,23 +80,21 @@ Tenants have `business_owner_gender`. Used by Sales (both entry points) today; R
 
 **Forbidden structure:**
 - More than 3-4 sentences (WhatsApp/DM context)
-- Openings like "מחפש/ת..." or "אני יודע ש..."
+- Openings like "מחפש/ת..." or "אני יודע ש..." or "במציאות של היום"
 
-**Israeli-specific tone (1.3.5 prompt design):**
+**Israeli-specific tone (1.3.5 + 1.5.3):**
 - Empathy on complaints, brevity on info requests
 - Use display_name from WhatsApp profile
 - Don't refer customers to competitors — leave the door open
 - "Persistent" aggressiveness: "אני פנוי עכשיו, אפשר להרים אליך צלצול?" (NOT "אתקשר בעוד 10 דקות")
+- **Israeli-natural Hebrew, not translated marketing** — "אפשר פשוט לשאול" not "המוצר המהפכני"
 
-**Forbidden hallucination** (Watcher 1.3 fix):
-- Names, numbers, dates, prices, contact details that did not appear in source event
-- Fallbacks: "פונה חדש", "לקוח קיים", "מקור: WhatsApp"
-
-**Implementation status:**
-- ✅ Watcher prompt (1.3): name hallucination ban + 5 fallback phrases
-- ✅ Sales QuickResponse prompt (1.3.5): all anti-AI rules + 7 scenarios + vertical-specific tone
-- 🔵 Defense-in-depth post-processing regex (deferred to 1.5)
-- 🔵 Reviews + Social + Manager + Morning + Inventory prompts (deferred to 1.5)
+**Implementation status (POST 1.5.3):**
+- ✅ All 8 customer-facing agents have anti-AI prompt rules
+- ✅ Defense-in-depth post-processing on Morning, Reviews, Social, Manager, Inventory (1.5.1 hotfix), Watcher (1.5.3), Hot Leads (1.5.3)
+- ✅ Sales QR + Sales — prompt-level rules from 1.3.5 are comprehensive enough
+- ✅ Israeli-tone calibration on Reviews + Social
+- ✅ Verified live in production (2026-05-03 — em-dashes and hashtags eliminated from Social/Morning output)
 
 ---
 
@@ -108,7 +106,7 @@ Tenants have `business_owner_gender`. Used by Sales (both entry points) today; R
 ### 2.2 Brutal Honesty
 - Bad idea → say it. Plan flaw → point it out before executing. "I don't know" preferred over confident guess.
 - Push back when proposals contradict CLAUDE.md.
-- **Never write "Dean provided X" without verification.** A prior session falsely attributed a Sales prompt to Dean. Verify before documenting.
+- **Never write "Dean provided X" without verification.**
 
 ### 2.3 PowerShell File Workflow
 1. Generate full file in `/mnt/user-data/outputs/`
@@ -116,9 +114,13 @@ Tenants have `business_owner_gender`. Used by Sales (both entry points) today; R
 3. Dean downloads to `~/Downloads/`
 4. `Move-Item -Force "$HOME\Downloads\file.tsx" "src\..."` from `C:\Users\Din\Desktop\spike-engine`
 5. `npx tsc --noEmit`
-6. If clean: `git add -A && git commit -m "..." && git push`
+6. If clean: `git add -A && git commit -m "..." && git push && vercel --prod` (if Vercel webhook isn't auto-deploying — see §15.8)
 
 Always full file. When 2 files share the same name, use distinct names in `/outputs/` and rename in Move-Item.
+
+**Browser download gotcha:** Sometimes Edge silently saves a 0-byte file from `present_files`. **Always verify with `Get-Item "$HOME\Downloads\file" | Select-Object Length`** if a Move-Item fails. If 0 bytes, re-download.
+
+**file-tree generation gotcha:** When asked for a file tree, generate it to `$HOME\Downloads` or `$env:TEMP`, **not** in repo root.
 
 ### 2.4 Don't Relitigate Settled Decisions
 - 9 agents stay 9 (8 customer-facing + 1 cleanup)
@@ -126,7 +128,7 @@ Always full file. When 2 files share the same name, use distinct names in `/outp
 - Drafts-only permanent
 - Anthropic-only permanent
 - Pricing: Solo ₪290 / Pro ₪690 / Chain ₪1,490 + ₪990 setup. NO freemium.
-- Meta Cloud API direct (not BSPs). Decided 2026-05-02.
+- Meta Cloud API direct (not BSPs).
 - See §13 "What NOT to Build"
 
 ### 2.5 Three Options + Recommendation
@@ -135,15 +137,15 @@ For decisions: 3 concrete options + trade-offs + Claude's recommendation.
 ### 2.6 Don't Be a Therapist
 - Don't ask if Dean is tired. Don't suggest he sleep.
 - Exception: clean sub-stage boundaries fine to offer "continue or pause".
-- **Don't say "good night" if it's 7am.** No time-of-day assumptions.
+- **Don't say "good night" if it's 7am.**
 
 ### 2.7 Bootstrap Mode
 - Only paid expense: Anthropic API
 - WhatsApp Business API direct = $0/month (vs €49/mo BSP)
 - Cost per inbound HOT WhatsApp message: ~₪0.04. Cold/warm: ~₪0.027
 - 100 msg/day with 30% hot rate: ~₪95/month, ~28% margin on Solo
-- **Anthropic credits state (2026-05-03):** Console balance ~$4.20, auto-reload disabled. ~100 hot lead demos before exhaustion. Top up before first prospect demo.
-- Dean has Pro ($20/mo for chat) AND Console credits (pay-per-token for production). Same Mastercard ••4113. Separate products.
+- **Anthropic credits state (2026-05-03):** Console balance ~$4.20, auto-reload disabled. Top up before first prospect demo.
+- Dean has **Claude Max ($100/mo)** subscription — includes Claude Code.
 
 ### 2.8 Verify Before Documenting
 **Always check schema before INSERTs:**
@@ -153,183 +155,172 @@ FROM information_schema.columns
 WHERE table_name = '<table>' AND table_schema = 'public';
 ```
 
-After migrations:
-```sql
-NOTIFY pgrst, 'reload schema';
-```
-
-PostgREST `PGRST204` errors after `ALTER TABLE` indicate schema cache lag.
+After migrations: `NOTIFY pgrst, 'reload schema';`
 
 Verification applies to Claude's own claims too. Never write "Dean said X" without grep'ing transcript.
 
 ### 2.9 Known Display Bug
-Claude.ai sometimes wraps `INTEGRATION-NOTES.md` and `localhost` as malformed links. PowerShell handles `localhost` (treats as array literal), but type manually if confusing.
+Claude.ai sometimes wraps `INTEGRATION-NOTES.md` and `localhost` as malformed links. Type manually if confusing.
 
 ### 2.10 PowerShell Gotchas
-- **Tee-Object does NOT block.** Running `npm run dev | Tee-Object` returns control. Typing any command kills dev. **Always 2 terminals.**
+- **Tee-Object does NOT block.** Always 2 separate windows for dev + commands.
 - **Add-Content does NOT add newline.** Breaks `.env.local`. Use notepad or prepend `` `n ``.
 - **Verify env after appending:** `Get-Content .env.local | Select-String "<KEY>"`.
-- **Test connection first:** `Test-NetConnection -ComputerName localhost -Port 3000 -InformationLevel Quiet` returns True/False.
-- **Stale .next cache (1.4 lesson):** tsc errors `routes.d.ts is not a module` → stop dev, `Remove-Item -Recurse -Force .next`, restart dev.
-- **Turbopack SST file errors** (`Persisting failed: Unable to write SST file 00000037.sst`): happens when `.next` mutated while dev running. Stop, clean, restart.
+- **Stale .next cache:** tsc errors `routes.d.ts is not a module` → stop dev, `Remove-Item -Recurse -Force .next`, restart dev.
+- **Turbopack SST file errors:** same fix.
+- **`git show` falls into less pager on Windows:** Use `git --no-pager show HEAD:vercel.json` or press `q`.
+- **LF/CRLF normalization warnings on `git add -A`** are usually harmless.
+- **Select-String fails on UTF-8 Hebrew from git stdout:** redirect to file + open in notepad.
 
 ### 2.11 Sub-stage Iteration Rhythm
 - 5-15 min plan + verification ask
 - 30-60 min code + self-audit
 - 5-15 min Move-Item + tsc + manual test
-- 5-10 min debug if needed
-- 5 min commit + push
-- **Total: ~1.5-2.5 hours typical.** UI-heavy (1.4) ran 4-5 hours due to design iteration.
+- 5 min commit + push + vercel --prod
+- **Total: ~1-2.5 hours typical.** Mechanical sweeps (1.5.1, 1.5.5) ~30-45 min.
 
-**Prompt-engineering** sub-stages: 30 min draft → review → calibration BEFORE code.
-
-**UI** sub-stages: read globals.css + 1-2 existing components BEFORE code (§2.12).
-
-### 2.12 Design Tokens & Patterns First (Sub-stage 1.4 lesson — 2026-05-03)
+### 2.12 Design Tokens & Patterns First (1.4 lesson)
 
 **Before any new UI code, read:**
 1. `src/app/globals.css` — Calm Frosted tokens
 2. **At least one existing styled component** (e.g., `kpi-strip.tsx`, agent grid in `src/app/dashboard/page.tsx`)
 
-**Mandatory.** Sub-stage 1.4 took 4 design attempts because Claude designed before reading globals.css. Each iteration produced generic shadcn-default styling. After reading: design fit immediately.
+Mandatory. 1.4 took 4 design attempts because Claude designed before reading globals.css.
 
 **The pattern Spike uses:**
 - `<Glass>` + `<Glass deep>` from `@/components/ui/glass` are card primitives
 - `<AppleBg>` from `@/components/ui/apple-bg` is page background
 - Colors via CSS variables in inline `style={{}}` — **NOT** Tailwind classes like `bg-rose-500`
 - Typography in arbitrary pixels: `text-[15.5px]`, `text-[12.5px]`, `tracking-[-0.025em]`
-- Hover utility: `agent-card` class
-- Section headers: `section-divider` for fading horizontal lines
-- Tile gradients per category: routine (blue) / content (lilac) / insight (green)
-- System colors (`--color-sys-blue`, `--color-sys-green`, `--color-sys-pink`, `--color-sys-amber`) for **status only**, never decoration
-
-**Don't:**
-- Use `bg-rose-500`, `text-emerald-700`, `border-sky-500` for design (only sys-* for status pills)
-- Use shadcn defaults `bg-card`, `bg-muted` (use Glass)
-- Mix plain shadcn primitives with Calm Frosted
 
 ---
 
 ## 3. Tech Stack
 
 ### 3.1 Frontend
-- Next.js 16.2.4 with Turbopack (breaking changes from Next 14/15)
+- Next.js 16.2.4 with Turbopack
 - React 19.2.4
-- Tailwind v4 with PostCSS (most design tokens in CSS variables, not Tailwind theme)
+- Tailwind v4 with PostCSS
 - TypeScript 5.x strict
-- shadcn/ui in `src/components/ui/` (used sparingly — Spike has its own primitives)
-- lucide-react for icons
-- sonner for toasts
+- shadcn/ui (used sparingly), lucide-react, sonner
 
 ### 3.2 Backend / DB
 - Supabase project ref `ihzahyzejqpjxwouxuhj`, Frankfurt
-- `@supabase/ssr` cookie auth
 - 3 clients in `src/lib/supabase/`: server.ts, client.ts, admin.ts
-- `createAdminClient()` is service-role, **server-only**
 
 ### 3.3 LLM
-- `@anthropic-ai/sdk` via singleton `src/lib/anthropic.ts` (server-only)
+- `@anthropic-ai/sdk@0.91.1` via singleton `src/lib/anthropic.ts` (server-only)
 - Cost tracking in `src/lib/anthropic-pricing.ts` → `cost_ledger`
-- Retry: `src/lib/with-retry.ts` (Sub-stage 1.3) wraps `anthropic.messages.create`
-- Models hardcoded per agent: `const MODEL = "..." as const;`
-- `AgentModel` type permits: `"claude-haiku-4-5" | "claude-sonnet-4-6" | "claude-opus-4-7"`. Opus 4.7 declared but unused — reserved future slot.
+- Retry: `src/lib/with-retry.ts` wraps all 8 customer-facing agents
+- Anti-AI: `src/lib/safety/anti-ai-strip.ts` strips em-dash, en-dash, hashtags
 
 ### 3.4 Email & Auth
-- Resend (sender `auth.spikeai.co.il`)
-- Supabase OTP code (see §8)
+- Resend, Supabase OTP
 
 ### 3.5 Background Tasks
-- `@vercel/functions` for `waitUntil()` in webhook + Hot Leads cascade
-- Vercel Cron (5 jobs in `vercel.json`):
-  - `/api/cron/reset-monthly-spend` (1 0 1 * *)
+- `@vercel/functions@3.5.0` for `waitUntil()`
+- **Vercel Cron (7 jobs in `vercel.json`, all daily-or-less for Hobby tier):**
+  - `/api/cron/reset-monthly-spend` (1 0 1 * *) — monthly
   - `/api/cron/social` (30 5 * * 0-4)
   - `/api/cron/sales` (30 7 * * 0-4)
   - `/api/cron/inventory` (30 5 * * 0,3)
-  - `/api/cron/watcher` (0 * * * *) — Sub-stage 1.2
+  - `/api/cron/watcher` (0 6 * * *) — daily on Hobby; restore to hourly on Pro
+  - `/api/cron/cleanup` (0 0 * * *) — 1.5.4
+  - `/api/cron/hot-leads-sales-recovery` (0 2 * * *) — 1.5.2
 
 ### 3.6 Hosting
-- Vercel auto-deploys from `main`
-- Cron auth: `Authorization: Bearer ${CRON_SECRET}`. Open in dev (CRON_SECRET unset).
+- Vercel auto-deploys from `main` (when not blocked — see §15.8)
+- CLI fallback: `vercel --prod` from local when webhook fails.
 
 ---
 
-## 4. Repository Layout (Audited 2026-05-03)
+## 4. Repository Layout
 
 ```
 spike-engine/
 ├── src/
 │   ├── app/
-│   │   ├── (auth)/login/        # OTP-only
-│   │   ├── auth/callback/
+│   │   ├── (auth)/login/
+│   │   ├── auth/callback/route.ts
 │   │   ├── onboarding/
+│   │   ├── admin/
 │   │   ├── dashboard/
 │   │   │   ├── page.tsx         # ⚠️ Read for UI patterns
-│   │   │   ├── approvals/
-│   │   │   ├── inventory/
-│   │   │   ├── leads/
-│   │   │   ├── manager/
-│   │   │   ├── demo/            # Sub-stage 1.4
-│   │   │   │   ├── page.tsx
-│   │   │   │   └── actions.ts
-│   │   │   └── actions.ts       # 1430 lines — refactor liability
+│   │   │   ├── approvals/page.tsx
+│   │   │   ├── inventory/page.tsx
+│   │   │   ├── leads/page.tsx
+│   │   │   ├── manager/page.tsx
+│   │   │   ├── demo/                          # 1.4
+│   │   │   └── actions.ts       # 1430 lines
 │   │   ├── api/
-│   │   │   ├── webhooks/whatsapp/route.ts   # 1.1+1.2+1.3
-│   │   │   ├── cron/watcher/route.ts        # 1.2
-│   │   │   └── demo/status/route.ts         # 1.4
-│   │   └── globals.css          # ⚠️ READ FIRST when designing UI
+│   │   │   ├── webhooks/whatsapp/route.ts
+│   │   │   ├── cron/
+│   │   │   │   ├── inventory/route.ts
+│   │   │   │   ├── reset-monthly-spend/route.ts
+│   │   │   │   ├── sales/route.ts
+│   │   │   │   ├── social/route.ts
+│   │   │   │   ├── watcher/route.ts                        # 1.2
+│   │   │   │   ├── cleanup/route.ts                        # 1.5.4
+│   │   │   │   └── hot-leads-sales-recovery/route.ts       # 1.5.2
+│   │   │   └── demo/status/route.ts                        # 1.4
+│   │   ├── globals.css          # ⚠️ READ FIRST for UI
+│   │   └── layout.tsx
 │   ├── components/
 │   │   ├── ui/
 │   │   │   ├── glass.tsx        # ⚠️ THE primitive
 │   │   │   ├── apple-bg.tsx     # ⚠️ THE page bg
-│   │   │   └── mascot.tsx
+│   │   │   ├── mascot.tsx
+│   │   │   └── ... shadcn primitives
+│   │   ├── admin/
 │   │   ├── dashboard/
-│   │   └── demo/
-│   │       ├── demo-panel.tsx
-│   │       └── pipeline-status.tsx
+│   │   │   ├── sidebar.tsx              # 1.4.5: Demo link
+│   │   │   ├── mobile-drawer.tsx        # 1.4.5: Demo link
+│   │   │   └── ...
+│   │   ├── demo/
+│   │   └── providers/
 │   └── lib/
-│       ├── anthropic.ts         # Singleton (server-only)
+│       ├── anthropic.ts
 │       ├── anthropic-pricing.ts
-│       ├── with-retry.ts        # 1.3
+│       ├── with-retry.ts        # 1.3 → wraps all 8 agents
 │       ├── supabase/
-│       ├── auth/                # require-onboarded.ts → { userId, userEmail, tenantId }
-│       ├── safety/              # ⚠️ pipeline
-│       ├── admin/               # auth.ts (isAdminEmail)
+│       ├── auth/require-onboarded.ts → { userId, userEmail, tenantId }
+│       ├── safety/
+│       │   ├── pii-scrubber.ts                # 1.5.5: IL phone formats audited
+│       │   ├── defamation-guard.ts
+│       │   ├── gender-lock.ts
+│       │   ├── prompt-injection-guard.ts
+│       │   └── anti-ai-strip.ts               # 1.5.1 hotfix
+│       ├── admin/
+│       ├── health/
+│       ├── quotas/
 │       ├── webhooks/whatsapp/
-│       ├── demo/types.ts        # ⚠️ NEUTRAL module (no "use server") — 1.4
+│       ├── demo/types.ts
 │       └── agents/
 │           ├── types.ts
 │           ├── config.ts
 │           ├── run-agent.ts
 │           ├── run-agent-safe.ts
-│           ├── morning/
-│           ├── watcher/         # + INTEGRATION-NOTES.md
-│           ├── reviews/
-│           ├── hot_leads/       # 537 lines, 1.3.5 cascade
-│           ├── social/
-│           ├── sales/           # ⚠️ TWO entry points — see §6.8
-│           │   ├── prompt.ts
-│           │   ├── prompt-quick-response.ts  # 1.3.5
-│           │   ├── run.ts                    # 848 lines
-│           │   ├── schema.ts
-│           │   └── schema-quick-response.ts  # 1.3.5
-│           ├── manager/
-│           └── inventory/
-├── supabase/
-│   └── migrations/              # 20 files. Latest: 020
+│           ├── morning/                       # 1.5.3 anti-AI
+│           ├── watcher/                       # + INTEGRATION-NOTES.md (1.5.5 updated)
+│           ├── reviews/                       # 1.5.3 anti-AI + Israeli-tone
+│           ├── hot_leads/                     # 1.3.5 cascade + 1.5.3 post-processing
+│           ├── social/                        # 1.5.3 anti-AI + hashtags removed
+│           ├── sales/                         # ⚠️ TWO entry points — see §6.8
+│           ├── manager/                       # 1.5.3 anti-AI
+│           └── inventory/                     # 1.5.3 anti-AI
+├── supabase/migrations/         # 21 files. Latest: 021.
 ├── tests/fixtures/
-│   ├── whatsapp-test-payload.json   # warm
-│   └── whatsapp-hot-payload.json    # 1.3.5 hot
-├── public/mascot/                   # NOTE: phone-right.png appeared broken in 1.4
-├── vercel.json
+├── public/mascot/
+├── proxy.ts
+├── vercel.json                  # 7 cron entries
 ├── CLAUDE.md
+├── AGENTS.md
 └── package.json
 ```
 
-`cleanup` agent declared in types.ts/config.ts but no folder. Implementation likely in cron handler.
-
 ---
 
-## 5. Database Schema (Verified 2026-05-03)
+## 5. Database Schema
 
 ### 5.1 events Table
 
@@ -342,25 +333,14 @@ spike-engine/
 | `payload` | jsonb | NO | null |
 | `received_at` | timestamptz | NO | now() |
 
-`id` is text PK supplied by caller — natural idempotency key. For webhooks: `wamid.HBgL...`. For demo: `wamid.DEMO_${ts}_${random}`.
+`id` is text PK supplied by caller — natural idempotency key. For webhooks: `wamid.HBgL...`.
 
-**event_type values (snake_case):**
-`lead_received`, `review_received`, `low_stock`, `message_received`, `appointment_upcoming`, `calendar_change`, `dm_received`, `payment_failed`, `routine_update`, `urgent_message`, `whatsapp_message_received`.
-
-**Naming rule:** `<domain>_<action>` snake_case. NOT dot notation.
-
-### 5.2 hot_leads Table (19 cols)
-
-Key columns:
-- `id`, `tenant_id`, `agent_run_id`
-- `source`, `source_handle`, `display_name`, `raw_message` (PII)
-- `received_at`, `score_features` (jsonb), `bucket`, `reason`, `suggested_action`
-- `status` (default 'classified')
-- `event_id` text — added migration 020, idempotency key
+### 5.2 hot_leads Table
+19 cols. Key columns: `id`, `tenant_id`, `agent_run_id`, `source`, `source_handle`, `display_name`, `raw_message` (PII), `received_at`, `score_features` (jsonb), `bucket`, `reason`, `suggested_action`, `status` (default 'classified'), `event_id` text (1.3 idempotency).
 
 Idempotency: partial UNIQUE `idx_hot_leads_tenant_event_id` on `(tenant_id, event_id) WHERE event_id IS NOT NULL`.
 
-**Verified bucket values:** `cold` · `warm` · `hot` · `burning` · `spam_or_unclear`. Sales QR cascade triggers on `hot` and `burning` only.
+**Bucket values:** `cold` · `warm` · `hot` · `burning` · `spam_or_unclear`. Sales QR cascade triggers on `hot` and `burning` only.
 
 ### 5.3 drafts Table
 
@@ -371,39 +351,20 @@ Sales writes **two distinct draft types**:
 | `sales_followup` | `runSalesAgent` (cron) | Stuck leads (3+ days) | 24h |
 | `sales_quick_response` | `runSalesQuickResponseOnEvent` (webhook cascade) | Fresh hot/burning | 24h |
 
-`drafts.context` for `sales_quick_response`: `trigger='webhook'`, `event_id`, `lead_display_name`. `event_id` is idempotency key.
+**Status values:** `pending`, `rejected`, `expired` (1.5.4 — migration 021 idempotently adds it).
 
 ### 5.4 Other Core Tables
+`tenants`, `user_settings`, `memberships`, `agents`, `agent_prompts`, `tenant_agents`, `agent_runs`, `integrations`, `notifications`, `cost_ledger`, `idempotency_keys`, `audit_log`, `manager_reports`, `inventory_snapshots`.
 
-| Table | Purpose |
-|-------|---------|
-| `tenants` | id, name, vertical, business_owner_gender, config (JSONB) |
-| `user_settings` | onboarding_completed_at, active_tenant_id |
-| `memberships` | user↔tenant |
-| `agents` | master list (9) |
-| `agent_prompts` | versioned |
-| `tenant_agents` | per-tenant enable + config |
-| `agent_runs` | every execution |
-| `integrations` | third-party (`credentials` JSONB does NOT exist — schema not yet finalized) |
-| `notifications` | in-app alerts |
-| `cost_ledger` | Anthropic spend |
-| `idempotency_keys` | duplicate-run prevention |
-| `audit_log` | sensitive actions |
-| `manager_reports` | weekly summaries |
-| `inventory_snapshots` | parsed CSVs |
+`idempotency_keys` schema (verified): `key text, tenant_id uuid, request_hash text, response jsonb, status text, expires_at timestamptz, created_at timestamptz`. Cleanup cron uses table's own `expires_at`.
 
 ### 5.5 Tenant Config
-
 - `name` — business
 - `vertical` — `general | clinic | financial | restaurant | retail | services | beauty | education`
 - `business_owner_gender` — Hebrew grammar
-- `config` (JSONB): `owner_name`, `business_name`, `onboarding_completed_at`, plus per-agent:
-  - `config.sales` — `toneOfVoice`, `whatsappBusinessNumber`, `availabilityLink`, `servicesPricingDisclose`, `followUpAggressiveness`
-  - `config.social` — `toneOfVoice` (Sales falls back if its own unset)
+- `config` (JSONB): `owner_name`, `business_name`, plus per-agent configs
 
 ### 5.6 The Events Contract
-
-Every customer-facing agent reads from `events.payload.summary` (Hebrew). Canonical contract:
 
 ```json
 {
@@ -424,17 +385,12 @@ Every customer-facing agent reads from `events.payload.summary` (Hebrew). Canoni
 }
 ```
 
-Watcher reads `summary`. Hot Leads reads `raw_message`. Sales QR reads `raw_message`, `contact_name`, `contact_phone`.
-
-For deep webhook integration guidance: `src/lib/agents/watcher/INTEGRATION-NOTES.md`.
+For deep webhook integration guidance: `src/lib/agents/watcher/INTEGRATION-NOTES.md` (1.5.5 updated).
 
 ### 5.7 Demo Data
 - **Demo tenant ID:** `15ef2c6e-a064-49bf-9455-217ba937ccf2`
 - **Demo tenant name:** `spikeAi`, vertical `retail`
-- **Demo user:** Dean Moshe, `din6915@gmail.com`, ID `69ea2326-a5cf-4c53-a9ec-866b70e1060f`
-
-### 5.8 PostgREST Schema Cache Lag
-After `ALTER TABLE`: `NOTIFY pgrst, 'reload schema';` then verify with `information_schema.columns`.
+- **Demo user:** Dean Moshe, `din6915@gmail.com`
 
 ---
 
@@ -442,22 +398,29 @@ After `ALTER TABLE`: `NOTIFY pgrst, 'reload schema';` then verify with `informat
 
 ### 6.1 The 8 Customer-Facing Agents
 
-| # | Agent | Model | Trigger | Output | withRetry? |
-|---|-------|-------|---------|--------|-----------|
-| 1 | Manager | sonnet-4-6 | Weekly cron (Sun) | `manager_reports` | No (1.5+) |
-| 2 | Morning | haiku-4-5 | Daily cron 07:00 IL | drafts (`morning_brief`) | No (1.5+) |
-| 3 | Watcher | haiku-4-5 | Real-time webhook + hourly cron | dashboard alerts | ✅ (1.3) |
-| 4 | Reviews | sonnet-4-6 | New review event | drafts (`review_response`) | No (1.5+) |
-| 5 | Hot Leads | haiku-4-5 | Real-time webhook | Classify → cascades to Sales QR on hot/burning | ✅ (1.3) |
-| 6 | Social | sonnet-4-6 | Cron 05:30 (no Sat) | drafts (`social_post`) | No (1.5+) |
-| 7 | Sales | sonnet-4-6 + adaptive thinking | **TWO entry points** §6.8 | `sales_followup` / `sales_quick_response` | ✅ (1.3) |
-| 8 | Inventory | sonnet-4-6 | Cron 05:30 Sun/Wed | drafts (`inventory_analysis`) | No (1.5+) |
+| # | Agent | Model | Trigger | Output | withRetry? | Anti-AI? |
+|---|-------|-------|---------|--------|-----------|----------|
+| 1 | Manager | sonnet-4-6 | Weekly cron (Sun) | `manager_reports` | ✅ | ✅ |
+| 2 | Morning | haiku-4-5 | Daily cron 07:00 IL | drafts | ✅ | ✅ |
+| 3 | Watcher | haiku-4-5 | Real-time webhook + daily cron | dashboard alerts | ✅ | ✅ |
+| 4 | Reviews | sonnet-4-6 | New review event | drafts | ✅ | ✅ + Israeli-tone |
+| 5 | Hot Leads | haiku-4-5 | Real-time webhook | Classify → cascade | ✅ | ✅ |
+| 6 | Social | sonnet-4-6 | Cron 05:30 (no Sat) | drafts | ✅ | ✅ + hashtags removed |
+| 7 | Sales | sonnet-4-6 + thinking | TWO entry points §6.8 | drafts | ✅ | ✅ |
+| 8 | Inventory | sonnet-4-6 | Cron 05:30 Sun/Wed | drafts | ✅ | ✅ |
 
-### 6.2 Cleanup (Internal)
+**As of 1.5.3: ALL 8 agents have anti-AI hygiene at both prompt level AND post-processing level.**
+
+### 6.2 Cleanup (Internal) — 1.5.4
+
 - AgentId: `cleanup`. Not customer-facing.
-- Housekeeping: expire drafts, archive runs, expire idempotency_keys.
-- Never notifies / creates drafts / runs LLM.
-- No folder. Implementation likely in cron handler. **TODO: locate.**
+- **Location:** `src/app/api/cron/cleanup/route.ts`
+- **Schedule:** `0 0 * * *` UTC
+- **Three best-effort tasks** (independent try/catch):
+  1. `UPDATE drafts SET status='expired' WHERE status='pending' AND expires_at < NOW()`
+  2. Count agent_runs older than 90 days
+  3. DELETE expired idempotency_keys
+- Always returns HTTP 200.
 
 ### 6.3 Models — Hardcoded
 ```typescript
@@ -465,132 +428,57 @@ const MODEL = "claude-haiku-4-5" as const;  // each run.ts
 ```
 
 ### 6.4 Agent Run Lifecycle
-`runAgent()`:
-1. Cost estimation
-2. Spend cap pre-flight
-3. `agent_runs` row status='running'
-4. `reserve_spend` RPC
-5. Executor (Anthropic + safety)
-6. `settle_spend` / `refund_spend`
-7. `cost_ledger`
+`runAgent()`: cost estimation → spend cap → agent_runs row → reserve_spend RPC → executor → settle_spend / refund_spend → cost_ledger.
 
-Two wrappers:
-- `runAgent` — bare (Watcher)
-- `runAgentSafe` — adds safety pipeline (Reviews, Hot Leads, Sales, Social)
+Two wrappers: `runAgent` (bare) vs `runAgentSafe` (adds safety pipeline).
 
-**Never call Anthropic directly.**
+**Never call Anthropic directly.** Always wrap in `withRetry(...)`.
 
-### 6.5 Watcher Strategy (1.2)
-Real-time webhook + hourly cron safety net. Together = 100% coverage.
+### 6.5 Watcher Strategy (1.2 + 1.5.2)
+Real-time webhook + daily cron safety net (`0 6 * * *` UTC). Restore to hourly when upgrading to Pro tier.
 
-### 6.6 Hot Leads Strategy (1.3 + 1.3.5)
+### 6.6 Hot Leads Strategy (1.3 + 1.3.5 + 1.5.2 + 1.5.3)
 Two entry points:
 1. `runHotLeadsAgent(tenantId, leads, triggerSource, eventIdByLeadId?)` — batch
 2. `runHotLeadsOnEvent(tenantId, eventId)` — single event from webhook
    - Pre-flight idempotency `(tenant_id, event_id)`
-   - Build MockLead from event.payload
-   - Call `runHotLeadsAgent` with map → populates `hot_leads.event_id`
-   - **NEW (1.3.5):** if bucket ∈ {hot, burning}, fire `runSalesQuickResponseOnEvent` via `waitUntil()`. Cold/warm/spam don't cascade.
+   - **(1.3.5):** if bucket ∈ {hot, burning}, fire `runSalesQuickResponseOnEvent` via `waitUntil()`. Cold/warm/spam don't cascade.
+
+**Recovery cron (1.5.2):** `/api/cron/hot-leads-sales-recovery` runs daily at `0 2 * * *` UTC.
+- Stage 1: scans events from last 48h with no matching `hot_leads` row, runs classification on up to 50.
+- Stage 2: scans hot/burning leads with no `sales_quick_response` draft, runs cascade.
 
 Bias firewall: LLM sees behavior features + scrubbed message. `display_name` and `source_handle` never reach model.
 
-### 6.7 LLM Retry (1.3)
-`with-retry.ts`: 3 attempts, 1s/2s/4s exponential + jitter.
-- Retryable: APIConnectionError, 429, 500-504, 529
-- Non-retryable: 400/401/403/404/422
-- Wraps: Watcher, Hot Leads, Sales (both)
-- Pending in 1.5: Reviews, Social, Manager, Morning, Inventory
+### 6.7 LLM Retry (1.3 + 1.5.1)
+`with-retry.ts`: 3 attempts, 1s/2s/4s exponential + jitter. Pattern:
+```typescript
+const response = await withRetry(
+  () => anthropic.messages.create({...}),
+  {
+    onRetry: ({ attempt, nextDelayMs, error }) => {
+      console.warn(
+        `[<agent-id>] LLM attempt ${attempt} failed; retrying in ${Math.round(nextDelayMs)}ms`,
+        { error: error instanceof Error ? error.message : String(error) }
+      );
+    },
+  }
+);
+```
 
 ### 6.8 Sales — TWO Entry Points (1.3.5)
 
-#### Path A: `runSalesAgent` — Stuck leads
-- Cron `/api/cron/sales` 07:30 or manual
-- Prompt: `prompt.ts` — rich follow-up
-- Schema: `schema.ts` — multi-field
-- Query: `bucket IN ('warm','hot','burning') AND status='classified' AND received_at < NOW() - INTERVAL '3 days'`
-- Output: `drafts` `type='sales_followup'`
-- Adaptive thinking 2048 tokens
+**Path A: `runSalesAgent`** — Stuck leads (cron, 07:30, 3+ days old leads, type='sales_followup', adaptive thinking).
 
-#### Path B: `runSalesQuickResponseOnEvent` — Fresh hot leads (NEW 1.3.5)
-- Trigger: Hot Leads cascade
-- Prompt: `prompt-quick-response.ts` — short, Israeli-tone
-- Schema: `schema-quick-response.ts` — minimal `{ message_text, expected_response_probability }`
-- Idempotency: `(tenant_id, agent_id='sales', type='sales_quick_response', context.event_id)`
-- Output: `drafts` `type='sales_quick_response'`
-- No adaptive thinking (speed)
+**Path B: `runSalesQuickResponseOnEvent`** — Fresh hot leads (webhook cascade, type='sales_quick_response', no thinking, idempotent on event_id).
 
-**Verified Hebrew output (2026-05-03):** for hot lead "אני צריך דחוף לקבוע פגישה היום. רוצה לבדוק את הטיפול. תקציב 2000 שקל. מתי אתם פנויים?" → drafted **"אהלן מוחמד, שמח לשמוע. היום אפשר לסדר משהו. מתי בדיוק נוח לך?"** — natural Hebrew, 3 sentences, no em-dash, uses display_name.
+**Verified Hebrew output:** for hot lead "אני צריך דחוף לקבוע פגישה היום. רוצה לבדוק את הטיפול. תקציב 2000 שקל. מתי אתם פנויים?" → drafted **"אהלן מוחמד, שמח לשמוע. היום אפשר לסדר משהו. מתי בדיוק נוח לך?"**
 
 ---
 
-## 7. Design System — "Calm Frosted" (Direction D)
+## 7. Design System — "Calm Frosted"
 
-Apple-style: layered tints, frosted glass, system colors. **"Calm is the brand."**
-
-Tokens in `src/app/globals.css`. **READ THIS FILE before designing any UI.** §2.12.
-
-### 7.1 Tokens
-
-```css
-/* Base mist (page bg) */
---color-mist-blue: #E9EEF8;
---color-mist-lilac: #EFE9F4;
---color-mist-mint: #E5EEF0;
-
-/* Glass */
---color-glass: rgba(255,255,255,0.72);
---color-glass-deep: rgba(255,255,255,0.86);
---color-glass-soft: rgba(255,255,255,0.55);
-
-/* Borders */
---color-hairline: rgba(15,20,30,0.08);
-
-/* Ink (text) */
---color-ink: #0F1620;     /* primary */
---color-ink-2: #3F4654;   /* secondary */
---color-ink-3: #727988;   /* tertiary, captions */
-
-/* System — STATUS ONLY, never decoration */
---color-sys-blue: #0A84FF;        --color-sys-blue-soft: rgba(10,132,255,0.12);
---color-sys-green: #30B36B;       --color-sys-green-soft: rgba(48,179,107,0.14);
---color-sys-pink: #D6336C;
---color-sys-amber: #E0A93D;
-
-/* Category accents */
---color-cat-routine: rgba(184,206,255,0.20);  --color-cat-routine-fg: rgba(10,70,160,0.85);
---color-cat-content: rgba(214,189,233,0.22);  --color-cat-content-fg: rgba(120,60,160,0.85);
---color-cat-insight: rgba(178,221,206,0.24);  --color-cat-insight-fg: rgba(20,120,80,0.90);
-```
-
-### 7.2 Primitives
-- `<Glass>` / `<Glass deep>` — card surfaces
-- `<AppleBg>` — page background
-- `<Mascot>` — Spike character. PNGs: laptop, phone-left, phone-right. **Verify file exists before referencing.**
-
-### 7.3 Utility Classes
-- `.agent-card` — hover lift + shadow
-- `.agent-tile` — gentle scale on parent hover
-- `.section-divider` — fading horizontal line
-- `.mascot-float` — gentle 4s up/down idle
-- `.spike-scroll` — minimal scrollbar
-
-### 7.4 Typography
-- Hero number: `text-[32px] font-semibold leading-none tracking-[-0.035em]`
-- Section title: `text-[17px] font-semibold tracking-[-0.01em]`
-- Card title: `text-[15.5px] font-semibold tracking-tight`
-- Role/sub: `text-[11.5px]` ink-3
-- Body: `text-[12.5px] leading-[1.55]`
-- Eyebrow: `text-[11px] uppercase tracking-[0.08em]`
-
-### 7.5 Color Use
-```tsx
-// ✅ CSS variables in inline style
-<div style={{ color: "var(--color-ink)", background: "var(--color-glass)" }}>
-
-// ❌ Tailwind preset colors
-<div className="bg-card text-foreground">
-<span className="text-blue-500">
-```
+Apple-style: layered tints, frosted glass, system colors. Tokens in `src/app/globals.css`. **READ THIS FILE before designing any UI.** §2.12.
 
 **Tagline:** **"שמונה סוכנים. שקט אחד."**
 
@@ -598,57 +486,24 @@ Tokens in `src/app/globals.css`. **READ THIS FILE before designing any UI.** §2
 
 ## 8. Auth Flow (OTP)
 
-### 8.1 Supabase Dashboard
-- Site URL: `https://app.spikeai.co.il`
-- Redirect URLs: production + `http://localhost:3000/auth/callback`
-- Email OTP length: 6 digits
+- 6-digit codes only
+- `verifyOtp({type: "email"})` — only "email" type, no fallback
+- Both Supabase email templates (Magic Link + Confirm signup) use `{{ .Token }}` only
+- Login UI says **"קוד אימות"**, never "קישור"
 
-### 8.2 Two Templates
-Both use `{{ .Token }}` only (no `{{ .ConfirmationURL }}`):
-1. Magic Link (existing users)
-2. Confirm signup (new users)
+### 8.7 Admin Auth (`src/lib/admin/auth.ts`)
+- `isAdminEmail(email): boolean`
+- `requireAdmin(): Promise<User>` — redirects appropriately
+- `getAdminUserOrNull()` — soft check
+- `listAdminEmails()` — debug helper
 
-### 8.3 Verification Code
-```typescript
-const { error } = await supabase.auth.verifyOtp({
-  email: cleanEmail,
-  token: cleanToken,
-  type: "email",  // ⚠️ ONLY 'email'. Don't add fallbacks.
-});
-```
-
-### 8.4 The Bug That Took a Day
-"code expired" with fresh code → mismatch between Supabase OTP length (8 digits) and form `maxLength={6}`. Form silently truncated. Both templates set to 6-digit fixed it.
-
-### 8.5 Login UI
-OTP-only. Copy says **"קוד אימות"**, never "קישור".
-
-### 8.6 `requireOnboarded()` Returns
-```typescript
-interface OnboardedContext {
-  userId: string;
-  userEmail: string;
-  tenantId: string;
-}
-```
-**NOT** `{ user, tenant }`. Caused 6 tsc errors in 1.4 first attempt.
+`requireOnboarded()` returns `{ userId: string, userEmail: string, tenantId: string }`. NOT `{ user, tenant }`.
 
 ---
 
 ## 9. Mobile UX
 
-### 9.1 Architecture
-- Desktop (≥768px): Sidebar fixed-right 232px. Main `md:mr-[232px]`.
-- Mobile (<768px): MobileHeader + MobileDrawer + BottomNav.
-
-### 9.2 Adaptive
-- KpiStrip: `snap-x` mobile, `sm:grid sm:grid-cols-3` desktop
-- WhatsAppFab: `bottom-[78px] sm:bottom-[22px]`
-
-### 9.3 Don't
-- `lg:` instead of `md:` (use 768px breakpoint)
-- `/mobile` route (adaptive in-place)
-- PWA / standalone app (§13)
+Adaptive in-place at 768px breakpoint. BottomNav + MobileDrawer + MobileHeader for <768.
 
 ---
 
@@ -679,30 +534,24 @@ Meta Cloud API → POST /api/webhooks/whatsapp
                                   │
                                   ↓
                        Owner sees in /approvals
+
+Daily safety nets (Hobby tier limits crons to 1/day):
+  /api/cron/watcher                        — 0 6 * * *
+  /api/cron/cleanup                        — 0 0 * * *
+  /api/cron/hot-leads-sales-recovery       — 0 2 * * *
 ```
 
-### 10.2 BSP Decision: Meta Direct
-Decided 2026-05-02. $0/month vs €49/mo BSPs. Trade-off: build Embedded Signup ourselves in Stage 2 (1-2 days).
-
-### 10.3 Webhook: `POST /api/webhooks/whatsapp`
-1. Read raw body
-2. Verify signature (Stage 1: bypassed if `WHATSAPP_APP_SECRET` unset)
-3. Parse via `extractMessages()`
-4. Per message: resolve tenant (header override → DEMO_TENANT_ID fallback), build summary, insert events with PK = whatsappMessageId
-5. After inserts: `waitUntil(runWatcherAgent)` per tenant + `waitUntil(runHotLeadsOnEvent)` per fresh event
-6. Always 200
-
-### 10.4 Watcher Cron
-`/api/cron/watcher`. Schedule `0 * * * *`. Auth `Bearer ${CRON_SECRET}`.
+### 10.2 BSP Decision: Meta Direct (decided 2026-05-02)
 
 ### 10.5 Required ENV
 ```
 WHATSAPP_VERIFY_TOKEN     # Stage 1: any string
 WHATSAPP_APP_SECRET       # Stage 1: unset (signature bypass)
 CRON_SECRET               # Required production. Local: 8ac0dea1-a612-478a-a115-9accb2b3a21c
+ADMIN_EMAILS              # comma-separated. Currently: din6915@gmail.com
 ```
 
-### 10.6 Verified Performance (2026-05-03)
+### 10.6 Verified Performance
 
 | Stage | Latency | Cost |
 |-------|---------|------|
@@ -713,139 +562,94 @@ CRON_SECRET               # Required production. Local: 8ac0dea1-a612-478a-a115-
 | Sales QR (cascade) | +6s | ~₪0.013 |
 | **End-to-end (hot lead → draft)** | **~15-16s** | **~₪0.040** |
 
-Per-message:
-- Cold/warm/spam: ~₪0.027
-- Hot/burning: ~₪0.040
-
-Idempotency layers:
-1. `events.id` PRIMARY KEY (text)
-2. `hot_leads.event_id` partial UNIQUE
-3. `drafts` filter on `(tenant_id, agent_id, type, event_id)`
-
 ### 10.7 Schema Discoveries
 1. `events.event_type` (not `events.type`)
 2. `integrations.credentials` does NOT exist
 3. `events.id` is text NOT NULL no default
 4. PostgREST cache lag → `NOTIFY pgrst, 'reload schema';`
+5. `idempotency_keys` has its own `expires_at` column — used directly by cleanup cron
 
-### 10.8 Sub-stage 1.3 Details (commits `f59df9b`, `0b8d788`, `1ac925a`)
-1. Hot Leads webhook trigger + idempotency (migration 020)
-2. Retry logic on LLM calls (with-retry.ts)
-3. Watcher prompt fix + Sales withRetry
+### 10.17 Sub-stage 1.5.2 — DONE (commit `2ea79c3`)
 
-### 10.9 Sub-stage 1.3.5 Details (commit `aec0d9a`)
-1. Sales QuickResponse — new path (3 new files)
-2. Hot Leads → Sales cascade
+Hot Leads + Sales QR recovery cron. **Single endpoint** for Hobby tier.
 
-Prompt iterated draft → review → calibration with Dean. Final: 7 scenarios with before/after AI vs human examples + Israeli-tone calibration.
+**File:** `src/app/api/cron/hot-leads-sales-recovery/route.ts`
+**Schedule:** `0 2 * * *` UTC
+**Cap:** 50 events per stage per run. Window: 48h. Always 200.
 
-### 10.10 Sub-stage 1.4 Details (commit `69d066c`)
+### 10.18 Sub-stage 1.5.3 — DONE (commit `bf2f42a`)
 
-Internal Demo UI at `/dashboard/demo`. Admin allowlist (`din6915@gmail.com`).
+Anti-AI sweep — biggest quality lift in Stage 1.
 
-**6 files:**
-- `src/app/dashboard/demo/page.tsx` — Server Component, full chrome
-- `src/app/dashboard/demo/actions.ts` — `runDemoTemplate(template)` synthesizes events.insert + waitUntil
-- `src/app/api/demo/status/route.ts` — GET endpoint, polled every 1s
-- `src/lib/demo/types.ts` — **NEW shared module (neutral, not "use server")** — DEMO_TEMPLATES, types
-- `src/components/demo/demo-panel.tsx` — Client Component, state machine
-- `src/components/demo/pipeline-status.tsx` — Client Component, visual progress
+**5 prompt files** updated with anti-AI rules block:
+- `morning/prompt.ts`, `reviews/prompt.ts` (Israeli-tone), `social/prompt.ts` (hashtags removed entirely), `manager/prompt.ts`, `inventory/prompt.ts`
 
-**4 prebuilt templates:**
-- `hot_lead`: מוחמד אבו ראס · "...דחוף...היום...תקציב 2000 שקל..." → bucket=hot, cascade
-- `question`: דנה לוי · "...לבדוק מחירים..." → bucket=warm, no cascade
-- `complaint`: שרה כהן · "...לא הייתי מרוצה..." → bucket=cold/spam
-- `review`: יוסי כהן · "...שירות מעולה..." → bucket=cold/spam
+**2 run.ts files** with `stripAiTellsDeep` defense-in-depth: `watcher/run.ts`, `hot_leads/run.ts`.
 
-**Polling architecture:** UI fetches `/api/demo/status?event_id=X` every 1s. Stops when watcher terminal AND sales_qr terminal (or 60s timeout).
+Sales prompt unchanged (1.3.5 already comprehensive). Sales QR run.ts unchanged (1.5.1 hotfix already covers).
 
-**Why direct events.insert vs HTTP roundtrip:** action does insert + waitUntil rather than POST to `/api/webhooks/whatsapp`. Avoids `NEXT_PUBLIC_BASE_URL`, signature setup. Functionally identical.
+**Verified live in production:** Social/Morning drafts now Hebrew-natural with no em-dashes, no hashtags, ≤1 emoji.
+- Example new draft: "תחילת שבוע חדש, הזדמנות טובה לבדוק מה חסר. אם אתה מחפש מוצר מסוים ולא בטוח איפה להתחיל, אפשר פשוט לשאול."
+- Compare with pre-1.5.3: "כמה טיפים שיעזרו לך לקנות חכם יותר 📲 #קמעונאות #שירותותלקוחות..."
 
-**Calm Frosted styling:** Glass cards, agent-card hover, AppleBg, dashboard chrome (Sidebar + MobileHeader). Tile gradients per template. WhatsApp-style bubble (white, asymmetric corner `rounded-tr-sm` for RTL incoming-message tail).
+### 10.19 Sub-stage 1.5.5 — DONE (commit `<TBD>`)
 
-**The big lesson:** "use server" files can ONLY export async functions. Constants/types render as `undefined` when imported by client components. tsc doesn't catch this — runtime does. **Solution:** shared types in neutral module (no "use server"/"use client"). Caused the 1.4 first-iteration runtime crash.
+Final Stage 1 polish.
 
-**Verified end-to-end (2026-05-03):** clicked hot_lead → events.insert → Watcher (~9s) → Hot Leads bucket=hot (~10s) → cascade → Sales QR drafted **"אהלן מוחמד, שמח לשמוע. היום אפשר לסדר משהו. מתי בדיוק נוח לך?"** → all 3 stages green.
+**`pii-scrubber.ts` audit:**
+- Phone regex now matches all common IL formats: `050-123-4567`, `050 123 4567`, `+972 50 123 4567`, `(050) 123-4567`, `+972-50-1234567`
+- ID widened from exactly-9 to 8-or-9 digits (pre-2007 IDs still valid)
+- Credit card widened from 16-only to 13-19 digits (Visa/MC/Amex/Discover)
+- Posture: over-redaction over under-redaction (false positives are fine; false negatives leak PII)
+- Self-test `_validatePhoneCoverage()` exported with 14 test cases
 
-### 10.11 Pending — Sub-stage 1.4.5 (Showcase) — NEXT
+**`INTEGRATION-NOTES.md` rewrite** for end-of-Stage-1 reality:
+- Documents one events insert can trigger up to 3 agents (Watcher + Hot Leads + Sales QR)
+- Per-agent field consumption documented
+- 4 integration patterns (Meta webhook, generic webhook, contact form, manual SQL)
+- Recovery cron + cleanup cron + Hobby tier constraint documented
 
-Two paths:
-
-**(A) Quick: Admin-only sidebar link.**
-- ~15 min
-- Read `src/components/dashboard/sidebar.tsx` + `mobile-drawer.tsx`
-- Add conditional item with `isAdminEmail()` check
-- Commit: `feat(sidebar): admin link to /dashboard/demo`
-
-**(B) Bigger: Reposition as "Showcase" for all users.**
-- ~30 min
-- Move `/dashboard/demo` → `/dashboard/showcase`
-- Remove `DEMO_ALLOWED_EMAILS` allowlist
-- Add to sidebar as "תראה איך זה עובד" / "מדריך"
-- Update copy: "Demo" → "כך Spike עוזר לך"
-
-**Dean's stated preference (end of session 3):** "תפריט" — wants it in sidebar. Did not explicitly choose A vs B. Suggest A first, B later when there are real users.
-
-### 10.12 Pending — Sub-stage 1.5 (Polish)
-
-Priority order:
-1. Wrap remaining 5 agents in `withRetry` (Morning, Reviews, Social, Manager, Inventory)
-2. Add Hot Leads cron safety net (mirrors Watcher cron)
-3. Add Sales QuickResponse cron safety net
-4. Anti-AI-signature post-processing regex in run.ts of Watcher / Hot Leads / Reviews / Social / Sales (defense-in-depth)
-5. Reviews / Social / Manager / Morning / Inventory prompt: anti-AI audit (1.3.5 lessons)
-6. PII scrubber audit on Israeli phone formats
-7. Update `INTEGRATION-NOTES.md` with actual webhook protocol
-8. Final tsc + Vercel build pass
-
-Estimated: 4-6 hours.
-
-### 10.13 Pending — Sub-stage 1.6 (Onboarding Banner — Optional)
-
-After 1.5: dashboard banner for users with 0 agent_runs:
-> "לא הרצת עדיין שום סוכן. רוצה לראות איך Spike עובד? → ל-Showcase"
-
-Disappears after first run. Only useful if Showcase exists (1.4.5 must come first).
+### 10.20 Sub-stage 1.6 (Optional, Pending)
+Onboarding banner for users with 0 agent_runs. Requires renaming `/dashboard/demo` → `/dashboard/showcase`. Defer until Stage 2 begins.
 
 ---
 
-## 11. Current Status (May 2026)
+## 11. Current Status
 
-### 11.1 What Works ✅
-- All 8 customer-facing agents on real DB events
-- Cleanup agent on cron
-- Login (OTP code-only)
-- Onboarding (4 fields)
-- Dashboard with 3 agent categories + KPI strip
-- Mobile UX (drawer + bottom nav)
-- Approvals · Inventory · Leads · Manager
-- Full safety pipeline
-- **1.1:** WhatsApp Cloud API webhook receiver
-- **1.2:** Watcher auto-trigger + hourly cron
-- **1.3:** Hot Leads parallel + idempotency + LLM retry + Watcher prompt fix
-- **1.3.5:** Sales QuickResponse + Hot Leads cascade
-- **1.4:** Internal Demo UI at `/dashboard/demo`
+### 11.1 What Works ✅ — STAGE 1 COMPLETE
+- All 8 customer-facing agents on real DB events, all wrapped in withRetry
+- All 8 customer-facing agents have anti-AI hygiene (prompt + post-processing)
+- 9th agent (cleanup) implemented as cron
+- Login (OTP), Onboarding, Dashboard with KPI strip, Mobile UX
+- Approvals, Inventory, Leads, Manager
+- Full safety pipeline including comprehensive Israeli PII coverage
+- Admin sidebar link to Demo (1.4.5)
+- Internal Demo UI at `/dashboard/demo`
+- Real-time WhatsApp pipeline (~15-16s end-to-end, ~₪0.04/hot-lead)
+- Cleanup cron + Recovery cron daily
+- All deployed live to `app.spikeai.co.il`
 
 ### 11.2 Pending — Not Blocking 🚧
-- 7 sidebar pages 404: הסוכנים שלי, דוחות, התראות, מרכז בקרה, אמון ופרטיות, הגדרות, מרכז ניהול
+- 7 sidebar pages 404 (placeholders)
 - `actions.ts` 1430 lines — split
 - Race in `inventory-upload-zone` + `run-inventory-button`
-- Cleanup agent location undocumented
 - 2 moderate npm audit vulnerabilities
-- `integrations` table schema not yet finalized
-- Anti-AI audit on 5 agents
+- `integrations` table schema not finalized
+- defamation-guard not wrapped in withRetry (low priority)
 
-### 11.3 Pending — Critical for Demo 🔴
-- 1.4.5 (sidebar / showcase)
-- 1.5 (polish)
-- First real customer integration
-
-### 11.4 Pending — Pre-Production Deploy ⚠️
-- Set `CRON_SECRET` in Vercel env (Production + Preview)
-- Set `WHATSAPP_VERIFY_TOKEN` in Vercel
-- Open Meta Business Manager + start verification (2-10 days async)
-- Eventually: `WHATSAPP_APP_SECRET` (Stage 2)
+### 11.3 Pending — Stage 2 ⚠️
+- Meta Business Manager verification (2-10 days async)
+- Embedded Signup UI for tenants
+- `integrations` table schema design
+- Outgoing message templates
+- Real `phone_number_id` → `tenant_id` mapping
+- Set `WHATSAPP_APP_SECRET` (no longer bypass)
 - **Anthropic credits:** auto-reload disabled, $4.20 balance. Top up before first prospect demo.
+
+### 11.4 Pending — Pre-Production Vercel Env
+- `CRON_SECRET` (Production + Preview)
+- `WHATSAPP_VERIFY_TOKEN`
+- `ADMIN_EMAILS`
 
 ---
 
@@ -855,37 +659,40 @@ Disappears after first run. Only useful if Showcase exists (1.4.5 must come firs
 | Tier | Price/mo | Setup | Target |
 |------|----------|-------|--------|
 | Solo | ₪290 | ₪990 | עוסק יחיד |
-| Pro | ₪690 | ₪990 | small business with employees |
+| Pro | ₪690 | ₪990 | small business |
 | Chain | ₪1,490 | ₪990 | 3-15 locations |
 
 14-day trial. NO freemium. 17% annual discount.
 
-### 12.2 Stage 1 — WhatsApp First Integration (current)
+### 12.2 Stage 1 — WhatsApp First Integration ✅ COMPLETE
 - 1.1 ✅ Webhook receiver
 - 1.2 ✅ Watcher real-time + cron
 - 1.3 ✅ Hot Leads parallel + idempotency + retry + prompt fix
 - 1.3.5 ✅ Sales QuickResponse + cascade
 - 1.4 ✅ Internal Demo UI
-- **1.4.5 🔵 NEXT — sidebar link / Showcase**
-- **1.5 🔵 — Polish**
-- 1.6 🔵 — Onboarding banner (optional)
+- 1.4.5 ✅ Admin sidebar link
+- 1.5.1 ✅ withRetry on all 5 remaining agents + em-dash hotfix
+- 1.5.2 ✅ Hot Leads + Sales QR cron safety nets
+- 1.5.3 ✅ Anti-AI sweep on prompts + post-processing
+- 1.5.4 ✅ Cleanup cron
+- 1.5.5 ✅ PII Israeli phone format audit + INTEGRATION-NOTES update
+- 1.6 🔵 Onboarding banner (optional, post-Stage 2)
 
-### 12.3 Stage 2 — Production WhatsApp
-1. Meta verification (parallel during 1.4.5/1.5)
-2. Embedded Signup UI for tenants
-3. `integrations` table schema design
-4. Outgoing message templates
-5. Real `phone_number_id` → `tenant_id` mapping
-6. Set `WHATSAPP_APP_SECRET` (no longer bypass)
-
+### 12.3 Stage 2 — Production WhatsApp (NEXT)
+1. Meta Business verification
+2. Embedded Signup UI
+3. `integrations` schema design
+4. Outgoing templates
+5. `phone_number_id` → `tenant_id` mapping
+6. Enable signature verification
 Estimated: 5-7 days.
 
 ### 12.4 Stage 3 — Next 30 Days (post Stage 2)
-1. **Trust Agent v0.5** (~10d) — תיקון 13 + DPO checklist. Killer differentiator. **Solo**.
-2. **Cash Flow Agent v0.5** (~14d) + GreenInvoice. Highest pain. **Pro**.
-3. **VAT Agent** — חשבונית ישראל. **Pro**.
-4. **Chain HQ Agent** — multi-location. **Chain**.
-5. **Win-Back Agent** — re-engage lapsed. **Pro**.
+1. **Trust Agent v0.5** — תיקון 13 + DPO checklist. Solo tier.
+2. **Cash Flow Agent v0.5** + GreenInvoice. Pro tier.
+3. **VAT Agent** — חשבונית ישראל. Pro tier.
+4. **Chain HQ Agent**. Chain tier.
+5. **Win-Back Agent**. Pro tier.
 
 ### 12.5 Tier Mapping
 - **Solo:** Trust agent
@@ -893,9 +700,7 @@ Estimated: 5-7 days.
 - **Chain:** Chain HQ + everything in Pro
 
 ### 12.6 Distribution Hidden Opportunities
-- vcita inTandem partnership (OEM)
-- Voicenter voice channel (Hebrew TTS/STT)
-- Israeli franchises (Roladin, Aroma, Cofizz, Re/Max)
+vcita inTandem partnership (OEM) · Voicenter voice channel · Israeli franchises (Roladin, Aroma, Cofizz, Re/Max).
 
 ---
 
@@ -906,11 +711,9 @@ Estimated: 5-7 days.
 | NPS / CSAT surveys | Commodity. vcita / Birdeye / Podium do it. |
 | Schedule optimization for staff | Israeli labor law = lawyer territory. |
 | Contract review | "Legal advice" liability. |
-| Competitor scraping | TOS violation. |
-| Senior Manager Agent (AI flagging AIs) | AI flagging AI = bias amplification. **Push back if proposed.** |
+| Senior Manager Agent (AI flagging AIs) | AI flagging AI = bias amplification. **Push back.** |
 | Crypto / Web3 | Not relevant to ICP. |
 | Standalone mobile app | Not before 100 paying customers. |
-| Open-source release | Distraction from revenue. |
 | OpenAI / Gemini integration | Violates Iron Rule 1.3. |
 | Email-as-product | Mailchimp / ActiveCampaign exist. |
 | Calendar booking | Calendly / vcita won. |
@@ -922,24 +725,9 @@ Estimated: 5-7 days.
 
 ## 14. Israeli Market Context
 
-### 14.1 Why This Market
-- 850K+ SMBs in Israel
-- WhatsApp adoption: ~99%, daily active: ~98%
-- Hebrew-first underserved (vcita, HubSpot, Salesforce English-only or weak Hebrew)
-- 3-15 location chains: white space
-- תיקון 13 (Aug 2025) — universal compliance need
-- חשבונית ישראל (Jan 2025) — current pain
+850K+ SMBs in Israel · WhatsApp adoption ~99% · Hebrew-first underserved · 3-15 location chains white space · תיקון 13 (Aug 2025) universal compliance need · חשבונית ישראל (Jan 2025) current pain.
 
-### 14.2 Competition
-| Competitor | Strength | Spike's Advantage |
-|------------|----------|-------------------|
-| vcita | 850K SMBs, English AI Receptionist | Hebrew-native |
-| HubSpot Breeze | $0.50/conv, strong CRM | Israeli regulation built in |
-| Salesforce Agentforce | Enterprise pedigree | No Hebrew; expensive |
-| Toast IQ / GlossGenius | Vertical-specific | We span verticals |
-| Birdeye / Podium | Reviews + messaging | We're drafts only (compliance) |
-| Wix.AI | Wix install base | **Underestimated. Watch.** |
-| Lindy AI | Multi-agent | English-first, no IL regulation |
+**Competitors:** vcita, HubSpot Breeze, Salesforce Agentforce, Toast IQ, GlossGenius, Birdeye, Podium, Wix.AI (watch), Lindy AI.
 
 ---
 
@@ -950,59 +738,37 @@ Estimated: 5-7 days.
 - ❌ Suggest auto-send "for transactional".
 - ❌ Propose i18next / English version.
 - ❌ "OpenAI is cheaper" — Anthropic-only is strategic.
-- ❌ Add analytics SaaS without checking. Bootstrap mode.
-- ❌ Manually edit 1000-line file. Generate full file.
-- ❌ Tell Dean to take a break (except sub-stage boundaries).
 - ❌ Tell Dean "good night" at 7am.
 - ❌ Hallucinate names from `events.payload`.
-- ❌ Hallucinate facts in CLAUDE.md ("Dean provided X" without verification).
+- ❌ Hallucinate facts in CLAUDE.md.
 - ❌ Build a feature without `expires_at` in `drafts`.
 - ❌ Skip safety pipeline. Use `runAgentSafe`.
-- ❌ Propose "senior agent monitoring agents". Rejected. Redirect to retry/alerts.
+- ❌ Propose "senior agent monitoring agents". Rejected.
 - ❌ Suggest pivoting to en-US.
-- ❌ "Complete" `src/lib/agents/cleanup/` with stub.
-- ❌ Treat "9 agents" as typo. Intentional.
 - ❌ Use em-dash (—) in agent output.
+- ❌ Use hashtags (#) in agent output.
 - ❌ Add BSP middleman.
 - ❌ Dot notation in `event_type`. Snake_case.
-- ❌ Refer customers to competitors. Leave door open.
-- ❌ "אתקשר בעוד X דקות" for persistent. Israeli-stressful.
+- ❌ Refer customers to competitors.
 - ❌ Confuse `runSalesAgent` with `runSalesQuickResponseOnEvent`.
-- ❌ Trigger Sales QR on cold/warm/spam. Cascade is hot/burning only.
-- ❌ **Build new UI without reading `globals.css` first.** §2.12.
-- ❌ **Use Tailwind preset colors (`bg-rose-500`) for design.** Use CSS variables in `style={{}}`. Tailwind for layout/sizing only.
-- ❌ **Put constants/types in "use server" file.** Renders as `undefined` in client imports. Use neutral module. §10.10.
-- ❌ Assume `requireOnboarded()` returns `{ user, tenant }`. It returns `{ userId, userEmail, tenantId }`.
-- ❌ Reference `/mascot/phone-right.png` without verifying file exists.
-
-### 15.2 Schema Audit Before INSERTs
-```sql
-SELECT column_name, data_type, is_nullable, column_default
-FROM information_schema.columns
-WHERE table_name = '<table>' AND table_schema = 'public';
-```
-
-After migrations: `NOTIFY pgrst, 'reload schema';`
-
-### 15.3 Web Search
-- Repo: `https://github.com/DinSpikeAI/spike-agents-engine` (public)
-- `web_fetch` cannot read GitHub `tree/` or `commits/` (robots.txt). Use `git log` from user.
-
-### 15.4 Code Generation
-- Read full file before editing
-- Produce full file as output (or `str_replace` on fresh-from-disk + show full final)
-- Self-diff: requested changes present, **only** those
-- 2+ files of same name: distinct names in `/outputs/`, rename in Move-Item
+- ❌ Trigger Sales QR on cold/warm/spam.
+- ❌ **Build new UI without reading `globals.css` first.**
+- ❌ **Use Tailwind preset colors for design.** Use CSS variables in `style={{}}`.
+- ❌ **Put constants/types in "use server" file.**
+- ❌ Assume `requireOnboarded()` returns `{ user, tenant }`. Returns `{ userId, userEmail, tenantId }`.
+- ❌ Generate scratch files inside the repo.
+- ❌ Call `anthropic.messages.create` directly. Always wrap in `withRetry(...)`.
+- ❌ **Add a Vercel cron with non-daily schedule on Hobby tier.** §15.8.
 
 ### 15.5 PowerShell
-- 2 terminals (dev + commands)
-- `Test-NetConnection` before POSTs
+- 2 separate windows (dev + commands)
 - Tee-Object pipeline doesn't block
 - Add-Content doesn't add newline
-- Verify env after appending
-- localhost wraps in chat
 - Stale .next cache → `Remove-Item -Recurse -Force .next` + restart dev
-- Turbopack SST file errors → same fix
+- `git show` falls into less pager → `git --no-pager show ...` or press `q`
+- LF/CRLF normalization warnings on `git add -A` are usually harmless
+- **Verify Downloads after present_files:** `Get-Item ... | Select-Object Length`. 0 bytes = retry.
+- Select-String fails on UTF-8 Hebrew from git stdout — redirect to file + open in notepad.
 
 ### 15.6 UI Design Workflow
 **Before any UI:**
@@ -1011,18 +777,35 @@ Get-Content "src\app\globals.css"
 Get-Content "src\components\dashboard\kpi-strip.tsx"
 Get-Content "src\app\dashboard\page.tsx"
 ```
-
-If skipped: expect 3-4 design iterations. §2.12.
+If skipped: expect 3-4 design iterations.
 
 ### 15.7 Iteration Speed
-- 1.1: ~2h (20-min schema-mismatch debug)
-- 1.2: ~1.5h
-- 1.3: ~3h (3 parts)
-- 1.3.5: ~2h (1h prompt design)
-- 1.4: ~4-5h (UI iteration heavy due to skipping §2.12)
+- 1.1: ~2h · 1.2: ~1.5h · 1.3: ~3h · 1.3.5: ~2h · 1.4: ~4-5h
+- 1.4.5: ~30min · 1.5.1: ~45min + 15min hotfix · 1.5.2: ~45min
+- 1.5.3: ~1.5h · 1.5.4: ~1.5h · 1.5.5: ~30min
 
-For prompt sub-stages: 30 min draft → review → calibration before code.
-For UI sub-stages: read globals.css + 1-2 components before code.
+### 15.8 Vercel Hobby Tier Cron Limit (Session 4 lesson — CRITICAL) ⚠️
+
+**Hobby plan limits crons to maximum 1 run per day per project.**
+
+Schedules like `0 * * * *` (hourly) cause Vercel to **silently reject the project config at validation time**, blocking ALL deployments. No deployment row. No error notification.
+
+**Symptom:** `git push` succeeds, but production stays on an old commit indefinitely. Vercel Deployments page shows nothing new.
+
+**Diagnostic:** From CLI run `vercel --prod`. If you see:
+```
+Error: Hobby accounts are limited to daily cron jobs.
+This cron expression (0 * * * *) would run more than once per day.
+```
+→ Check `vercel.json` for any cron with non-daily schedule.
+
+**This bit Spike hard at end of session 4.** Sub-stages 1.1-1.5.4 all pushed but production stayed on old commit (`9018a169`) for ~19 hours. The Watcher cron from 1.2 was hourly, silently blocked everything after.
+
+**Resolution:** Watcher cron changed to `0 6 * * *` (daily). All 7 current crons in `vercel.json` are now daily-or-less.
+
+**On Pro tier upgrade:** restore Watcher to `0 * * * *` for sub-hour catchup of missed webhooks.
+
+**Workaround:** Always run `vercel --prod` after critical pushes if Vercel webhook seems stuck.
 
 ---
 
@@ -1030,7 +813,7 @@ For UI sub-stages: read globals.css + 1-2 components before code.
 
 Conventional commits, English subject, Hebrew body OK.
 Format: `<type>(<scope>): <subject>`
-Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `sidebar`.
+Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `sidebar`, `cron`, `pii`.
 
 ---
 
@@ -1038,7 +821,7 @@ Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`
 
 If you are Claude reading this for the first time:
 
-1. ✅ Read this file completely. Then re-read §1, §2, §6.6, §6.8, §10.
+1. ✅ Read this file completely. Then re-read §1, §2, §6.6, §6.8, §10, §15.8.
 2. ❌ Do not re-ask Dean to summarize the project.
 3. ❌ Do not suggest building anything from §13.
 4. ✅ Ask Dean: "מה הצעד הבא?" if he hasn't said.
@@ -1046,40 +829,44 @@ If you are Claude reading this for the first time:
 6. ✅ Confirm you've read this file in your first reply, in 2-3 lines max.
 
 **Sample first reply:**
-> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. ה-pipeline המלא של WhatsApp פועל end-to-end (1.1-1.4 הושלמו). הצעד הבא הוא 1.4.5 (sidebar link) או 1.5 (Polish). מה אתה רוצה לעשות?
+> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1 עד 1.5.5), הכל בייצור על app.spikeai.co.il. הצעד הבא הוא Stage 2 (Meta verification + Embedded Signup) או 1.6 (onboarding banner). מה אתה רוצה לעשות?
 
 ---
 
 ## 18. Appendix
 
-### 18.1 Migrations (20 files)
-- `001_reset.sql` · `002_schema.sql` · `003_rls.sql`
-- `016_seed_watcher_events.sql` (15 events)
-- `017_seed_review_events.sql` (4 reviews)
-- `018_seed_lead_events.sql` (5 leads)
-- `019_onboarding_columns.sql`
-- `020_hot_leads_event_idempotency.sql` — 1.3 — event_id + UNIQUE
-- (Some numbers skipped between 003 and 016)
+### 18.1 Migrations (21 files)
 
-### 18.2 Selected Commits (recent first)
+Active 001-021. Latest: `021_drafts_expired_status.sql` (1.5.4 — idempotent enum/text-aware).
+Archive: `supabase/migrations/_archive/v1/`.
+Note: 009 was skipped during initial scaffold; not a gap to fill.
+
+### 18.2 Selected Commits (newest first — Stage 1 complete)
 | Hash | What |
 |------|------|
+| `<TBD>` | docs+pii: Sub-stage 1.5.5 — Israeli phone audit + INTEGRATION-NOTES |
+| `bf2f42a` | feat(agents): anti-AI sweep on prompts + post-processing (1.5.3) |
+| `2ea79c3` | feat(cron): hot-leads + sales-qr recovery cron (1.5.2) |
+| `ea0ce39` | fix(cron): reduce watcher cron to daily for Hobby tier (the unlock) |
+| `a25abae` | chore: remove junk file + trigger Vercel rebuild |
+| `06b686d` | fix(agents): strip em-dashes + hashtags post-LLM (1.5.1 hotfix) |
+| `3554030` | docs: update CLAUDE.md through 1.5.4 |
+| `0c65b2d` | feat(cleanup): vercel.json + migration 021 (1.5.4 part 2) |
+| `bd068ef` | feat(cleanup): cron job (1.5.4 part 1) |
+| `2041a10` | feat(agents): wrap remaining 5 agents in withRetry (1.5.1) |
+| `8e02c82` | chore: remove file-tree.txt artifact |
+| `4c8057f` | feat(sidebar): admin link to /dashboard/demo (1.4.5) |
 | `69d066c` | feat(demo): Sub-stage 1.4 — internal Demo UI |
-| `b500423` | docs: update CLAUDE.md through 1.3.5 |
 | `aec0d9a` | feat(agents): Sales QuickResponse + Hot Leads cascade (1.3.5) |
 | `1ac925a` | feat(agents): Watcher prompt fix + Sales withRetry (1.3 part 3) |
 | `0b8d788` | feat(agents): exponential-backoff retry (1.3 part 2) |
 | `f59df9b` | feat(hot_leads): event-triggered classification (1.3 part 1) |
 | `cc85952` | feat(whatsapp): trigger Watcher on inbound (1.2) |
 | `aaa2f1d` | feat(webhooks): WhatsApp Cloud API receiver (1.1) |
-| `2869988` | docs: update CLAUDE.md with 1.1+1.2 findings |
-| `a2288b5` | docs: rebuild CLAUDE.md from filesystem audit |
-| `208ea50` | fix(auth): use only 'email' type for verifyOtp |
-| `91731e4` | feat(mobile): hi-tech mobile UX |
-| `dac7eb9` | feat(design): Phase 1+2 polish |
 
 ### 18.3 Links
-- Repo: https://github.com/DinSpikeAI/spike-agents-engine
+- Repo (engine): https://github.com/DinSpikeAI/spike-agents-engine
+- Repo (landing): https://github.com/DinSpikeAI/spike-agents
 - Production: https://app.spikeai.co.il
 - Supabase: ref `ihzahyzejqpjxwouxuhj`
 
@@ -1089,9 +876,15 @@ If you are Claude reading this for the first time:
 - Glass primitive → `src/components/ui/glass.tsx`
 - Webhook receiver → `src/app/api/webhooks/whatsapp/route.ts`
 - Sales QR prompt → `src/lib/agents/sales/prompt-quick-response.ts`
-- Hot Leads cascade logic → `src/lib/agents/hot_leads/run.ts` lines ~488-525
+- Hot Leads cascade logic → `src/lib/agents/hot_leads/run.ts`
 - Demo shared types → `src/lib/demo/types.ts`
 - requireOnboarded → `src/lib/auth/require-onboarded.ts`
+- Admin auth helpers → `src/lib/admin/auth.ts`
+- Cleanup cron → `src/app/api/cron/cleanup/route.ts`
+- Recovery cron → `src/app/api/cron/hot-leads-sales-recovery/route.ts`
+- withRetry utility → `src/lib/with-retry.ts`
+- Anti-AI strip utility → `src/lib/safety/anti-ai-strip.ts`
+- PII scrubber → `src/lib/safety/pii-scrubber.ts`
 
 ---
 
