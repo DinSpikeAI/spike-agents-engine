@@ -1,0 +1,11 @@
+# Watcher Integration Notes
+
+How to add a real event source so the Watcher agent picks it up automatically.
+
+## The contract
+
+The Watcher reads from `public.events`. Anything you insert into that table — from any source — gets picked up by the next Watcher run, classified by the LLM, and shown to the owner.
+
+Required shape:
+
+```sql

@@ -1,5 +1,6 @@
 /**
  * Reviews Agent — Day 8 + Sub-stage 1.5.1 (LLM retry on main reviews call)
+ *                + 1.5.1 hotfix (anti-AI post-processing)
  *
  * Pipeline:
  *   1. Receive list of mock reviews from action layer
@@ -8,14 +9,15 @@
  *   4. Send all wrapped reviews to Sonnet 4.6 in one call
  *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
  *   5. Sonnet returns N drafts (one per review)
- *   6. For each draft, run defamation check (Haiku 4.5)
+ *   6. Strip AI signature tells (em-dash, en-dash, hashtags) — 1.5.1 hotfix
+ *   7. For each draft, run defamation check (Haiku 4.5)
  *      — NOT wrapped in withRetry as of 1.5.1; failures degrade to
  *        risk='medium' which is acceptable. Future improvement.
- *   7. Persist each as a draft row in the drafts table:
+ *   8. Persist each as a draft row in the drafts table:
  *      - high risk → status='rejected', shown to owner with block message
  *      - medium → status='pending' with warning
  *      - low → status='pending' standard
- *   8. Return SafeRunResult with the array of draft IDs for the UI
+ *   9. Return SafeRunResult with the array of draft IDs for the UI
  *
  * NOTE: This is the FIRST agent that uses runAgentWithSafety. We don't
  * use the wrapper directly here because the wrapper expects ONE draft
@@ -26,6 +28,7 @@
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
 import { withRetry } from "@/lib/with-retry";
+import { stripAiTellsDeep } from "@/lib/safety/anti-ai-strip";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { REVIEWS_AGENT_OUTPUT_SCHEMA } from "./schema";
 import {
@@ -165,7 +168,11 @@ export async function runReviewsAgent(
     const text = response.content
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("");
-    const parsed = JSON.parse(text) as ReviewsAgentOutput;
+
+    // Parse, then strip AI signature tells (em-dash, en-dash, hashtags)
+    // from every string in the output recursively. 1.5.1 hotfix.
+    const rawParsed = JSON.parse(text) as ReviewsAgentOutput;
+    const parsed = stripAiTellsDeep(rawParsed);
 
     return {
       output: parsed,

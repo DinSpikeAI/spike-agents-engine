@@ -1,5 +1,6 @@
 /**
  * Social Agent — Day 14 + Sub-stage 1.5.1 (LLM retry)
+ *                + 1.5.1 hotfix (anti-AI post-processing + hashtags removal)
  *
  * Generates 3 daily Hebrew social media post drafts.
  * Owner copy-pastes manually to Instagram/Facebook (no auto-posting).
@@ -10,12 +11,14 @@
  *   3. Build prompt with all context (silent-day branch returns empty posts)
  *   4. Send to Sonnet 4.6 with native JSON schema output
  *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
- *   5. Persist each post as a draft row in the drafts table:
+ *   5. Strip AI signature tells (em-dash, hashtags inline) — 1.5.1 hotfix
+ *      — ALSO: empty the hashtags[] array per post (visual AI-spam in UI)
+ *   6. Persist each post as a draft row in the drafts table:
  *      - status='pending', action_type='requires_approval'
  *      - content jsonb contains all post fields
  *      - external_target.platform = 'instagram_or_facebook' (manual paste)
  *      - expires_at = end of today (posts are time-sensitive)
- *   6. Return SocialRunResult with draft IDs
+ *   7. Return SocialRunResult with draft IDs
  *
  * Cost optimization:
  *   - Sonnet 4.6 — quality matters for social
@@ -31,6 +34,7 @@
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
 import { withRetry } from "@/lib/with-retry";
+import { stripAiTellsDeep } from "@/lib/safety/anti-ai-strip";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SOCIAL_AGENT_OUTPUT_SCHEMA } from "./schema";
 import {
@@ -258,7 +262,20 @@ export async function runSocialAgent(
     const text = response.content
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("");
-    const parsed = JSON.parse(text) as SocialAgentOutput;
+
+    // Parse, then strip AI signature tells (em-dash, en-dash, inline hashtags)
+    // from all strings recursively. 1.5.1 hotfix.
+    const rawParsed = JSON.parse(text) as SocialAgentOutput;
+    const parsed = stripAiTellsDeep(rawParsed);
+
+    // Additionally: empty the hashtags[] array per post. The hashtags field
+    // is a separate array (no `#` prefix in values), so HASHTAG_INLINE_RE
+    // doesn't catch it. Decision (1.5.1 hotfix): hashtags are AI-spam in
+    // the rendered post, remove them entirely. If owner wants hashtags,
+    // they can add manually. May reconsider in 1.5.3.
+    if (parsed.posts) {
+      parsed.posts = parsed.posts.map((p) => ({ ...p, hashtags: [] }));
+    }
 
     return {
       output: parsed,

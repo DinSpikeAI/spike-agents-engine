@@ -1,6 +1,7 @@
 /**
  * Manager Agent — Day 10 + Day 11A spend cap + Day 11B health score
  *                + Sub-stage 1.5.1 (LLM retry on Sonnet thinking call)
+ *                + 1.5.1 hotfix (anti-AI post-processing)
  *
  * Pipeline:
  *   1. Pre-flight spend cap check (Day 11A) — before doing any work
@@ -9,10 +10,11 @@
  *   4. Format into a prompt block
  *   5. Call Sonnet 4.6 with thinking_budget = 8000 + 5-section JSON schema
  *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
- *   6. settle_spend on success / refund_spend on failure (Day 11A)
- *   7. Persist the structured report to manager_reports
- *   8. Compute and persist customer health score (Day 11B)
- *   9. Return ManagerRunResult
+ *   6. Strip AI signature tells (em-dash, hashtags) — 1.5.1 hotfix
+ *   7. settle_spend on success / refund_spend on failure (Day 11A)
+ *   8. Persist the structured report to manager_reports
+ *   9. Compute and persist customer health score (Day 11B)
+ *   10. Return ManagerRunResult
  *
  * Notes:
  *   - This is the FIRST agent that uses thinking. Anthropic SDK API:
@@ -35,6 +37,7 @@
 
 import { anthropic } from "@/lib/anthropic";
 import { withRetry } from "@/lib/with-retry";
+import { stripAiTellsDeep } from "@/lib/safety/anti-ai-strip";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { MANAGER_AGENT_OUTPUT_SCHEMA } from "./schema";
 import {
@@ -244,7 +247,10 @@ export async function runManagerAgent(
       throw new Error("Manager response had no text block (only thinking).");
     }
 
-    const parsed = JSON.parse(text) as ManagerAgentOutput;
+    // Parse, then strip AI signature tells from all strings recursively.
+    // 1.5.1 hotfix.
+    const rawParsed = JSON.parse(text) as ManagerAgentOutput;
+    const parsed = stripAiTellsDeep(rawParsed);
 
     // ─── Step 6: Cost calculation ──────────────────────────
     // Sonnet 4.6 pricing (Apr 2026): $3/M input, $15/M output

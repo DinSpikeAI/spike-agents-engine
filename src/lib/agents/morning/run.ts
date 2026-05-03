@@ -1,5 +1,6 @@
 /**
  * Morning Agent — Day 5 (Real Anthropic) + Sub-stage 1.5.1 (LLM retry)
+ *                + 1.5.1 hotfix (anti-AI post-processing)
  *
  * Passes a real executor to runAgent() which calls claude-haiku-4-5
  * with the Hebrew morning briefing prompt + structured output schema.
@@ -7,6 +8,7 @@
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
 import { withRetry } from "@/lib/with-retry";
+import { stripAiTellsDeep } from "@/lib/safety/anti-ai-strip";
 import { MORNING_AGENT_OUTPUT_SCHEMA } from "./schema";
 import { MORNING_AGENT_SYSTEM_PROMPT, buildMorningUserMessage } from "./prompt";
 import type { MorningAgentOutput, RunResult } from "../types";
@@ -71,7 +73,10 @@ export async function runMorningAgent(
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("");
 
-    const output = JSON.parse(text) as MorningAgentOutput;
+    // Parse, then strip AI signature tells from all string fields recursively.
+    // Defense-in-depth — prompt may not enforce these rules; regex always does.
+    const rawOutput = JSON.parse(text) as MorningAgentOutput;
+    const output = stripAiTellsDeep(rawOutput);
 
     return {
       output,

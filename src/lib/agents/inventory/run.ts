@@ -1,5 +1,6 @@
 /**
  * Spike Engine — Inventory Agent (Day 18) + Sub-stage 1.5.1 (LLM retry)
+ *                + 1.5.1 hotfix (anti-AI post-processing)
  *
  * Pipeline:
  *   1. Fetch the latest active inventory snapshot for the tenant
@@ -7,8 +8,9 @@
  *   3. Send analyzed products to Sonnet 4.6 with thinking 2K
  *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
  *   4. Parse insights + priorities + Hebrew summaries
- *   5. Update the snapshot's last_analyzed_at and last_agent_run_id
- *   6. Return InventoryAgentOutput via runAgent wrapper
+ *   5. Strip AI signature tells (em-dash, hashtags) — 1.5.1 hotfix
+ *   6. Update the snapshot's last_analyzed_at and last_agent_run_id
+ *   7. Return InventoryAgentOutput via runAgent wrapper
  *
  * Cost: ~₪0.22/run (~3K input + 2K thinking + ~1.5K output on Sonnet 4.6)
  *
@@ -21,6 +23,7 @@
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
 import { withRetry } from "@/lib/with-retry";
+import { stripAiTellsDeep } from "@/lib/safety/anti-ai-strip";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { INVENTORY_AGENT_OUTPUT_SCHEMA } from "./schema";
 import {
@@ -216,7 +219,10 @@ export async function runInventoryAgent(
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("");
 
-    const output = JSON.parse(text) as InventoryAgentOutput;
+    // Parse, then strip AI signature tells from all string fields recursively.
+    // 1.5.1 hotfix.
+    const rawOutput = JSON.parse(text) as InventoryAgentOutput;
+    const output = stripAiTellsDeep(rawOutput);
 
     return {
       output,
