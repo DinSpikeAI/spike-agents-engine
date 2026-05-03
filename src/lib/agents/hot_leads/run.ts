@@ -1,5 +1,6 @@
 /**
  * Hot Leads Agent — Day 9 + Sub-stage 1.3 (event-triggered + LLM retry) + Sub-stage 1.3.5 (Sales cascade)
+ *                + Sub-stage 1.5.3 (anti-AI post-processing — defense-in-depth)
  *
  * Pipeline (batch / manual):
  *   1. Receive list of mock leads (with raw_message + display_name + source_handle)
@@ -16,11 +17,14 @@
  *   4. Wrap message + features in <LEAD> tags. NO name. NO handle.
  *   5. Send to Haiku 4.5 with bucketed enum schema
  *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
- *   6. Persist each classification to hot_leads table:
+ *   6. Strip AI signature tells (em-dash, en-dash, hashtags) from output
+ *      — Sub-stage 1.5.3 defense-in-depth. Hot Leads `reason` and
+ *        `suggested_action` are seen by the owner in the dashboard.
+ *   7. Persist each classification to hot_leads table:
  *      - display_name + source_handle from input (owner UI display)
  *      - bucket from LLM
  *      - score_features from code (bias audit data)
- *      - reason + suggestedAction from LLM
+ *      - reason + suggestedAction from LLM (now post-processed)
  *      - event_id (if provided via eventIdByLeadId map) for idempotency
  *
  * Sub-stage 1.3 — runHotLeadsOnEvent(tenantId, eventId):
@@ -40,6 +44,7 @@ import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { withRetry } from "@/lib/with-retry";
+import { stripAiTellsDeep } from "@/lib/safety/anti-ai-strip";
 import { waitUntil } from "@vercel/functions";
 import { HOT_LEADS_OUTPUT_SCHEMA } from "./schema";
 import { HOT_LEADS_SYSTEM_PROMPT, buildHotLeadsUserMessage } from "./prompt";
@@ -252,7 +257,12 @@ ${wrappedMessage}
     const text = response.content
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("");
-    const parsed = JSON.parse(text) as HotLeadsAgentOutput;
+
+    // Parse, then strip AI signature tells from all string fields recursively.
+    // Sub-stage 1.5.3: defense-in-depth. Hot Leads `reason` and
+    // `suggested_action` are visible to the owner in /dashboard/leads.
+    const rawParsed = JSON.parse(text) as HotLeadsAgentOutput;
+    const parsed = stripAiTellsDeep(rawParsed);
 
     return {
       output: parsed,

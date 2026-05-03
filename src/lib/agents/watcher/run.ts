@@ -2,6 +2,7 @@
  * Watcher Agent — Day 6 (Real Anthropic + code-side classification)
  *                + Day 19 (real DB-backed events)
  *                + Sub-stage 1.3 (LLM retry on transient failures)
+ *                + Sub-stage 1.5.3 (anti-AI post-processing — defense-in-depth)
  *
  * Pipeline:
  *   1. Load tenant context (name, owner) from public.tenants
@@ -9,9 +10,11 @@
  *   3. If 0 events → return no_op without calling LLM (saves ₪)
  *   4. LLM classifies each event into a category (no severity)
  *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
- *   5. Code adds severity from CATEGORY_SEVERITY lookup (./hierarchy.ts)
- *   6. Code sorts: severity asc, then occurredAt desc within tier
- *   7. If LLM returns empty alerts → status: "no_op" (not failure!)
+ *   5. Strip AI signature tells (em-dash, en-dash, hashtags) from raw output
+ *      — 1.5.3 defense-in-depth on top of prompt-level rules from 1.3
+ *   6. Code adds severity from CATEGORY_SEVERITY lookup (./hierarchy.ts)
+ *   7. Code sorts: severity asc, then occurredAt desc within tier
+ *   8. If LLM returns empty alerts → status: "no_op" (not failure!)
  *
  * Events table contract (public.events):
  *   - id          text          — primary key
@@ -30,6 +33,7 @@ import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { withRetry } from "@/lib/with-retry";
+import { stripAiTellsDeep } from "@/lib/safety/anti-ai-strip";
 import { WATCHER_AGENT_OUTPUT_SCHEMA } from "./schema";
 import {
   WATCHER_AGENT_SYSTEM_PROMPT,
@@ -261,7 +265,11 @@ export async function runWatcherAgent(
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("");
 
-    const raw = JSON.parse(text) as WatcherRawOutput;
+    // Parse, then strip AI signature tells from all string fields recursively.
+    // Sub-stage 1.5.3: defense-in-depth on top of prompt-level rules from 1.3.
+    // Watcher prompt already bans em-dashes; this catches any LLM drift.
+    const rawParsed = JSON.parse(text) as WatcherRawOutput;
+    const raw = stripAiTellsDeep(rawParsed);
 
     // ─── Code-side processing ───────────────────────────────────────
     // 1. Add severity from category (the "policy" lookup).
