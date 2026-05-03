@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   ShieldCheck,
   Settings,
+  Sparkles,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -47,6 +48,8 @@ export function Sidebar({
   const displayBusiness =
     (businessName && businessName.trim()) || "Spike Demo";
   const userInitial = (displayName.charAt(0) || "?").toUpperCase();
+
+  const isDemoActive = pathname === "/dashboard/demo";
 
   return (
     <aside
@@ -134,6 +137,28 @@ export function Sidebar({
           >
             <ShieldCheck size={14} strokeWidth={1.5} />
             מרכז ניהול
+          </Link>
+        )}
+
+        {isAdmin && (
+          <Link
+            href="/dashboard/demo"
+            className="mt-2 flex items-center gap-2.5 rounded-[9px] px-[11px] py-2 text-[13px] transition-colors"
+            style={{
+              background: isDemoActive ? "rgba(255,255,255,0.85)" : "transparent",
+              color: isDemoActive ? "var(--color-ink)" : "var(--color-ink-3)",
+              fontWeight: isDemoActive ? 500 : 400,
+              boxShadow: isDemoActive ? "0 1px 2px rgba(15,20,30,0.05)" : "none",
+            }}
+          >
+            <Sparkles
+              size={14}
+              strokeWidth={1.5}
+              style={{
+                color: isDemoActive ? "var(--color-sys-blue)" : "var(--color-ink-3)",
+              }}
+            />
+            דמו
           </Link>
         )}
       </nav>

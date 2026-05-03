@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
   ShieldCheck,
   Settings,
+  Sparkles,
   X,
 } from "lucide-react";
 
@@ -72,6 +73,8 @@ export function MobileDrawer({
   const displayBusiness =
     (businessName && businessName.trim()) || "Spike Demo";
   const userInitial = (displayName.charAt(0) || "?").toUpperCase();
+
+  const isDemoActive = pathname === "/dashboard/demo";
 
   return (
     <>
@@ -202,6 +205,30 @@ export function MobileDrawer({
             >
               <ShieldCheck size={17} strokeWidth={1.6} />
               מרכז ניהול
+            </Link>
+          )}
+
+          {isAdmin && (
+            <Link
+              href="/dashboard/demo"
+              onClick={onClose}
+              className="mt-2 flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[14px] transition-colors active:scale-[0.98]"
+              style={{
+                background: isDemoActive ? "rgba(10, 132, 255, 0.08)" : "transparent",
+                color: isDemoActive ? "var(--color-sys-blue)" : "var(--color-ink-3)",
+                fontWeight: isDemoActive ? 600 : 500,
+              }}
+            >
+              <Sparkles
+                size={17}
+                strokeWidth={isDemoActive ? 2 : 1.6}
+                style={{
+                  color: isDemoActive
+                    ? "var(--color-sys-blue)"
+                    : "var(--color-ink-3)",
+                }}
+              />
+              דמו
             </Link>
           )}
         </nav>
