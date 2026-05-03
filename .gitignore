@@ -46,3 +46,5 @@ next-env.d.ts
 
 # Local dev logs from Tee-Object
 dev.log
+
+file-tree.txt
