@@ -1,11 +1,22 @@
 /**
- * Sales Agent — Day 15 + Sub-stage 1.3 (LLM retry on transient failures)
+ * Sales Agent — Day 15 + Sub-stage 1.3 (LLM retry) + Sub-stage 1.3.5 (quick response)
  *
- * Generates Hebrew follow-up message drafts for stuck hot_leads.
- * Owner reviews each, copies to WhatsApp/Email/IG, sends manually,
- * then clicks "I sent" to mark complete (status='approved').
+ * Two distinct entry points sharing this file:
  *
- * Pipeline:
+ * 1. `runSalesAgent(tenantId, triggerSource)` — STUCK LEADS workflow.
+ *    Generates Hebrew follow-up drafts for hot_leads classified 3+ days ago
+ *    that haven't been contacted. Cron-triggered (07:30 daily).
+ *    Schema: SALES_AGENT_OUTPUT_SCHEMA (rich: subjectLine, messageTone, etc).
+ *
+ * 2. `runSalesQuickResponseOnEvent(tenantId, eventId)` — FRESH HOT LEADS workflow.
+ *    Generates a short first-response message for a freshly classified hot/burning
+ *    lead. Webhook-triggered via Hot Leads cascade.
+ *    Schema: SALES_QUICK_RESPONSE_OUTPUT_SCHEMA (minimal: message_text only).
+ *
+ * Both functions share `loadTenantContext`, `buildWhatsappUrl`, and use
+ * `runAgent` for unified observability (agent_runs row, cost_ledger).
+ *
+ * STUCK pipeline (existing, unchanged from Sub-stage 1.3):
  *   1. Load tenant context (name, vertical, sales config)
  *   2. Query stuck leads:
  *        bucket IN ('warm','hot','burning')
@@ -13,9 +24,15 @@
  *        AND received_at < NOW() - INTERVAL '3 days'
  *   3. Skip leads with already-pending sales drafts (don't dup)
  *   4. Deduplicate by normalized source_handle and display_name
- *   5. Send to Sonnet 4.6 with adaptive thinking
- *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
- *   6. Persist each follow-up as a draft row
+ *   5. Send to Sonnet 4.6 with adaptive thinking (wrapped in withRetry)
+ *   6. Persist each follow-up as a draft row (type='sales_followup')
+ *
+ * QUICK RESPONSE pipeline (new in 1.3.5):
+ *   1. Idempotency: check if a sales_quick_response draft already exists for this event
+ *   2. Load event + tenant
+ *   3. Build single-lead block from event.payload
+ *   4. Send to Sonnet 4.6 (wrapped in withRetry) with quick-response schema
+ *   5. Persist single draft (type='sales_quick_response', context.event_id=eventId)
  */
 
 import { runAgent } from "../run-agent";
@@ -28,13 +45,22 @@ import {
   buildSalesUserMessage,
   type SalesPromptContext,
 } from "./prompt";
+import {
+  SALES_QUICK_RESPONSE_OUTPUT_SCHEMA,
+  type SalesQuickResponseOutput,
+} from "./schema-quick-response";
+import {
+  SALES_QUICK_RESPONSE_SYSTEM_PROMPT,
+  buildSalesQuickResponseUserMessage,
+  type SalesQuickResponsePromptContext,
+} from "./prompt-quick-response";
 import { withGenderLock, type BusinessOwnerGender } from "@/lib/safety/gender-lock";
 import type { RunResult } from "../types";
 
 const MODEL = "claude-sonnet-4-6" as const;
 
 // ─────────────────────────────────────────────────────────────
-// Output type — matches schema
+// Output type — matches schema (stuck-lead workflow)
 // ─────────────────────────────────────────────────────────────
 
 export interface SalesFollowUp {
@@ -76,7 +102,7 @@ export interface SalesRunResult extends RunResult<SalesAgentOutput> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Tenant context loading
+// Tenant context loading (shared by both entry points)
 // ─────────────────────────────────────────────────────────────
 
 interface TenantSalesContext {
@@ -136,7 +162,7 @@ async function loadTenantContext(tenantId: string): Promise<TenantSalesContext> 
 }
 
 // ─────────────────────────────────────────────────────────────
-// Stuck leads query
+// Stuck leads query (stuck-lead workflow only)
 // ─────────────────────────────────────────────────────────────
 
 interface StuckLead {
@@ -274,7 +300,7 @@ async function filterAlreadyDraftedLeads(
 }
 
 // ─────────────────────────────────────────────────────────────
-// Build whatsapp URL helper
+// Build whatsapp URL helper (shared)
 // ─────────────────────────────────────────────────────────────
 
 function buildWhatsappUrl(
@@ -293,9 +319,9 @@ function buildWhatsappUrl(
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Main run function
-// ─────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════
+// Main run function — STUCK LEADS workflow (existing, unchanged)
+// ═════════════════════════════════════════════════════════════
 
 export async function runSalesAgent(
   tenantId: string,
@@ -561,5 +587,262 @@ export async function runSalesAgent(
     draftIds,
     stuckLeadsCount: stuckLeadsRaw.length,
     duplicatesSkipped,
+  };
+}
+
+// ═════════════════════════════════════════════════════════════
+// Quick Response — FRESH HOT LEADS workflow (Sub-stage 1.3.5, NEW)
+// ═════════════════════════════════════════════════════════════
+
+export interface SalesQuickResponseResult {
+  runId: string;
+  draftId: string | null;
+  status: "succeeded" | "no_op" | "failed" | "skipped_duplicate" | "skipped_no_message";
+}
+
+/**
+ * Generate a single short Hebrew first-response WhatsApp draft for a freshly
+ * classified hot/burning lead. Triggered by Hot Leads cascade after webhook.
+ *
+ * Idempotency: a sales_quick_response draft already keyed to this event_id
+ * causes early-return (skipped_duplicate) without an LLM call.
+ *
+ * The function is webhook-trigger-shaped: takes (tenantId, eventId), loads
+ * everything else from DB itself. Owner approves via /dashboard/approvals.
+ */
+export async function runSalesQuickResponseOnEvent(
+  tenantId: string,
+  eventId: string
+): Promise<SalesQuickResponseResult> {
+  const db = createAdminClient();
+
+  // ─── Idempotency check ──────────────────────────────────────
+  // If a draft for this event already exists, return early — don't pay for
+  // a duplicate LLM call.
+  const { data: existingDrafts } = await db
+    .from("drafts")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("agent_id", "sales")
+    .eq("type", "sales_quick_response")
+    .filter("context->>event_id", "eq", eventId)
+    .limit(1);
+
+  if (existingDrafts && existingDrafts.length > 0) {
+    console.log(
+      `[sales_quick_response] Draft already exists for event ${eventId}, skipping`
+    );
+    return {
+      runId: "",
+      draftId: existingDrafts[0].id,
+      status: "skipped_duplicate",
+    };
+  }
+
+  // ─── Load event ─────────────────────────────────────────────
+  const { data: event, error: eventErr } = await db
+    .from("events")
+    .select("id, tenant_id, payload, received_at")
+    .eq("id", eventId)
+    .single();
+
+  if (eventErr || !event) {
+    throw new Error(`Event ${eventId} not found: ${eventErr?.message}`);
+  }
+
+  if (event.tenant_id !== tenantId) {
+    throw new Error(
+      `Event ${eventId} belongs to tenant ${event.tenant_id}, not ${tenantId}`
+    );
+  }
+
+  // ─── Extract message details from payload ───────────────────
+  const payload = event.payload as Record<string, unknown> | null;
+  const displayName = (payload?.["contact_name"] as string) ?? "";
+  const rawMessage = (payload?.["raw_message"] as string) ?? "";
+  const sourceHandle = (payload?.["contact_phone"] as string) ?? "";
+
+  if (!rawMessage) {
+    console.warn(
+      `[sales_quick_response] Event ${eventId} has no raw_message, skipping`
+    );
+    return { runId: "", draftId: null, status: "skipped_no_message" };
+  }
+
+  // ─── Load tenant ────────────────────────────────────────────
+  const tenant = await loadTenantContext(tenantId);
+
+  // ─── Build prompt context ───────────────────────────────────
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jerusalem",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  const promptContext: SalesQuickResponsePromptContext = {
+    businessName: tenant.businessName,
+    ownerName: tenant.ownerName,
+    vertical: tenant.vertical,
+    toneOfVoice: tenant.toneOfVoice,
+    whatsappBusinessNumber: tenant.whatsappBusinessNumber,
+    availabilityLink: tenant.availabilityLink,
+    servicesPricingDisclose: tenant.servicesPricingDisclose,
+    followUpAggressiveness: tenant.followUpAggressiveness,
+    todayDateIso: today,
+  };
+
+  // ─── Build single-lead block ────────────────────────────────
+  const leadBlock = `<LEAD source="whatsapp" event_id="${eventId}">
+שם: ${displayName || "לא ידוע"}
+ערוץ: WhatsApp
+ההודעה: ${rawMessage}
+</LEAD>`;
+
+  // ─── Build system blocks (gender-locked) ────────────────────
+  const systemBlocks = withGenderLock(
+    SALES_QUICK_RESPONSE_SYSTEM_PROMPT,
+    tenant.gender
+  );
+
+  // ─── Define executor ────────────────────────────────────────
+  const executor = async () => {
+    const response = await withRetry(
+      () =>
+        anthropic.messages.create({
+          model: MODEL,
+          max_tokens: 1024,
+          system: systemBlocks,
+          messages: [
+            {
+              role: "user",
+              content: buildSalesQuickResponseUserMessage(
+                promptContext,
+                leadBlock
+              ),
+            },
+          ],
+          output_config: {
+            format: {
+              type: "json_schema",
+              schema: SALES_QUICK_RESPONSE_OUTPUT_SCHEMA,
+            },
+          },
+        }),
+      {
+        onRetry: ({ attempt, nextDelayMs, error }) => {
+          console.warn(
+            `[sales_quick_response] LLM attempt ${attempt} failed; retrying in ${Math.round(nextDelayMs)}ms`,
+            { error: error instanceof Error ? error.message : String(error) }
+          );
+        },
+      }
+    );
+
+    const text = response.content
+      .map((b) => (b.type === "text" ? b.text : ""))
+      .join("");
+    const parsed = JSON.parse(text) as SalesQuickResponseOutput;
+
+    return {
+      output: parsed,
+      usage: {
+        input_tokens: response.usage.input_tokens,
+        output_tokens: response.usage.output_tokens,
+        cache_read_input_tokens:
+          (response.usage as { cache_read_input_tokens?: number })
+            .cache_read_input_tokens ?? 0,
+        cache_creation_input_tokens:
+          (response.usage as { cache_creation_input_tokens?: number })
+            .cache_creation_input_tokens ?? 0,
+      },
+      status:
+        parsed.message_text.length > 0
+          ? ("succeeded" as const)
+          : ("no_op" as const),
+    };
+  };
+
+  // ─── Run the agent ──────────────────────────────────────────
+  const runResult = await runAgent<SalesQuickResponseOutput>(
+    {
+      tenantId,
+      agentId: "sales",
+      triggerSource: "webhook",
+      model: MODEL,
+    },
+    undefined,
+    executor
+  );
+
+  if (runResult.status === "failed" || !runResult.output) {
+    return { runId: runResult.runId, draftId: null, status: "failed" };
+  }
+
+  if (!runResult.output.message_text) {
+    return { runId: runResult.runId, draftId: null, status: "no_op" };
+  }
+
+  // ─── Build whatsapp URL ─────────────────────────────────────
+  const whatsappUrl = buildWhatsappUrl(
+    sourceHandle,
+    runResult.output.message_text
+  );
+
+  // ─── Persist as draft ───────────────────────────────────────
+  // Distinct type='sales_quick_response' so approvals UI / cleanup can
+  // distinguish from the stuck-lead Sales drafts (type='sales_followup').
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  const draftRow = {
+    tenant_id: tenantId,
+    agent_run_id: runResult.runId,
+    agent_id: "sales",
+    type: "sales_quick_response",
+    content: {
+      messageHebrew: runResult.output.message_text,
+      whatsappUrl,
+      expectedResponseProbability:
+        runResult.output.expected_response_probability,
+      leadDisplayName: displayName,
+      eventId,
+    },
+    status: "pending",
+    action_type: "requires_approval",
+    context: {
+      trigger: "webhook",
+      event_id: eventId,
+      lead_display_name: displayName,
+    },
+    external_target: {
+      platform: "whatsapp",
+      event_id: eventId,
+    },
+    expires_at: expiresAt,
+    defamation_risk: "low" as const,
+    defamation_flagged_phrases: [] as string[],
+    contains_pii: !!sourceHandle,
+    pii_scrubbed: false,
+    recipient_label: displayName || "לקוח",
+  };
+
+  const { data: insertedDraft, error: insertError } = await db
+    .from("drafts")
+    .insert(draftRow)
+    .select("id")
+    .single();
+
+  if (insertError) {
+    console.error(
+      `[sales_quick_response] Failed to persist draft for event ${eventId}:`,
+      insertError
+    );
+    return { runId: runResult.runId, draftId: null, status: "failed" };
+  }
+
+  return {
+    runId: runResult.runId,
+    draftId: insertedDraft.id,
+    status: "succeeded",
   };
 }

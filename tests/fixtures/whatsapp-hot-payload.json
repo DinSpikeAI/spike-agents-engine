@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "TEST_BUSINESS_ACCOUNT_ID_001",
+      "changes": [
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "+972-50-7654321",
+              "phone_number_id": "TEST_PHONE_NUMBER_ID_001"
+            },
+            "contacts": [
+              {
+                "wa_id": "972541234567",
+                "profile": {
+                  "name": "מוחמד אבו ראס"
+                }
+              }
+            ],
+            "messages": [
+              {
+                "from": "972541234567",
+                "id": "wamid.TEST_HOT_MESSAGE_ID_001",
+                "timestamp": "1714658400",
+                "type": "text",
+                "text": {
+                  "body": "שלום, אני צריך דחוף לקבוע פגישה היום. רוצה לבדוק את הטיפול. תקציב 2000 שקל. מתי אתם פנויים?"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

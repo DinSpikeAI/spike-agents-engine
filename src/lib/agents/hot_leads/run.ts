@@ -1,5 +1,5 @@
 /**
- * Hot Leads Agent — Day 9 + Sub-stage 1.3 (event-triggered + LLM retry)
+ * Hot Leads Agent — Day 9 + Sub-stage 1.3 (event-triggered + LLM retry) + Sub-stage 1.3.5 (Sales cascade)
  *
  * Pipeline (batch / manual):
  *   1. Receive list of mock leads (with raw_message + display_name + source_handle)
@@ -28,12 +28,19 @@
  *   builds a MockLead from its payload, and calls runHotLeadsAgent with that
  *   single lead and an event_id mapping for idempotency. Pre-flight check
  *   skips the LLM call entirely if the event was already classified.
+ *
+ * Sub-stage 1.3.5 — Sales QuickResponse cascade:
+ *   When runHotLeadsOnEvent classifies an event as bucket='hot' or 'burning',
+ *   it fires Sales QuickResponse via waitUntil() to draft a first-response
+ *   WhatsApp message for the owner to approve. Dynamic import is used to
+ *   avoid any potential circular dep risk between sales/run and hot_leads/run.
  */
 
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { withRetry } from "@/lib/with-retry";
+import { waitUntil } from "@vercel/functions";
 import { HOT_LEADS_OUTPUT_SCHEMA } from "./schema";
 import { HOT_LEADS_SYSTEM_PROMPT, buildHotLeadsUserMessage } from "./prompt";
 import { scrubPii } from "@/lib/safety/pii-scrubber";
@@ -46,6 +53,13 @@ import type {
 } from "../types";
 
 const MODEL = "claude-haiku-4-5" as const;
+
+/**
+ * Buckets that warrant an automated Sales QuickResponse draft.
+ * 'cold' / 'warm' / 'spam_or_unclear' do not trigger cascade — owner sees the
+ * Hot Leads classification in the dashboard but doesn't get an auto-draft.
+ */
+const SALES_CASCADE_BUCKETS = ["hot", "burning"] as const;
 
 export interface HotLeadsRunResult extends RunResult<HotLeadsAgentOutput> {
   leadIds: string[];
@@ -61,6 +75,8 @@ export interface HotLeadsOnEventResult {
   leadId: string | null;
   /** The runAgent result (null if we skipped before running). */
   runResult: RunResult<HotLeadsAgentOutput> | null;
+  /** True if Sales QuickResponse was fired via waitUntil (Sub-stage 1.3.5). */
+  salesCascadeFired: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -336,6 +352,7 @@ ${wrappedMessage}
 
 // ─────────────────────────────────────────────────────────────
 // Sub-stage 1.3 — Single-event entry point (used by webhook)
+// Sub-stage 1.3.5 — adds Sales QuickResponse cascade
 // ─────────────────────────────────────────────────────────────
 
 /**
@@ -344,6 +361,11 @@ ${wrappedMessage}
  * Loads the event from public.events, converts its payload into a MockLead,
  * checks idempotency (skip if a hot_leads row with this event_id already
  * exists for this tenant), and delegates to runHotLeadsAgent.
+ *
+ * If the resulting bucket is 'hot' or 'burning', fires Sales QuickResponse
+ * via waitUntil() to draft a first-response WhatsApp message. Sales
+ * QuickResponse has its own idempotency on (tenant_id, event_id), so
+ * duplicate cascade fires are safe.
  *
  * Used by:
  *   - WhatsApp webhook handler (fire-and-forget via waitUntil)
@@ -393,6 +415,7 @@ export async function runHotLeadsOnEvent(
       skipReason: "already_classified",
       leadId: existing.id,
       runResult: null,
+      salesCascadeFired: false,
     };
   }
 
@@ -422,6 +445,7 @@ export async function runHotLeadsOnEvent(
       skipReason: "no_raw_message",
       leadId: null,
       runResult: null,
+      salesCascadeFired: false,
     };
   }
 
@@ -459,10 +483,55 @@ export async function runHotLeadsOnEvent(
     { [event.id]: event.id }
   );
 
+  // ─── Sub-stage 1.3.5 — Sales QuickResponse cascade ───────
+  // If Hot Leads classified this event as bucket='hot' or 'burning', fire
+  // Sales QuickResponse via waitUntil. Sales QuickResponse has its own
+  // idempotency check on (tenant_id, agent_id='sales', type='sales_quick_response',
+  // context.event_id), so duplicate cascade fires are safe.
+  //
+  // Cold/warm/spam_or_unclear do NOT cascade — owner sees the Hot Leads
+  // classification in the dashboard, but doesn't get an auto-drafted reply
+  // for low-intent leads.
+  //
+  // Dynamic import is used to avoid potential circular-dep risk in case
+  // sales/run.ts ever needs to import from hot_leads in the future.
+  let salesCascadeFired = false;
+
+  if (runResult.status !== "failed" && runResult.output) {
+    const classification = runResult.output.classifications.find(
+      (c) => c.leadId === event.id
+    );
+
+    if (classification && (SALES_CASCADE_BUCKETS as readonly string[]).includes(classification.bucket)) {
+      try {
+        const { runSalesQuickResponseOnEvent } = await import("../sales/run");
+        waitUntil(
+          runSalesQuickResponseOnEvent(tenantId, eventId).catch((err) => {
+            console.error(
+              `[hot_leads-cascade] Sales QuickResponse failed for event ${eventId}:`,
+              err
+            );
+          })
+        );
+        salesCascadeFired = true;
+        console.log(
+          `[hot_leads-cascade] Fired Sales QuickResponse for event ${eventId} (bucket=${classification.bucket})`
+        );
+      } catch (cascadeErr) {
+        // Failure to import or schedule shouldn't break the Hot Leads classification.
+        console.error(
+          `[hot_leads-cascade] Failed to fire Sales cascade for event ${eventId}:`,
+          cascadeErr
+        );
+      }
+    }
+  }
+
   return {
     skipped: false,
     skipReason: null,
     leadId: runResult.leadIds[0] ?? null,
     runResult,
+    salesCascadeFired,
   };
 }
