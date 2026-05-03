@@ -1,13 +1,16 @@
 /**
- * Reviews Agent — Day 8
+ * Reviews Agent — Day 8 + Sub-stage 1.5.1 (LLM retry on main reviews call)
  *
  * Pipeline:
  *   1. Receive list of mock reviews from action layer
  *   2. PII-scrub each review's text (preserve names, redact phone/email/etc.)
  *   3. Wrap each scrubbed review in <REVIEW_CONTENT> sentinel tags
  *   4. Send all wrapped reviews to Sonnet 4.6 in one call
+ *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
  *   5. Sonnet returns N drafts (one per review)
  *   6. For each draft, run defamation check (Haiku 4.5)
+ *      — NOT wrapped in withRetry as of 1.5.1; failures degrade to
+ *        risk='medium' which is acceptable. Future improvement.
  *   7. Persist each as a draft row in the drafts table:
  *      - high risk → status='rejected', shown to owner with block message
  *      - medium → status='pending' with warning
@@ -22,6 +25,7 @@
 
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
+import { withRetry } from "@/lib/with-retry";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { REVIEWS_AGENT_OUTPUT_SCHEMA } from "./schema";
 import {
@@ -124,23 +128,39 @@ export async function runReviewsAgent(
 
   // ─── Define the executor that runAgent will call ─────────────
   const executor = async () => {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 2048,
-      system: systemBlocks,
-      messages: [
-        {
-          role: "user",
-          content: buildReviewsUserMessage(promptContext, wrappedBlock),
+    // Wrap the Anthropic call in withRetry: 3 attempts, 1s/2s/4s exponential
+    // backoff with jitter. Retries on transient errors (5xx, 429, network);
+    // throws immediately on terminal errors (400, 401, 422). Total max wall
+    // time when all 3 attempts fail: ~7s. Successful first-try is zero
+    // overhead. See src/lib/with-retry.ts for details.
+    const response = await withRetry(
+      () =>
+        anthropic.messages.create({
+          model: MODEL,
+          max_tokens: 2048,
+          system: systemBlocks,
+          messages: [
+            {
+              role: "user",
+              content: buildReviewsUserMessage(promptContext, wrappedBlock),
+            },
+          ],
+          output_config: {
+            format: {
+              type: "json_schema",
+              schema: REVIEWS_AGENT_OUTPUT_SCHEMA,
+            },
+          },
+        }),
+      {
+        onRetry: ({ attempt, nextDelayMs, error }) => {
+          console.warn(
+            `[reviews] LLM attempt ${attempt} failed; retrying in ${Math.round(nextDelayMs)}ms`,
+            { error: error instanceof Error ? error.message : String(error) }
+          );
         },
-      ],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: REVIEWS_AGENT_OUTPUT_SCHEMA,
-        },
-      },
-    });
+      }
+    );
 
     const text = response.content
       .map((b) => (b.type === "text" ? b.text : ""))

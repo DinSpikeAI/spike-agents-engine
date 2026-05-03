@@ -1,11 +1,12 @@
 /**
- * Morning Agent — Day 5 (Real Anthropic)
+ * Morning Agent — Day 5 (Real Anthropic) + Sub-stage 1.5.1 (LLM retry)
  *
  * Passes a real executor to runAgent() which calls claude-haiku-4-5
  * with the Hebrew morning briefing prompt + structured output schema.
  */
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
+import { withRetry } from "@/lib/with-retry";
 import { MORNING_AGENT_OUTPUT_SCHEMA } from "./schema";
 import { MORNING_AGENT_SYSTEM_PROMPT, buildMorningUserMessage } from "./prompt";
 import type { MorningAgentOutput, RunResult } from "../types";
@@ -28,26 +29,42 @@ export async function runMorningAgent(
   };
 
   const executor = async () => {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 1024,
-      system: [
-        {
-          type: "text",
-          text: MORNING_AGENT_SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
+    // Wrap the Anthropic call in withRetry: 3 attempts, 1s/2s/4s exponential
+    // backoff with jitter. Retries on transient errors (5xx, 429, network);
+    // throws immediately on terminal errors (400, 401, 422). Total max wall
+    // time when all 3 attempts fail: ~7s. Successful first-try is zero
+    // overhead. See src/lib/with-retry.ts for details.
+    const response = await withRetry(
+      () =>
+        anthropic.messages.create({
+          model: MODEL,
+          max_tokens: 1024,
+          system: [
+            {
+              type: "text",
+              text: MORNING_AGENT_SYSTEM_PROMPT,
+              cache_control: { type: "ephemeral", ttl: "1h" },
+            },
+          ],
+          messages: [
+            { role: "user", content: buildMorningUserMessage(promptContext) },
+          ],
+          output_config: {
+            format: {
+              type: "json_schema",
+              schema: MORNING_AGENT_OUTPUT_SCHEMA,
+            },
+          },
+        }),
+      {
+        onRetry: ({ attempt, nextDelayMs, error }) => {
+          console.warn(
+            `[morning] LLM attempt ${attempt} failed; retrying in ${Math.round(nextDelayMs)}ms`,
+            { error: error instanceof Error ? error.message : String(error) }
+          );
         },
-      ],
-      messages: [
-        { role: "user", content: buildMorningUserMessage(promptContext) },
-      ],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: MORNING_AGENT_OUTPUT_SCHEMA,
-        },
-      },
-    });
+      }
+    );
 
     // Extract text from content blocks. Skip thinking blocks (no .text field).
     const text = response.content

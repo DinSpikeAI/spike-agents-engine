@@ -1,10 +1,11 @@
 /**
- * Spike Engine — Inventory Agent (Day 18)
+ * Spike Engine — Inventory Agent (Day 18) + Sub-stage 1.5.1 (LLM retry)
  *
  * Pipeline:
  *   1. Fetch the latest active inventory snapshot for the tenant
  *   2. Run code-side analysis (daysOfCoverage, status per product)
  *   3. Send analyzed products to Sonnet 4.6 with thinking 2K
+ *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
  *   4. Parse insights + priorities + Hebrew summaries
  *   5. Update the snapshot's last_analyzed_at and last_agent_run_id
  *   6. Return InventoryAgentOutput via runAgent wrapper
@@ -19,6 +20,7 @@
 
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
+import { withRetry } from "@/lib/with-retry";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { INVENTORY_AGENT_OUTPUT_SCHEMA } from "./schema";
 import {
@@ -159,39 +161,55 @@ export async function runInventoryAgent(
   const tenantCtx = await loadTenantContext(tenantId);
 
   const executor = async () => {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      thinking: {
-        type: "enabled",
-        budget_tokens: THINKING_BUDGET,
-      },
-      system: [
-        {
-          type: "text",
-          text: INVENTORY_AGENT_SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
+    // Wrap the Anthropic call in withRetry: 3 attempts, 1s/2s/4s exponential
+    // backoff with jitter. Retries on transient errors (5xx, 429, network);
+    // throws immediately on terminal errors (400, 401, 422). Total max wall
+    // time when all 3 attempts fail: ~7s. Successful first-try is zero
+    // overhead. See src/lib/with-retry.ts for details.
+    const response = await withRetry(
+      () =>
+        anthropic.messages.create({
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          thinking: {
+            type: "enabled",
+            budget_tokens: THINKING_BUDGET,
+          },
+          system: [
+            {
+              type: "text",
+              text: INVENTORY_AGENT_SYSTEM_PROMPT,
+              cache_control: { type: "ephemeral", ttl: "1h" },
+            },
+          ],
+          messages: [
+            {
+              role: "user",
+              content: buildInventoryUserMessage({
+                ownerName: tenantCtx.ownerName,
+                businessName: tenantCtx.businessName,
+                vertical: tenantCtx.vertical,
+                products: analyzed,
+                snapshotUploadedAt: snapshot.uploadedAt,
+              }),
+            },
+          ],
+          output_config: {
+            format: {
+              type: "json_schema",
+              schema: INVENTORY_AGENT_OUTPUT_SCHEMA,
+            },
+          },
+        }),
+      {
+        onRetry: ({ attempt, nextDelayMs, error }) => {
+          console.warn(
+            `[inventory] LLM attempt ${attempt} failed; retrying in ${Math.round(nextDelayMs)}ms`,
+            { error: error instanceof Error ? error.message : String(error) }
+          );
         },
-      ],
-      messages: [
-        {
-          role: "user",
-          content: buildInventoryUserMessage({
-            ownerName: tenantCtx.ownerName,
-            businessName: tenantCtx.businessName,
-            vertical: tenantCtx.vertical,
-            products: analyzed,
-            snapshotUploadedAt: snapshot.uploadedAt,
-          }),
-        },
-      ],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: INVENTORY_AGENT_OUTPUT_SCHEMA,
-        },
-      },
-    });
+      }
+    );
 
     // Extract JSON from text blocks (thinking comes first, then text)
     const text = response.content

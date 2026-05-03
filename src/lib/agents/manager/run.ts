@@ -1,5 +1,6 @@
 /**
  * Manager Agent — Day 10 + Day 11A spend cap + Day 11B health score
+ *                + Sub-stage 1.5.1 (LLM retry on Sonnet thinking call)
  *
  * Pipeline:
  *   1. Pre-flight spend cap check (Day 11A) — before doing any work
@@ -7,6 +8,7 @@
  *   3. Insert agent_runs row + reserve_spend RPC (Day 11A)
  *   4. Format into a prompt block
  *   5. Call Sonnet 4.6 with thinking_budget = 8000 + 5-section JSON schema
+ *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
  *   6. settle_spend on success / refund_spend on failure (Day 11A)
  *   7. Persist the structured report to manager_reports
  *   8. Compute and persist customer health score (Day 11B)
@@ -25,9 +27,14 @@
  *     Day 11A: We replicate the runAgent spend-cap pattern manually here.
  *   - Day 11B: After a successful run, we recompute the customer health
  *     score so the Admin dashboard always sees fresh-as-of-this-week data.
+ *   - Sub-stage 1.5.1: withRetry wraps only the LLM call inside the
+ *     outer try/catch. If all 3 attempts fail, the error propagates to
+ *     the catch block which calls refund_spend. The reservation is held
+ *     up to ~7s extra during retries — acceptable for an expensive run.
  */
 
 import { anthropic } from "@/lib/anthropic";
+import { withRetry } from "@/lib/with-retry";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { MANAGER_AGENT_OUTPUT_SCHEMA } from "./schema";
 import {
@@ -182,33 +189,51 @@ export async function runManagerAgent(
     const signalsBlock = formatSignalsForPrompt(signals);
 
     // ─── Step 5: Call Sonnet 4.6 with thinking ─────────────
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      thinking: {
-        type: "enabled",
-        budget_tokens: THINKING_BUDGET,
-      },
-      system: [
-        {
-          type: "text",
-          text: MANAGER_AGENT_SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
+    // Wrap the Anthropic call in withRetry: 3 attempts, 1s/2s/4s exponential
+    // backoff with jitter. Retries on transient errors (5xx, 429, network);
+    // throws immediately on terminal errors (400, 401, 422). Total max wall
+    // time when all 3 attempts fail: ~7s. Successful first-try is zero
+    // overhead. The reservation from Step 3 is held during retries; the
+    // outer try/catch refunds it via refund_spend if all attempts fail.
+    // See src/lib/with-retry.ts for details.
+    const response = await withRetry(
+      () =>
+        anthropic.messages.create({
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          thinking: {
+            type: "enabled",
+            budget_tokens: THINKING_BUDGET,
+          },
+          system: [
+            {
+              type: "text",
+              text: MANAGER_AGENT_SYSTEM_PROMPT,
+              cache_control: { type: "ephemeral", ttl: "1h" },
+            },
+          ],
+          messages: [
+            {
+              role: "user",
+              content: buildManagerUserMessage(promptCtx, signalsBlock),
+            },
+          ],
+          output_config: {
+            format: {
+              type: "json_schema",
+              schema: MANAGER_AGENT_OUTPUT_SCHEMA,
+            },
+          },
+        }),
+      {
+        onRetry: ({ attempt, nextDelayMs, error }) => {
+          console.warn(
+            `[manager] LLM attempt ${attempt} failed; retrying in ${Math.round(nextDelayMs)}ms`,
+            { error: error instanceof Error ? error.message : String(error) }
+          );
         },
-      ],
-      messages: [
-        {
-          role: "user",
-          content: buildManagerUserMessage(promptCtx, signalsBlock),
-        },
-      ],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: MANAGER_AGENT_OUTPUT_SCHEMA,
-        },
-      },
-    });
+      }
+    );
 
     // Extract JSON from text blocks (thinking blocks are separate, not parsed)
     const text = response.content

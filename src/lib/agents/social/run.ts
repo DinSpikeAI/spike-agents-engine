@@ -1,5 +1,5 @@
 /**
- * Social Agent — Day 14
+ * Social Agent — Day 14 + Sub-stage 1.5.1 (LLM retry)
  *
  * Generates 3 daily Hebrew social media post drafts.
  * Owner copy-pastes manually to Instagram/Facebook (no auto-posting).
@@ -8,7 +8,8 @@
  *   1. Load tenant context (name, vertical, owner, social config)
  *   2. Resolve "today" — date, day-of-week, holiday status
  *   3. Build prompt with all context (silent-day branch returns empty posts)
- *   4. Send to Haiku 4.5 with native JSON schema output
+ *   4. Send to Sonnet 4.6 with native JSON schema output
+ *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
  *   5. Persist each post as a draft row in the drafts table:
  *      - status='pending', action_type='requires_approval'
  *      - content jsonb contains all post fields
@@ -17,7 +18,7 @@
  *   6. Return SocialRunResult with draft IDs
  *
  * Cost optimization:
- *   - Haiku 4.5 (cheapest tier) — generation, not reasoning
+ *   - Sonnet 4.6 — quality matters for social
  *   - cache_control: ephemeral, ttl: '1h' on system prompt
  *   - No thinking budget
  *
@@ -29,6 +30,7 @@
 
 import { runAgent } from "../run-agent";
 import { anthropic } from "@/lib/anthropic";
+import { withRetry } from "@/lib/with-retry";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SOCIAL_AGENT_OUTPUT_SCHEMA } from "./schema";
 import {
@@ -219,23 +221,39 @@ export async function runSocialAgent(
 
   // ─── Define the executor that runAgent will call ────────────
   const executor = async () => {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 3000,
-      system: systemBlocks,
-      messages: [
-        {
-          role: "user",
-          content: buildSocialUserMessage(promptContext),
+    // Wrap the Anthropic call in withRetry: 3 attempts, 1s/2s/4s exponential
+    // backoff with jitter. Retries on transient errors (5xx, 429, network);
+    // throws immediately on terminal errors (400, 401, 422). Total max wall
+    // time when all 3 attempts fail: ~7s. Successful first-try is zero
+    // overhead. See src/lib/with-retry.ts for details.
+    const response = await withRetry(
+      () =>
+        anthropic.messages.create({
+          model: MODEL,
+          max_tokens: 3000,
+          system: systemBlocks,
+          messages: [
+            {
+              role: "user",
+              content: buildSocialUserMessage(promptContext),
+            },
+          ],
+          output_config: {
+            format: {
+              type: "json_schema",
+              schema: SOCIAL_AGENT_OUTPUT_SCHEMA,
+            },
+          },
+        }),
+      {
+        onRetry: ({ attempt, nextDelayMs, error }) => {
+          console.warn(
+            `[social] LLM attempt ${attempt} failed; retrying in ${Math.round(nextDelayMs)}ms`,
+            { error: error instanceof Error ? error.message : String(error) }
+          );
         },
-      ],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: SOCIAL_AGENT_OUTPUT_SCHEMA,
-        },
-      },
-    });
+      }
+    );
 
     const text = response.content
       .map((b) => (b.type === "text" ? b.text : ""))
