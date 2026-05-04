@@ -2,24 +2,24 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-04 (end of session 6 — sub-stages 1.6, 1.7, 1.8 added on top of completed Stage 1) — All Stage 1 sub-stages (1.1–1.5.5) plus three new dashboard pages (1.6 Onboarding banner + Showcase rename, 1.7 Settings page, 1.8 Agents overview) live in production. 4 of 7 placeholder pages now real. Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead.
+> **Last updated:** 2026-05-04 (end of Sub-stage 1.8) — Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8 also complete and live in production. Onboarding banner + showcase rename + tenant settings page + agents overview page all shipped. Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead.
 
 ---
 
 ## 0. TL;DR
 
-- **What:** Multi-tenant SaaS in **Hebrew RTL** for Israeli SMBs (salons, restaurants, clinics, retail, 3-15 location chains). 8 customer-facing AI agents draft proposals; the business owner approves before anything sends. A 9th internal agent (`cleanup`) does housekeeping — never visible to the user. **All 9 are implemented and live in production.**
+- **What:** Multi-tenant SaaS in Hebrew RTL for Israeli SMBs (salons, restaurants, clinics, retail, 3-15 location chains). 8 customer-facing AI agents draft proposals; the business owner approves before anything sends. A 9th internal agent (`cleanup`) does housekeeping — never visible to the user. All 9 are implemented and live in production.
 - **Founder / sole dev:** Dean Moshe (`din6915@gmail.com`). Bootstrap mode. Hebrew speaker.
-- **The Iron Rule above all others:** **"AI מסמן, בעלים מחליט"** — AI flags, owner decides. Drafts only. Never auto-send.
-- **Marketing tagline:** **"שמונה סוכנים. שקט אחד."** ("Eight agents. One quiet.") — refers to the 8 customer-facing agents.
+- **The Iron Rule above all others:** "AI מסמן, בעלים מחליט" — AI flags, owner decides. Drafts only. Never auto-send.
+- **Marketing tagline:** "שמונה סוכנים. שקט אחד." ("Eight agents. One quiet.") — refers to the 8 customer-facing agents.
 - **Stack:** Next.js 16.2.4 (Turbopack) + React 19.2.4 + Tailwind v4 + TypeScript · Supabase (Frankfurt) · `@anthropic-ai/sdk@0.91.1` (Sonnet 4.6 + Haiku 4.5) · Resend · Vercel · `@vercel/functions@3.5.0` for waitUntil background tasks.
 - **Repo (engine):** https://github.com/DinSpikeAI/spike-agents-engine
 - **Repo (landing):** https://github.com/DinSpikeAI/spike-agents — separate marketing site (Next.js 16, Tailwind v4, RTL, Web3Forms). Don't confuse the two.
 - **Local dev:** `C:\Users\Din\Desktop\spike-engine`
 - **Domain:** `app.spikeai.co.il` (production) · `localhost:3000` (dev).
-- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. Dashboard now has working Settings page (1.7) and Agents overview (1.8). Onboarding banner (1.6) shown to tenants with 0 non-mock runs. Pre-launch — no real customers yet.
+- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. **Post-Stage-1 polish (1.6, 1.7, 1.8) also complete:** onboarding banner shows for new tenants with 0 non-mock runs; tenant settings page lets owners edit core fields; agents overview page shows per-agent activity stats. Verified live in production. Pre-launch — no real customers yet.
 - **Don't propose:** NPS surveys · schedule optimization for staff · contract review · crypto/Web3 · "senior manager of agents" · OpenAI fallback · standalone mobile app · 360dialog or other BSP middlemen.
-- **Next up (Stage 2):** Meta Business verification + Embedded Signup UI + production WhatsApp templates. See §12.3. Blocked on Dean registering עוסק פטור (or upgrade to עוסק מורשה) before Meta verification can begin.
+- **Next up (Stage 2):** Meta Business verification + Embedded Signup UI + production WhatsApp templates. See §12.3.
 
 ---
 
@@ -28,11 +28,11 @@
 ### 1.1 "AI מסמן, בעלים מחליט"
 - Every customer-facing agent action produces a `drafts` row.
 - Owner approves drafts via `/dashboard/approvals` before anything sends.
-- **Auto-send forbidden** — even with the user's permission in chat.
+- Auto-send forbidden — even with the user's permission in chat.
 - Cleanup agent: never notifies, never creates drafts, never appears in user UI.
 
 ### 1.2 The Word "בוט" Is Forbidden
-Use **"סוכן AI"** or **"סוכן"**. Applies everywhere.
+Use "סוכן AI" or "סוכן". Applies everywhere.
 
 ### 1.3 Anthropic Only
 All LLM calls through `@anthropic-ai/sdk` via `src/lib/anthropic.ts` (server-only). No OpenAI, Gemini, Cohere, Mistral, local models. Strategic.
@@ -44,7 +44,7 @@ All user-facing UI: `dir="rtl"` and Hebrew. English only in: code, commits, comm
 Full pipeline at `src/lib/safety/`. Every customer-facing agent's untrusted input passes through it before reaching Anthropic. Enforced by `run-agent-safe.ts`.
 
 | Module | Purpose |
-|--------|---------|
+|---|---|
 | `pii-scrubber.ts` | Phones (all IL formats), emails, IDs (8-9 digits), credit cards, IBAN. תיקון 13. |
 | `defamation-guard.ts` | לשון הרע detection for review responses. |
 | `gender-lock.ts` | Hebrew זכר/נקבה agreement. |
@@ -52,15 +52,15 @@ Full pipeline at `src/lib/safety/`. Every customer-facing agent's untrusted inpu
 | `anti-ai-strip.ts` | Strips em-dash, en-dash, inline hashtags from LLM output. |
 
 ### 1.6 Israeli Regulation Built In
-- **סעיף 30א** anti-spam: no marketing without prior opt-in
-- **לשון הרע**: handled in Reviews safety pipeline
-- **תיקון 13** privacy: handled by PII scrubber (IL phone formats audited 1.5.5)
+- סעיף 30א anti-spam: no marketing without prior opt-in
+- לשון הרע: handled in Reviews safety pipeline
+- תיקון 13 privacy: handled by PII scrubber (IL phone formats audited 1.5.5)
 
 ### 1.7 Drafts Have Expiry
-Default 72h. Sales follow-up + Sales QuickResponse: 24h. **Cleanup cron (1.5.4) enforces** — runs daily at `0 0 * * *` UTC and sets `status='expired'` on any pending drafts past `expires_at`.
+Default 72h. Sales follow-up + Sales QuickResponse: 24h. Cleanup cron (1.5.4) enforces — runs daily at `0 0 * * *` UTC and sets `status='expired'` on any pending drafts past `expires_at`.
 
 ### 1.8 Gender Lock Mandatory in Hebrew Output
-Tenants have `business_owner_gender`. Used by Sales (both entry points); Reviews/Social/Manager pending future polish.
+Tenants have `business_owner_gender`. Used by Sales (both entry points); Reviews/Social/Manager pending future polish. **As of 1.7, owners can edit `business_owner_gender` themselves via `/dashboard/settings`.**
 
 ### 1.9 Anti-AI-Signature Hygiene (1.3 + 1.3.5 + 1.5.1 hotfix + 1.5.3 sweep)
 
@@ -106,7 +106,7 @@ Hebrew in chat. English in code/commits/comments. Brevity preferred.
 ### 2.2 Brutal Honesty
 - Bad idea → say it. Plan flaw → point it out before executing. "I don't know" preferred over confident guess.
 - Push back when proposals contradict CLAUDE.md.
-- **Never write "Dean provided X" without verification.**
+- Never write "Dean provided X" without verification.
 
 ### 2.3 PowerShell File Workflow
 1. Generate full file in `/mnt/user-data/outputs/`
@@ -134,11 +134,11 @@ Always full file. When 2 files share the same name, use distinct names in `/outp
 ### 2.5 Three Options + Recommendation
 For decisions: 3 concrete options + trade-offs + Claude's recommendation.
 
-### 2.6 Don't Be a Therapist (HARDENED in session 6)
+### 2.6 Don't Be a Therapist
 - Don't ask if Dean is tired. Don't suggest he sleep.
-- **NEW IRON RULE (session 6):** Don't tell Dean to rest, sleep, take a break, or say "good night/good morning." Dean explicitly forbade this mid-session.
+- Exception: clean sub-stage boundaries fine to offer "continue or pause".
 - Don't say "good night" if it's 7am.
-- No time-of-day assumptions.
+- **NEW (session 6):** Don't tell Dean to rest, sleep, take a break, or say "good night/good morning" at any time. Dean explicitly forbade this mid-session 6.
 
 ### 2.7 Bootstrap Mode
 - Only paid expense: Anthropic API
@@ -160,39 +160,39 @@ After migrations: `NOTIFY pgrst, 'reload schema';`
 
 Verification applies to Claude's own claims too. Never write "Dean said X" without grep'ing transcript.
 
-### 2.9 Known Display Bug (HARDENED in session 6)
-Claude.ai sometimes wraps `INTEGRATION-NOTES.md`, `CLAUDE.md`, and `localhost` as malformed links in **both directions** — both in Claude's output AND when user pastes PowerShell output back. PowerShell handles them as strings; the actual files on disk are fine. **Diagnostic pattern:** if `Get-Content` shows a wrapped filename, verify with `.ToCharArray()` for actual character count. 9 chars = clean `CLAUDE.md`; 31 chars = pollution. (Session 6: confirmed clean filenames despite display bug.)
+### 2.9 Known Display Bug
+Claude.ai sometimes wraps `INTEGRATION-NOTES.md`, `CLAUDE.md`, and `localhost` as malformed links in console output. The files themselves are fine — only rendering is wrong. **Verify with `.ToCharArray()` if console output looks wrong but real filesystem is OK.** Type names manually if PowerShell command fails to parse.
 
 ### 2.10 PowerShell Gotchas
-- **Tee-Object does NOT block.** Always 2 separate windows for dev + commands.
-- **Add-Content does NOT add newline.** Breaks `.env.local`. Use notepad or prepend `` `n ``.
-- **Verify env after appending:** `Get-Content .env.local | Select-String "<KEY>"`.
-- **Stale .next cache:** tsc errors `routes.d.ts is not a module` → stop dev, `Remove-Item -Recurse -Force .next`, restart dev.
-- **Turbopack SST file errors:** same fix.
-- **`git show` falls into less pager on Windows:** Use `git --no-pager show HEAD:vercel.json` or press `q`.
-- **LF/CRLF normalization warnings on `git add -A` are usually harmless.**
-- **Select-String fails on UTF-8 Hebrew from git stdout:** redirect to file + open in notepad.
-- **Vercel CLI ECONNRESET / ENOTFOUND on `vercel --prod` (session 6):** transient network blip. Vercel often already received the deployment before the CLI lost connection. Verify by browsing the deployed page directly OR running `vercel --prod` again (idempotent).
+- Tee-Object does NOT block. Always 2 separate windows for dev + commands.
+- Add-Content does NOT add newline. Breaks `.env.local`. Use notepad or prepend `` `n ``.
+- Verify env after appending: `Get-Content .env.local | Select-String "<KEY>"`.
+- Stale .next cache: tsc errors `routes.d.ts is not a module` → stop dev, `Remove-Item -Recurse -Force .next`, restart dev.
+- Turbopack SST file errors: same fix.
+- `git show` falls into less pager on Windows: Use `git --no-pager show HEAD:vercel.json` or press `q`.
+- LF/CRLF normalization warnings on `git add -A` are usually harmless.
+- Select-String fails on UTF-8 Hebrew from git stdout: redirect to file + open in notepad.
+- **Vercel deploy ECONNRESET (session 6):** sometimes `vercel --prod` fails with `ECONNRESET` mid-deploy due to flaky local network. Usually the deployment **succeeded** server-side anyway (Vercel got the upload before the disconnect). Verify by visiting production URL or running `vercel --prod` again — second run is fast and idempotent.
 
 ### 2.11 Sub-stage Iteration Rhythm
 - 5-15 min plan + verification ask
 - 30-60 min code + self-audit
 - 5-15 min Move-Item + tsc + manual test
 - 5 min commit + push + vercel --prod
-- **Total: ~1-2.5 hours typical.** Mechanical sweeps (1.5.1, 1.5.5) ~30-45 min. Page-creation sub-stages (1.6/1.7/1.8) ~1-1.5h each.
+- **Total: ~1-2.5 hours typical.** Mechanical sweeps (1.5.1, 1.5.5) ~30-45 min. UI features (1.4, 1.7, 1.8) ~1.5h with proper §2.12 prep.
 
 ### 2.12 Design Tokens & Patterns First (1.4 lesson)
 
 **Before any new UI code, read:**
 1. `src/app/globals.css` — Calm Frosted tokens
-2. **At least one existing styled component** (e.g., `kpi-strip.tsx`, agent grid in `src/app/dashboard/page.tsx`)
+2. At least one existing styled component (e.g., `kpi-strip.tsx`, agent grid in `src/app/dashboard/page.tsx`)
 
 **Mandatory.** 1.4 took 4 design attempts because Claude designed before reading globals.css.
 
 **The pattern Spike uses:**
 - `<Glass>` + `<Glass deep>` from `@/components/ui/glass` are card primitives
 - `<AppleBg>` from `@/components/ui/apple-bg` is page background
-- Colors via CSS variables in inline `style={{}}` — **NOT** Tailwind classes like `bg-rose-500`
+- Colors via CSS variables in inline `style={{}}` — NOT Tailwind classes like `bg-rose-500`
 - Typography in arbitrary pixels: `text-[15.5px]`, `text-[12.5px]`, `tracking-[-0.025em]`
 
 ---
@@ -247,19 +247,20 @@ spike-engine/
 │   │   ├── onboarding/
 │   │   ├── admin/
 │   │   ├── dashboard/
-│   │   │   ├── page.tsx                       # ⚠️ Read for UI patterns
+│   │   │   ├── page.tsx                       # ⚠️ Read for UI patterns. 1.6: OnboardingBanner integrated
 │   │   │   ├── approvals/page.tsx
-│   │   │   ├── agents/page.tsx                # 1.8 — Agents overview
 │   │   │   ├── inventory/page.tsx
 │   │   │   ├── leads/page.tsx
 │   │   │   ├── manager/page.tsx
-│   │   │   ├── settings/                      # 1.7
+│   │   │   ├── showcase/                      # 1.6 (renamed from /demo). Public, all onboarded users
 │   │   │   │   ├── page.tsx
-│   │   │   │   └── actions.ts
-│   │   │   ├── showcase/                      # 1.6 (renamed from /demo)
+│   │   │   │   └── actions.ts                 # 1.6: restored from git history at 69d066c
+│   │   │   ├── settings/                      # 1.7 — tenant settings page (NEW)
 │   │   │   │   ├── page.tsx
-│   │   │   │   └── actions.ts
-│   │   │   └── actions.ts                     # 1430 lines
+│   │   │   │   └── actions.ts                 # updateTenantSettings server action
+│   │   │   ├── agents/                        # 1.8 — agents overview page (NEW)
+│   │   │   │   └── page.tsx
+│   │   │   └── actions.ts                     # 1430 lines (refactor liability)
 │   │   ├── api/
 │   │   │   ├── webhooks/whatsapp/route.ts
 │   │   │   ├── cron/
@@ -271,38 +272,40 @@ spike-engine/
 │   │   │   │   ├── cleanup/route.ts                        # 1.5.4
 │   │   │   │   └── hot-leads-sales-recovery/route.ts       # 1.5.2
 │   │   │   └── demo/status/route.ts                        # 1.4
-│   │   ├── globals.css                                     # ⚠️ READ FIRST for UI
+│   │   ├── globals.css                        # ⚠️ READ FIRST for UI
 │   │   └── layout.tsx
 │   ├── components/
 │   │   ├── ui/
-│   │   │   ├── glass.tsx                                   # ⚠️ THE primitive
-│   │   │   ├── apple-bg.tsx                                # ⚠️ THE page bg
+│   │   │   ├── glass.tsx                      # ⚠️ THE primitive
+│   │   │   ├── apple-bg.tsx                   # ⚠️ THE page bg
 │   │   │   ├── mascot.tsx
 │   │   │   └── ... shadcn primitives
 │   │   ├── admin/
 │   │   ├── dashboard/
-│   │   │   ├── sidebar.tsx                                 # 1.6: Showcase in main nav (was admin-only Demo)
-│   │   │   ├── mobile-drawer.tsx                           # 1.6: same
-│   │   │   ├── onboarding-banner.tsx                       # 1.6
-│   │   │   ├── settings-form.tsx                           # 1.7
-│   │   │   ├── agent-overview-card.tsx                     # 1.8
-│   │   │   └── ...
-│   │   ├── demo/                                           # demo-panel.tsx — used by /showcase since 1.6
+│   │   │   ├── sidebar.tsx                    # 1.6: Showcase added to NAV_ITEMS, admin gate removed
+│   │   │   ├── mobile-drawer.tsx              # 1.6: same as sidebar
+│   │   │   ├── onboarding-banner.tsx          # 1.6 NEW
+│   │   │   ├── settings-form.tsx              # 1.7 NEW
+│   │   │   ├── agent-overview-card.tsx        # 1.8 NEW
+│   │   │   └── ... (other dashboard components)
+│   │   ├── demo/                              # NB: still named /demo even though page is /showcase. Internal-only naming.
+│   │   │   ├── demo-panel.tsx                 # 1.6: import path updated to /showcase/actions
+│   │   │   └── pipeline-status.tsx
 │   │   └── providers/
 │   └── lib/
 │       ├── anthropic.ts
 │       ├── anthropic-pricing.ts
-│       ├── with-retry.ts                                   # 1.3 → wraps all 8 agents
+│       ├── with-retry.ts                      # 1.3 → wraps all 8 agents
 │       ├── supabase/
 │       ├── auth/
-│       │   ├── require-onboarded.ts → { userId, userEmail, tenantId }
-│       │   └── onboarding-status.ts                        # 1.6 — counts non-mock runs
+│       │   ├── require-onboarded.ts           # → { userId, userEmail, tenantId }
+│       │   └── onboarding-status.ts           # 1.6 NEW: getOnboardingStatus(tenantId)
 │       ├── safety/
-│       │   ├── pii-scrubber.ts                             # 1.5.5: IL phone formats audited
+│       │   ├── pii-scrubber.ts                # 1.5.5: IL phone formats audited
 │       │   ├── defamation-guard.ts
 │       │   ├── gender-lock.ts
 │       │   ├── prompt-injection-guard.ts
-│       │   └── anti-ai-strip.ts                            # 1.5.1 hotfix
+│       │   └── anti-ai-strip.ts               # 1.5.1 hotfix
 │       ├── admin/
 │       ├── health/
 │       ├── quotas/
@@ -310,23 +313,23 @@ spike-engine/
 │       ├── demo/types.ts
 │       └── agents/
 │           ├── types.ts
-│           ├── config.ts
-│           ├── overview.ts                                 # 1.8 — getAgentsOverview helper
+│           ├── config.ts                      # AGENTS{} record + AGENT_LIST[]
+│           ├── overview.ts                    # 1.8 NEW: getAgentsOverview(tenantId)
 │           ├── run-agent.ts
 │           ├── run-agent-safe.ts
-│           ├── morning/                                    # 1.5.3 anti-AI
-│           ├── watcher/                                    # + INTEGRATION-NOTES.md (1.5.5 updated)
-│           ├── reviews/                                    # 1.5.3 anti-AI + Israeli-tone
-│           ├── hot_leads/                                  # 1.3.5 cascade + 1.5.3 post-processing
-│           ├── social/                                     # 1.5.3 anti-AI + hashtags removed
-│           ├── sales/                                      # ⚠️ TWO entry points — see §6.8
-│           ├── manager/                                    # 1.5.3 anti-AI
-│           └── inventory/                                  # 1.5.3 anti-AI
-├── supabase/migrations/                                    # 21 files. Latest: 021.
+│           ├── morning/                       # 1.5.3 anti-AI
+│           ├── watcher/                       # + INTEGRATION-NOTES.md (1.5.5 updated)
+│           ├── reviews/                       # 1.5.3 anti-AI + Israeli-tone
+│           ├── hot_leads/                     # 1.3.5 cascade + 1.5.3 post-processing
+│           ├── social/                        # 1.5.3 anti-AI + hashtags removed
+│           ├── sales/                         # ⚠️ TWO entry points — see §6.8
+│           ├── manager/                       # 1.5.3 anti-AI
+│           └── inventory/                     # 1.5.3 anti-AI
+├── supabase/migrations/                       # 21 files. Latest: 021.
 ├── tests/fixtures/
 ├── public/mascot/
 ├── proxy.ts
-├── vercel.json                                             # 7 cron entries
+├── vercel.json                                # 7 cron entries
 ├── CLAUDE.md
 ├── AGENTS.md
 └── package.json
@@ -337,8 +340,9 @@ spike-engine/
 ## 5. Database Schema
 
 ### 5.1 events Table
+
 | Column | Type | NOT NULL | Default |
-|--------|------|----------|---------|
+|---|---|---|---|
 | `id` | text | YES | (none — must be supplied) |
 | `tenant_id` | uuid | NO | null |
 | `provider` | text | NO | null |
@@ -357,8 +361,9 @@ Bucket values: `cold` · `warm` · `hot` · `burning` · `spam_or_unclear`. Sale
 
 ### 5.3 drafts Table
 Sales writes two distinct draft types:
+
 | draft.type | Created by | When | TTL |
-|------------|------------|------|-----|
+|---|---|---|---|
 | `sales_followup` | `runSalesAgent` (cron) | Stuck leads (3+ days) | 24h |
 | `sales_quick_response` | `runSalesQuickResponseOnEvent` (webhook cascade) | Fresh hot/burning | 24h |
 
@@ -369,16 +374,15 @@ Status values: `pending`, `rejected`, `expired` (1.5.4 — migration 021 idempot
 
 `idempotency_keys` schema (verified): `key text, tenant_id uuid, request_hash text, response jsonb, status text, expires_at timestamptz, created_at timestamptz`. Cleanup cron uses table's own `expires_at`.
 
-`agent_runs` schema (verified session 6): includes `is_mocked boolean` column. Used by 1.6 onboarding banner to count "real" runs (`is_mocked IS NULL OR is_mocked = false`). Mock runs from /dashboard/showcase set `is_mocked=true` and are excluded.
+`agent_runs.is_mocked` (boolean, nullable): true for runs from `/dashboard/showcase` demo. Onboarding banner (1.6) and agents overview (1.8) filter it out via `.or("is_mocked.is.null,is_mocked.eq.false")`.
 
 ### 5.5 Tenant Config
-
 - `name` — business
 - `vertical` — `general | clinic | financial | restaurant | retail | services | beauty | education`
 - `business_owner_gender` — Hebrew grammar
 - `config` (JSONB): `owner_name`, `business_name`, plus per-agent configs
 
-**Settings page (1.7) edits four fields:** `tenants.name`, `tenants.business_owner_gender`, `tenants.vertical`, `tenants.config.owner_name` (also kept in sync to `config.business_name`). All other config keys preserved on update.
+**Editable from /dashboard/settings (1.7):** `name` (= business_name), `business_owner_gender`, `vertical`, `config.owner_name`, `config.business_name`. The settings action keeps `tenants.name` and `config.business_name` in sync.
 
 ### 5.6 The Events Contract
 ```json
@@ -403,9 +407,9 @@ Status values: `pending`, `rejected`, `expired` (1.5.4 — migration 021 idempot
 For deep webhook integration guidance: `src/lib/agents/watcher/INTEGRATION-NOTES.md` (1.5.5 updated).
 
 ### 5.7 Demo Data
-- **Demo tenant ID:** `15ef2c6e-a064-49bf-9455-217ba937ccf2`
-- **Demo tenant name:** `spikeAi`, vertical `retail`
-- **Demo user:** Dean Moshe, `din6915@gmail.com`
+- Demo tenant ID: `15ef2c6e-a064-49bf-9455-217ba937ccf2`
+- Demo tenant name: `spikeAi`, vertical `retail`
+- Demo user: Dean Moshe, `din6915@gmail.com`
 
 ---
 
@@ -414,7 +418,7 @@ For deep webhook integration guidance: `src/lib/agents/watcher/INTEGRATION-NOTES
 ### 6.1 The 8 Customer-Facing Agents
 
 | # | Agent | Model | Trigger | Output | withRetry? | Anti-AI? |
-|---|-------|-------|---------|--------|-----------|----------|
+|---|---|---|---|---|---|---|
 | 1 | Manager | sonnet-4-6 | Weekly cron (Sun) | `manager_reports` | ✅ | ✅ |
 | 2 | Morning | haiku-4-5 | Daily cron 07:00 IL | drafts | ✅ | ✅ |
 | 3 | Watcher | haiku-4-5 | Real-time webhook + daily cron | dashboard alerts | ✅ | ✅ |
@@ -424,12 +428,12 @@ For deep webhook integration guidance: `src/lib/agents/watcher/INTEGRATION-NOTES
 | 7 | Sales | sonnet-4-6 + thinking | TWO entry points §6.8 | drafts | ✅ | ✅ |
 | 8 | Inventory | sonnet-4-6 | Cron 05:30 Sun/Wed | drafts | ✅ | ✅ |
 
-**As of 1.5.3: ALL 8 agents have anti-AI hygiene at both prompt level AND post-processing level.**
+**As of 1.5.3:** ALL 8 agents have anti-AI hygiene at both prompt level AND post-processing level.
 
 ### 6.2 Cleanup (Internal) — 1.5.4
-- AgentId: `cleanup`. Not customer-facing.
-- **Location:** `src/app/api/cron/cleanup/route.ts`
-- **Schedule:** `0 0 * * *` UTC
+- AgentId: `cleanup`. Not customer-facing. **Excluded from /dashboard/agents (1.8).**
+- Location: `src/app/api/cron/cleanup/route.ts`
+- Schedule: `0 0 * * *` UTC
 - Three best-effort tasks (independent try/catch):
   1. `UPDATE drafts SET status='expired' WHERE status='pending' AND expires_at < NOW()`
   2. Count agent_runs older than 90 days
@@ -446,12 +450,13 @@ const MODEL = "claude-haiku-4-5" as const;  // each run.ts
 
 Two wrappers: `runAgent` (bare) vs `runAgentSafe` (adds safety pipeline).
 
-**Never call Anthropic directly.** Always wrap in `withRetry(...)`.
+Never call Anthropic directly. Always wrap in `withRetry(...)`.
 
 ### 6.5 Watcher Strategy (1.2 + 1.5.2)
 Real-time webhook + daily cron safety net (`0 6 * * *` UTC). Restore to hourly when upgrading to Pro tier.
 
 ### 6.6 Hot Leads Strategy (1.3 + 1.3.5 + 1.5.2 + 1.5.3)
+
 Two entry points:
 1. `runHotLeadsAgent(tenantId, leads, triggerSource, eventIdByLeadId?)` — batch
 2. `runHotLeadsOnEvent(tenantId, eventId)` — single event from webhook
@@ -480,8 +485,10 @@ const response = await withRetry(
 ```
 
 ### 6.8 Sales — TWO Entry Points (1.3.5)
-**Path A:** `runSalesAgent` — Stuck leads (cron, 07:30, 3+ days old leads, type='sales_followup', adaptive thinking).
-**Path B:** `runSalesQuickResponseOnEvent` — Fresh hot leads (webhook cascade, type='sales_quick_response', no thinking, idempotent on event_id).
+
+**Path A: `runSalesAgent`** — Stuck leads (cron, 07:30, 3+ days old leads, type='sales_followup', adaptive thinking).
+
+**Path B: `runSalesQuickResponseOnEvent`** — Fresh hot leads (webhook cascade, type='sales_quick_response', no thinking, idempotent on event_id).
 
 **Verified Hebrew output:** for hot lead "אני צריך דחוף לקבוע פגישה היום. רוצה לבדוק את הטיפול. תקציב 2000 שקל. מתי אתם פנויים?" → drafted "אהלן מוחמד, שמח לשמוע. היום אפשר לסדר משהו. מתי בדיוק נוח לך?"
 
@@ -491,7 +498,7 @@ const response = await withRetry(
 
 Apple-style: layered tints, frosted glass, system colors. Tokens in `src/app/globals.css`. **READ THIS FILE before designing any UI.** §2.12.
 
-**Tagline:** **"שמונה סוכנים. שקט אחד."**
+**Tagline:** "שמונה סוכנים. שקט אחד."
 
 ---
 
@@ -513,7 +520,6 @@ Apple-style: layered tints, frosted glass, system colors. Tokens in `src/app/glo
 ---
 
 ## 9. Mobile UX
-
 Adaptive in-place at 768px breakpoint. BottomNav + MobileDrawer + MobileHeader for <768.
 
 ---
@@ -521,6 +527,7 @@ Adaptive in-place at 768px breakpoint. BottomNav + MobileDrawer + MobileHeader f
 ## 10. WhatsApp Pipeline
 
 ### 10.1 Architecture
+
 ```
 Meta Cloud API → POST /api/webhooks/whatsapp
                        │
@@ -562,22 +569,22 @@ ADMIN_EMAILS              # comma-separated. Currently: din6915@gmail.com
 ```
 
 ### 10.6 Verified Performance
+
 | Stage | Latency | Cost |
-|-------|---------|------|
+|---|---|---|
 | POST → 200 | ~1.7s | — |
 | events.insert | <100ms | — |
 | Watcher complete | ~8-9s | ~₪0.012 |
 | Hot Leads complete | ~9-10s | ~₪0.015 |
 | Sales QR (cascade) | +6s | ~₪0.013 |
-| **End-to-end (hot lead → draft)** | **~15-16s** | **~₪0.040** |
+| End-to-end (hot lead → draft) | ~15-16s | ~₪0.040 |
 
 ### 10.7 Schema Discoveries
-- `events.event_type` (not `events.type`)
-- `integrations.credentials` does NOT exist
-- `events.id` is text NOT NULL no default
-- PostgREST cache lag → `NOTIFY pgrst, 'reload schema';`
-- `idempotency_keys` has its own `expires_at` column — used directly by cleanup cron
-- `agent_runs.is_mocked` exists and is set true for Showcase mock runs (used by 1.6 banner check)
+1. `events.event_type` (not `events.type`)
+2. `integrations.credentials` does NOT exist
+3. `events.id` is text NOT NULL no default
+4. PostgREST cache lag → `NOTIFY pgrst, 'reload schema';`
+5. `idempotency_keys` has its own `expires_at` column — used directly by cleanup cron
 
 ### 10.17 Sub-stage 1.5.2 — DONE (commit `2ea79c3`)
 Hot Leads + Sales QR recovery cron. Single endpoint for Hobby tier.
@@ -587,178 +594,142 @@ Hot Leads + Sales QR recovery cron. Single endpoint for Hobby tier.
 
 ### 10.18 Sub-stage 1.5.3 — DONE (commit `bf2f42a`)
 Anti-AI sweep — biggest quality lift in Stage 1.
-- 5 prompt files updated with anti-AI rules block:
-  - `morning/prompt.ts`, `reviews/prompt.ts` (Israeli-tone), `social/prompt.ts` (hashtags removed entirely), `manager/prompt.ts`, `inventory/prompt.ts`
+- 5 prompt files updated with anti-AI rules block: `morning/prompt.ts`, `reviews/prompt.ts` (Israeli-tone), `social/prompt.ts` (hashtags removed entirely), `manager/prompt.ts`, `inventory/prompt.ts`
 - 2 run.ts files with `stripAiTellsDeep` defense-in-depth: `watcher/run.ts`, `hot_leads/run.ts`.
 - Sales prompt unchanged (1.3.5 already comprehensive). Sales QR run.ts unchanged (1.5.1 hotfix already covers).
 - Verified live in production: Social/Morning drafts now Hebrew-natural with no em-dashes, no hashtags, ≤1 emoji.
-- Example new draft: "תחילת שבוע חדש, הזדמנות טובה לבדוק מה חסר. אם אתה מחפש מוצר מסוים ולא בטוח איפה להתחיל, אפשר פשוט לשאול."
-- Compare with pre-1.5.3: "כמה טיפים שיעזרו לך לקנות חכם יותר 📲 #קמעונאות #שירותותלקוחות..."
 
 ### 10.19 Sub-stage 1.5.5 — DONE (commit `b9610ec`)
 Final Stage 1 polish.
-- `pii-scrubber.ts` audit:
-  - Phone regex now matches all common IL formats: `050-123-4567`, `050 123 4567`, `+972 50 123 4567`, `(050) 123-4567`, `+972-50-1234567`
-  - ID widened from exactly-9 to 8-or-9 digits (pre-2007 IDs still valid)
-  - Credit card widened from 16-only to 13-19 digits (Visa/MC/Amex/Discover)
-  - Posture: over-redaction over under-redaction (false positives are fine; false negatives leak PII)
-  - Self-test `_validatePhoneCoverage()` exported with 14 test cases
-- `INTEGRATION-NOTES.md` rewrite for end-of-Stage-1 reality:
-  - Documents one events insert can trigger up to 3 agents (Watcher + Hot Leads + Sales QR)
-  - Per-agent field consumption documented
-  - 4 integration patterns (Meta webhook, generic webhook, contact form, manual SQL)
-  - Recovery cron + cleanup cron + Hobby tier constraint documented
 
-### 10.20 Sub-stage 1.6 — DONE (commit `848fbdf`, session 6)
+`pii-scrubber.ts` audit:
+- Phone regex now matches all common IL formats: `050-123-4567`, `050 123 4567`, `+972 50 123 4567`, `(050) 123-4567`, `+972-50-1234567`
+- ID widened from exactly-9 to 8-or-9 digits (pre-2007 IDs still valid)
+- Credit card widened from 16-only to 13-19 digits (Visa/MC/Amex/Discover)
+- Posture: over-redaction over under-redaction (false positives are fine; false negatives leak PII)
+- Self-test `_validatePhoneCoverage()` exported with 14 test cases
+
+`INTEGRATION-NOTES.md` rewrite for end-of-Stage-1 reality:
+- Documents one events insert can trigger up to 3 agents (Watcher + Hot Leads + Sales QR)
+- Per-agent field consumption documented
+- 4 integration patterns (Meta webhook, generic webhook, contact form, manual SQL)
+- Recovery cron + cleanup cron + Hobby tier constraint documented
+
+### 10.20 Sub-stage 1.6 — DONE (commit `848fbdf`)
 **Onboarding banner + rename `/dashboard/demo` → `/dashboard/showcase`.**
 
-**Banner mechanics:**
-- Shown to tenants where `agent_runs` count of non-mock runs is 0
-- Mock runs from /showcase set `is_mocked=true` and don't count
-- Auto-hides when first real run completes (parent re-renders on every nav)
-- Manual dismiss via X button stores `localStorage` flag per-tenant: `spike.onboardingBannerDismissedAt:<tenantId>` = ISO timestamp
-- Calm Frosted styled with blue-purple gradient icon (Sparkles + X)
-- Position: between KPI strip and approval banner on `/dashboard`
+**Why:** First-time tenants land on `/dashboard` with empty agent grid and don't know where to start. Banner invites them to Showcase to see the pipeline in action with mock data.
 
-**Demo → Showcase rename:**
-- `/dashboard/demo` removed entirely; new `/dashboard/showcase` accessible to all onboarded users
-- Admin allowlist (`DEMO_ALLOWED_EMAILS`) removed — Showcase is now the standard onboarding tour, not admin-only
-- Sidebar + MobileDrawer: Showcase added to `NAV_ITEMS` with Sparkles icon
-- `actions.ts` restored from commit `69d066c` and moved to new location
-- `demo-panel.tsx` import path updated: `@/app/dashboard/demo/actions` → `@/app/dashboard/showcase/actions`
+**Three new files + four updated:**
 
-**Files added:**
-- `src/lib/auth/onboarding-status.ts` — `getOnboardingStatus(tenantId)` server helper, counts non-mock runs
-- `src/components/dashboard/onboarding-banner.tsx` — Client component with localStorage dismiss
-- `src/app/dashboard/showcase/page.tsx` — replaces /demo
-- `src/app/dashboard/showcase/actions.ts` — restored from git history
+NEW:
+- `src/lib/auth/onboarding-status.ts` — `getOnboardingStatus(tenantId)` server helper, counts non-mock `agent_runs` via `.or("is_mocked.is.null,is_mocked.eq.false")` PostgREST syntax
+- `src/components/dashboard/onboarding-banner.tsx` — Client component, Calm Frosted styled with blue-purple gradient Sparkles icon, dismiss X button stores `localStorage` flag `spike.onboardingBannerDismissedAt:<tenantId>`
+- `src/app/dashboard/showcase/page.tsx` — replaces old `/dashboard/demo`, no admin allowlist (was admin-only via `DEMO_ALLOWED_EMAILS`)
 
-**Files modified:**
-- `src/app/dashboard/page.tsx` — adds OnboardingBanner conditional render
-- `src/components/dashboard/sidebar.tsx` — Showcase in main NAV_ITEMS
-- `src/components/dashboard/mobile-drawer.tsx` — same
-- `src/components/demo/demo-panel.tsx` — import path update only
+UPDATED:
+- `src/components/dashboard/sidebar.tsx` — Showcase added to NAV_ITEMS for all users (was admin-only Demo link); admin-only block kept for `/admin` only
+- `src/components/dashboard/mobile-drawer.tsx` — same change
+- `src/app/dashboard/page.tsx` — adds OnboardingBanner conditional render after KPI strip
+- `src/components/demo/demo-panel.tsx` — single-line import path change from `@/app/dashboard/demo/actions` to `@/app/dashboard/showcase/actions`
 
-**Decision history (4 binary choices, see session 6 transcript):**
-- Criterion: 0 non-mock runs (option ב)
-- Position: top of /dashboard, below greeting (option א)
-- CTA: "צפה ב-Showcase" with Sparkles icon (option א)
-- Rename: yes, with admin gate removed (option א)
-- Dismiss: auto on real run + manual X via localStorage (option ג)
+DELETED: `src/app/dashboard/demo/` folder (after restoring `actions.ts` via `git show 69d066c:src/app/dashboard/demo/actions.ts | Set-Content "src/app/dashboard/showcase/actions.ts"`)
 
-### 10.21 Sub-stage 1.7 — DONE (commit `9680c96`, session 6)
-**Settings page** at `/dashboard/settings`.
+**Banner dismissal logic (decision (ג)):**
+- Auto-hide: parent re-renders on every navigation, so banner disappears the moment `realRunCount > 0`
+- Manual: X button stores ISO timestamp in localStorage, keyed per-tenantId
+- localStorage access wrapped in try/catch (private mode tolerance)
 
-**Editable fields (4 only — basic v1):**
-- `owner_name` (`tenants.config.owner_name`) — shown in greeting + sidebar
-- `business_name` (`tenants.name` + `tenants.config.business_name`) — sidebar + greeting
-- `business_owner_gender` (male/female) — Hebrew gender lock for all agents
-- `vertical` (8 verticals) — drives agent prompt context for tone calibration
+**Banner shows hidden by default to avoid hydration flash** (`useState(false)`). useEffect promotes to visible after localStorage check passes. ~50ms perceived flicker is acceptable.
 
-**NOT included in v1 (future):** `brand_voice_samples`, `whatsappBusinessNumber`, `availabilityLink`.
+### 10.21 Sub-stage 1.7 — DONE (commit `9680c96`)
+**Tenant settings page at `/dashboard/settings`.**
 
-**Form mechanics:**
-- Form with Submit button (option א), not inline editing
-- Both toast (sonner) + inline field errors (option ג) — defense-in-depth UX
-- Submit button disabled when no changes from initial values
+**Why:** Owners need to be able to edit `business_owner_gender` (gender lock), `vertical` (agent tone calibration), `owner_name`, `business_name` after onboarding without going through DB. First placeholder 404 page replaced with real implementation.
+
+**Three new files:**
+- `src/app/dashboard/settings/actions.ts` — `updateTenantSettings({ ownerName, businessName, businessOwnerGender, vertical })` server action. Validates input, returns `{ ok, error?, fieldErrors? }`. Updates `tenants.name`, `tenants.business_owner_gender`, `tenants.vertical`, and merges `config.owner_name + config.business_name` into existing config object (preserves all other config keys). Calls `revalidatePath("/dashboard")` and `revalidatePath("/dashboard/settings")` on success.
+- `src/app/dashboard/settings/page.tsx` — Server Component, full chrome (Sidebar + MobileHeader + BottomNav + WhatsAppFab). Loads `tenants.{name, vertical, business_owner_gender, config}` and passes initial values to `<SettingsForm>`. Defaults: gender → `"male"` if unset, vertical → `"general"`. Page is `max-w-[760px]` (narrower than dashboard).
+- `src/components/dashboard/settings-form.tsx` — Client component. Owns form state with `useState`. Submit via `useTransition`. Sonner toast on success ("ההגדרות נשמרו") and on error. Inline field errors (red border + 11.5px text). Two Glass cards: "פרטי העסק" (owner_name + business_name + gender) and "ענף העסק" (vertical). Submit button disabled when no changes from initial state.
+
+**Decision history (spec discussion):**
+- (א) Form with Submit button (not inline editing)
+- (ג) Both toast + inline field errors
+- 4 basic fields only (no `brand_voice_samples` or `availabilityLink` in v1 — defer to 1.8 if needed)
+- Vertical labels in Hebrew: general→כללי, clinic→מרפאה / קליניקה, financial→פיננסי, restaurant→מסעדה / בית קפה, retail→קמעונאות / חנות, services→שירותים, beauty→יופי / מספרה, education→חינוך / הוראה
 - Gender as 2 button-style toggles (זכר/נקבה) instead of radios — more app-feel
-- Vertical labels in Hebrew (8 options): כללי, מרפאה / קליניקה, פיננסי, מסעדה / בית קפה, קמעונאות / חנות, שירותים, יופי / מספרה, חינוך / הוראה
-- Default gender "male", default vertical "general" if unset
 
-**Server action validation (`updateTenantSettings`):**
-- ownerName: 1-80 chars
-- businessName: 1-120 chars
-- gender: must be male/female
-- vertical: must be one of 8 known verticals
-- Returns `{ ok, error?, fieldErrors? }` — supports both inline + toast
+**Validation:**
+- ownerName: 1-80 chars, required
+- businessName: 1-120 chars, required
+- gender: must be one of `male | female`
+- vertical: must be one of the 8 known verticals
 
-**Side effects:**
-- `revalidatePath("/dashboard")` + `revalidatePath("/dashboard/settings")` on success — sidebar/greeting reflect new name immediately
+### 10.22 Sub-stage 1.8 — DONE (commit `8796d8e`)
+**Agents overview page at `/dashboard/agents`.**
 
-**Files added:**
-- `src/app/dashboard/settings/page.tsx` (Server Component, full chrome)
-- `src/app/dashboard/settings/actions.ts` (server action, validation)
-- `src/components/dashboard/settings-form.tsx` (Client form with useTransition)
+**Why:** Second placeholder 404 page replaced. Owners need a single screen showing per-agent status without going to dashboard (which mixes agents with KPIs and approval banners).
 
-**Architectural note:** intentionally created `src/app/dashboard/settings/actions.ts` as a separate file rather than adding to the bloated 1430-line `src/app/dashboard/actions.ts`. Keeps settings logic discoverable and avoids worsening the refactor liability.
+**Three new files:**
+- `src/lib/agents/overview.ts` — `getAgentsOverview(tenantId)` server helper. Two queries: (1) latest 200 agent_runs ordered desc, JS-grouped to capture latest per agent; (2) all non-mock agent_runs since calendar month start (IL TZ via `Asia/Jerusalem`), JS-counted per agent. Returns one `AgentOverview` entry per ALL_AGENT_IDS (8 customer-facing — cleanup excluded), even if never run. Also exports `formatTimeAgoHe(iso)` for Hebrew relative time.
+- `src/app/dashboard/agents/page.tsx` — Server Component, full chrome. Same 3 categories as dashboard (routine/content/insight). Loads overview + drafts + manager lock state in parallel via `Promise.all`. Uses `AGENTS_BY_CATEGORY` to slot 8 agents into the 3 sections.
+- `src/components/dashboard/agent-overview-card.tsx` — Client Component. Glass card with `agent-card` hover, gradient tile from `AGENTS[agentId].gradient`, name + schedule + description from config. Activity stats in inset rounded box: clock icon + "ריצה אחרונה: X" + status icon (CheckCircle2 / AlertCircle / Loader2 spinning) + "X ריצות החודש" with proper Hebrew pluralization. Run button at bottom — reuses all 8 existing `Run*Button` components based on agentId.
 
-### 10.22 Sub-stage 1.8 — DONE (commit `8796d8e`, session 6)
-**Agents overview page** at `/dashboard/agents`.
-
-Shows a card per customer-facing agent with:
-- emoji + name + role + description (from `agents/config.ts`)
-- last run timestamp (Hebrew relative: "לפני 2 שעות" / "אתמול 14:30" / "לא רץ עדיין")
-- last run status icon (succeeded ✓ / failed ✗ / running ⟳ / no_op)
-- monthly run count ("18 ריצות החודש" / "ריצה אחת החודש" / "לא רץ עדיין")
-- existing Run button (reused from dashboard page — all 8 Run*Button components)
-
-Same 3 categories as `/dashboard` (routine/content/insight) for consistency.
-
-**Critical UX decision (session 6): NO ₪ cost or % quota display.**
-
-Reasoning:
-- Raw cost (₪50) makes users think they're being charged per-run
-- % quota triggers either anxiety near limit OR "use it or lose it" wasteful behavior
+**Critical UX decision (Dean's call): no ₪ cost or % quota display.**
+- Showing raw cost makes users think they're being charged per-run ("I already spent ₪50 on this?")
+- Showing % quota triggers either anxiety (near limit) or wasteful "use it or lose it" behavior — anti-pattern of the goal-gradient effect
 - Activity-only counts let agents run when needed, not for value-extraction
 - Aligns with "AI מסמן, בעלים מחליט" philosophy
 - Discussion: 2026-05-04 session 6
+- Future Stage-2-prep idea: aggregated "ניצלת X% מהחבילה" at top of page (not per-card), with `tenant_agents.monthly_quota` schema. Only when first paying customer joins.
 
-**Files added:**
-- `src/lib/agents/overview.ts` — `getAgentsOverview(tenantId)` server helper
-  - Two queries: latest runs per agent (limit 200, JS-grouped) + monthly count per agent (filtered to non-mock, JS-counted)
-  - Returns one `AgentOverview` per all 8 customer-facing agents, even if never run (lastRunAt=null, monthlyRunCount=0)
-  - Month boundary: start of current month in IL TZ
-- `src/app/dashboard/agents/page.tsx` (Server Component, full chrome)
-  - Loads overview + drafts + manager lock in parallel
-- `src/components/dashboard/agent-overview-card.tsx` (Client Component)
-  - Glass card with `agent-card` hover, gradient tile from `AGENTS[agentId].gradient`
-  - Activity stats in inset rounded box
-  - Run button at bottom
+**Hebrew pluralization in card:**
+- 0 runs → "לא רץ עדיין"
+- 1 run → "ריצה אחת החודש"
+- 2+ runs → "X ריצות החודש"
 
-**Limitations to remember:**
-- Monthly count assumes IL TZ via `+03:00` offset (DST simplification — boundary fuzz of 1h is acceptable)
-- `getAgentsOverview` makes 2 queries per pageview — cheap for tenants with hundreds of runs/month, would need a DB VIEW or RPC for thousands
+**Status visual mapping:**
+- succeeded → green CheckCircle2
+- failed → pink AlertCircle
+- running → blue Loader2 (animated spin)
+- no_op → gray CheckCircle2
 
 ---
 
 ## 11. Current Status
 
-### 11.1 What Works ✅ — STAGE 1 COMPLETE + Dashboard polish (1.6/1.7/1.8)
+### 11.1 What Works ✅ — STAGE 1 COMPLETE + POST-STAGE-1 POLISH
 - All 8 customer-facing agents on real DB events, all wrapped in withRetry
 - All 8 customer-facing agents have anti-AI hygiene (prompt + post-processing)
 - 9th agent (cleanup) implemented as cron
 - Login (OTP), Onboarding, Dashboard with KPI strip, Mobile UX
 - Approvals, Inventory, Leads, Manager
 - Full safety pipeline including comprehensive Israeli PII coverage
-- Showcase (formerly Demo, accessible to all users since 1.6)
-- Onboarding banner for new tenants (1.6)
-- Settings page with editable owner_name + business_name + gender + vertical (1.7)
-- Agents overview page with last-run + monthly-count per agent (1.8)
+- Internal Demo UI (renamed to /dashboard/showcase, public for all users — 1.6)
+- **Onboarding banner for new tenants (1.6)**
+- **Tenant settings page (1.7)** — owners can edit `owner_name`, `business_name`, gender, vertical
+- **Agents overview page (1.8)** — per-agent activity stats
 - Real-time WhatsApp pipeline (~15-16s end-to-end, ~₪0.04/hot-lead)
 - Cleanup cron + Recovery cron daily
 - All deployed live to `app.spikeai.co.il`
 
 ### 11.2 Pending — Not Blocking 🚧
-- **4 sidebar pages 404 (down from 7):** דוחות, התראות, מרכז בקרה, אמון ופרטיות (settings + הסוכנים שלי + Showcase resolved in 1.6/1.7/1.8)
-- `actions.ts` 1430 lines — split (high priority refactor — every session adds risk to this file)
+- **4 sidebar pages still 404** (was 7 before 1.6/1.7/1.8): דוחות, התראות, מרכז בקרה, אמון ופרטיות
+- `actions.ts` 1430 lines — split (refactor liability)
 - Race in `inventory-upload-zone` + `run-inventory-button`
 - 2 moderate npm audit vulnerabilities
 - `integrations` table schema not finalized
 - defamation-guard not wrapped in withRetry (low priority)
+- Manager dashboard view (backend exists, no UI)
 
 ### 11.3 Pending — Stage 2 ⚠️
-- **Dean must register עוסק פטור (or upgrade to עוסק מורשה) BEFORE starting Meta verification.** Blocked here as of session 6 end. Web-search confirmed Meta accepts עוסק פטור in IL (Automatix, CyberGuard, Flashy 2025-2026 sources).
-- Meta Business Manager verification (1-7 days async per IL sources)
-- 2 docs needed: business registration certificate + utility bill from last 3 months
-- Phone number must be "clean" — not registered to WhatsApp or WhatsApp Business
-- Website footer must show registered business name
-- Repeated rejected applications can permanently disable verification — must do correctly first time
+- Meta Business Manager verification (2-10 days async — needs business registration first; עוסק פטור acceptable per session 5 web research, 3 IL sources confirmed)
 - Embedded Signup UI for tenants
-- `integrations` table schema design + encryption strategy
-- Outgoing message templates (each requires ~24h Meta approval)
+- `integrations` table schema design
+- Outgoing message templates
 - Real `phone_number_id` → `tenant_id` mapping
 - Set `WHATSAPP_APP_SECRET` (no longer bypass)
-- **Anthropic credits:** auto-reload disabled, $4.20 balance. Top up before first prospect demo.
+- Anthropic credits: auto-reload disabled, $4.20 balance. **Top up before first prospect demo.**
 
 ### 11.4 Pending — Pre-Production Vercel Env
 - `CRON_SECRET` (Production + Preview)
@@ -770,15 +741,16 @@ Reasoning:
 ## 12. Strategic Roadmap
 
 ### 12.1 Pricing (Decided)
+
 | Tier | Price/mo | Setup | Target |
-|------|----------|-------|--------|
+|---|---|---|---|
 | Solo | ₪290 | ₪990 | עוסק יחיד |
 | Pro | ₪690 | ₪990 | small business |
 | Chain | ₪1,490 | ₪990 | 3-15 locations |
 
 14-day trial. NO freemium. 17% annual discount.
 
-### 12.2 Stage 1 — WhatsApp First Integration ✅ COMPLETE (+ Dashboard polish)
+### 12.2 Stage 1 — WhatsApp First Integration ✅ COMPLETE
 - 1.1 ✅ Webhook receiver
 - 1.2 ✅ Watcher real-time + cron
 - 1.3 ✅ Hot Leads parallel + idempotency + retry + prompt fix
@@ -790,32 +762,39 @@ Reasoning:
 - 1.5.3 ✅ Anti-AI sweep on prompts + post-processing
 - 1.5.4 ✅ Cleanup cron
 - 1.5.5 ✅ PII Israeli phone format audit + INTEGRATION-NOTES update
-- 1.6 ✅ Onboarding banner + Demo→Showcase rename
-- 1.7 ✅ Settings page (4 fields)
+- 1.6 ✅ Onboarding banner + rename demo→showcase
+- 1.7 ✅ Tenant settings page
 - 1.8 ✅ Agents overview page
 
 ### 12.3 Stage 2 — Production WhatsApp (NEXT)
-1. **Dean registers עוסק פטור** (~30 min on rashut hamisim website) — BLOCKING
-2. Meta Business verification (1-7 days async)
-3. Embedded Signup UI for tenants
-4. `integrations` schema design + encryption
-5. Outgoing templates (24h each for Meta approval)
+1. **PRE-REQ:** Dean registers as עוסק פטור (~30 min, free, online at רשות המסים)
+2. Meta Business verification (1-7 business days — see session 5 web research notes below)
+3. Embedded Signup UI
+4. `integrations` schema design
+5. Outgoing templates
 6. `phone_number_id` → `tenant_id` mapping
 7. Enable signature verification
 
-Estimated: 5-7 days, gated on Meta verification timing.
+**Meta verification prerequisites (session 5 research):**
+- עוסק פטור acceptable per Automatix, CyberGuard, Flashy (all Oct 2025-Mar 2026)
+- 2 documents needed: business registration + utility bill (last 3 months)
+- Phone number must be "clean" — not registered to WhatsApp or WhatsApp Business
+- Website footer must show registered business name (`spikeai.co.il` already has this)
+- **Repeated rejected applications can permanently disable verification** — must be correct first time
+
+Estimated total: 5-7 days work + 1-7 days async waiting.
 
 ### 12.4 Stage 3 — Next 30 Days (post Stage 2)
-1. **Trust Agent v0.5** — תיקון 13 + DPO checklist. **Solo** tier.
-2. **Cash Flow Agent v0.5** + GreenInvoice. **Pro** tier.
-3. **VAT Agent** — חשבונית ישראל. **Pro** tier.
-4. **Chain HQ Agent**. **Chain** tier.
-5. **Win-Back Agent**. **Pro** tier.
+1. Trust Agent v0.5 — תיקון 13 + DPO checklist. Solo tier.
+2. Cash Flow Agent v0.5 + GreenInvoice. Pro tier.
+3. VAT Agent — חשבונית ישראל. Pro tier.
+4. Chain HQ Agent. Chain tier.
+5. Win-Back Agent. Pro tier.
 
 ### 12.5 Tier Mapping
-- **Solo:** Trust agent
-- **Pro:** Cash Flow + GreenInvoice, Win-Back, VAT, Manager
-- **Chain:** Chain HQ + everything in Pro
+- Solo: Trust agent
+- Pro: Cash Flow + GreenInvoice, Win-Back, VAT, Manager
+- Chain: Chain HQ + everything in Pro
 
 ### 12.6 Distribution Hidden Opportunities
 vcita inTandem partnership (OEM) · Voicenter voice channel · Israeli franchises (Roladin, Aroma, Cofizz, Re/Max).
@@ -825,11 +804,11 @@ vcita inTandem partnership (OEM) · Voicenter voice channel · Israeli franchise
 ## 13. What NOT to Build
 
 | Idea | Why not |
-|------|---------|
+|---|---|
 | NPS / CSAT surveys | Commodity. vcita / Birdeye / Podium do it. |
 | Schedule optimization for staff | Israeli labor law = lawyer territory. |
 | Contract review | "Legal advice" liability. |
-| Senior Manager Agent (AI flagging AIs) | AI flagging AI = bias amplification. **Push back.** |
+| Senior Manager Agent (AI flagging AIs) | AI flagging AI = bias amplification. Push back. |
 | Crypto / Web3 | Not relevant to ICP. |
 | Standalone mobile app | Not before 100 paying customers. |
 | OpenAI / Gemini integration | Violates Iron Rule 1.3. |
@@ -838,7 +817,6 @@ vcita inTandem partnership (OEM) · Voicenter voice channel · Israeli franchise
 | Generic chatbot widget | That's the "בוט" we don't sell. |
 | 360dialog / BSP middleman | Direct Meta = $0. |
 | Refer customers to competitors | Decided 1.3.5. Hurts retention. |
-| ₪/% quota display in user-facing UI | 1.8 decision. Triggers anxiety or wasteful behavior. |
 
 ---
 
@@ -857,8 +835,7 @@ Competitors: vcita, HubSpot Breeze, Salesforce Agentforce, Toast IQ, GlossGenius
 - ❌ Suggest auto-send "for transactional".
 - ❌ Propose i18next / English version.
 - ❌ "OpenAI is cheaper" — Anthropic-only is strategic.
-- ❌ Tell Dean "good night" at 7am.
-- ❌ Tell Dean to rest, sleep, take a break (Iron Rule from session 6).
+- ❌ Tell Dean "good night" at 7am. **Or at any time (session 6 rule).**
 - ❌ Hallucinate names from `events.payload`.
 - ❌ Hallucinate facts in CLAUDE.md.
 - ❌ Build a feature without `expires_at` in `drafts`.
@@ -879,8 +856,7 @@ Competitors: vcita, HubSpot Breeze, Salesforce Agentforce, Toast IQ, GlossGenius
 - ❌ Generate scratch files inside the repo.
 - ❌ Call `anthropic.messages.create` directly. Always wrap in `withRetry(...)`.
 - ❌ Add a Vercel cron with non-daily schedule on Hobby tier. §15.8.
-- ❌ Add ₪ cost or % quota to user-facing dashboard UI. (1.8 decision.)
-- ❌ Add a server action to `src/app/dashboard/actions.ts` (1430 lines, refactor pending). Create a route-local actions.ts instead, like `src/app/dashboard/settings/actions.ts` does.
+- ❌ **Display ₪ cost or % quota on agents overview (1.8 decision).** Activity-only counts.
 
 ### 15.5 PowerShell
 - 2 separate windows (dev + commands)
@@ -891,6 +867,7 @@ Competitors: vcita, HubSpot Breeze, Salesforce Agentforce, Toast IQ, GlossGenius
 - LF/CRLF normalization warnings on `git add -A` are usually harmless
 - Verify Downloads after present_files: `Get-Item ... | Select-Object Length`. 0 bytes = retry.
 - Select-String fails on UTF-8 Hebrew from git stdout — redirect to file + open in notepad.
+- **Vercel `vercel --prod` may fail with ECONNRESET on flaky network** — usually deployment succeeded server-side. Retry the command (it's idempotent) or check production URL.
 
 ### 15.6 UI Design Workflow
 **Before any UI:**
@@ -906,13 +883,13 @@ If skipped: expect 3-4 design iterations.
 - 1.1: ~2h · 1.2: ~1.5h · 1.3: ~3h · 1.3.5: ~2h · 1.4: ~4-5h
 - 1.4.5: ~30min · 1.5.1: ~45min + 15min hotfix · 1.5.2: ~45min
 - 1.5.3: ~1.5h · 1.5.4: ~1.5h · 1.5.5: ~30min
-- 1.6: ~1.5h · 1.7: ~1.5h · 1.8: ~1.5h
+- **1.6: ~1.5h · 1.7: ~1.5h · 1.8: ~1h** (with proper §2.12 prep)
 
 ### 15.8 Vercel Hobby Tier Cron Limit (Session 4 lesson — CRITICAL) ⚠️
 
-Hobby plan limits crons to **maximum 1 run per day per project**.
+**Hobby plan limits crons to maximum 1 run per day per project.**
 
-Schedules like `0 * * * *` (hourly) cause Vercel to **silently reject the project config at validation time, blocking ALL deployments**. No deployment row. No error notification.
+Schedules like `0 * * * *` (hourly) cause Vercel to silently reject the project config at validation time, blocking ALL deployments. No deployment row. No error notification.
 
 **Symptom:** `git push` succeeds, but production stays on an old commit indefinitely. Vercel Deployments page shows nothing new.
 
@@ -923,11 +900,11 @@ This cron expression (0 * * * *) would run more than once per day.
 ```
 → Check `vercel.json` for any cron with non-daily schedule.
 
-This bit Spike hard at end of session 4. Sub-stages 1.1-1.5.4 all pushed but production stayed on old commit (`9018a169`) for ~19 hours. The Watcher cron from 1.2 was hourly, silently blocked everything after.
+**This bit Spike hard at end of session 4.** Sub-stages 1.1-1.5.4 all pushed but production stayed on old commit (`9018a169`) for ~19 hours. The Watcher cron from 1.2 was hourly, silently blocked everything after.
 
 **Resolution:** Watcher cron changed to `0 6 * * *` (daily). All 7 current crons in `vercel.json` are now daily-or-less.
 
-**On Pro tier upgrade:** restore Watcher to `0 * * * *` for sub-hour catchup of missed webhooks.
+On Pro tier upgrade: restore Watcher to `0 * * * *` for sub-hour catchup of missed webhooks.
 
 **Workaround:** Always run `vercel --prod` after critical pushes if Vercel webhook seems stuck.
 
@@ -937,7 +914,7 @@ This bit Spike hard at end of session 4. Sub-stages 1.1-1.5.4 all pushed but pro
 
 Conventional commits, English subject, Hebrew body OK.
 Format: `<type>(<scope>): <subject>`
-Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `showcase`, `settings`, `sidebar`, `cron`, `pii`.
+Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `sidebar`, `cron`, `pii`, `settings`.
 
 ---
 
@@ -953,7 +930,7 @@ If you are Claude reading this for the first time:
 6. ✅ Confirm you've read this file in your first reply, in 2-3 lines max.
 
 **Sample first reply:**
-> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1–1.5.5) + 1.6/1.7/1.8 הוסיפו Settings page, Agents overview, ו-Onboarding banner. הכל בייצור על app.spikeai.co.il. הצעד הבא חסום על רישום עוסק פטור של דין לפני Meta verification. בינתיים אפשר להתקדם ב-actions.ts refactor או placeholder pages נוספים. מה אתה רוצה לעשות?
+> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1 עד 1.5.5) + Post-Stage-1 polish (1.6 banner+showcase, 1.7 settings, 1.8 agents overview). הכל בייצור על app.spikeai.co.il. הצעד הבא הוא Stage 2 (Meta verification + Embedded Signup) או placeholder pages נוספים (4 שנשארו). מה אתה רוצה לעשות?
 
 ---
 
@@ -964,12 +941,13 @@ Active 001-021. Latest: `021_drafts_expired_status.sql` (1.5.4 — idempotent en
 Archive: `supabase/migrations/_archive/v1/`.
 Note: 009 was skipped during initial scaffold; not a gap to fill.
 
-### 18.2 Selected Commits (newest first — Stage 1 + dashboard polish)
+### 18.2 Selected Commits (newest first)
+
 | Hash | What |
-|------|------|
-| `8796d8e` | feat(agents): agents overview page (1.8) |
-| `9680c96` | feat(settings): tenant settings page (1.7) |
-| `848fbdf` | feat(onboarding): banner + rename demo to showcase (1.6) |
+|---|---|
+| `8796d8e` | feat(agents): agents overview page (Sub-stage 1.8) |
+| `9680c96` | feat(settings): tenant settings page (Sub-stage 1.7) |
+| `848fbdf` | feat(onboarding): banner + rename demo to showcase (Sub-stage 1.6) |
 | `b9610ec` | feat(pii)+docs: Sub-stage 1.5.5 — IL phone audit + INTEGRATION-NOTES + CLAUDE.md (Stage 1 complete) |
 | `bf2f42a` | feat(agents): anti-AI sweep on prompts + post-processing (1.5.3) |
 | `2ea79c3` | feat(cron): hot-leads + sales-qr recovery cron (1.5.2) |
@@ -1005,16 +983,19 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 - Hot Leads cascade logic → `src/lib/agents/hot_leads/run.ts`
 - Demo shared types → `src/lib/demo/types.ts`
 - requireOnboarded → `src/lib/auth/require-onboarded.ts`
-- onboarding-status (1.6) → `src/lib/auth/onboarding-status.ts`
+- Onboarding status helper → `src/lib/auth/onboarding-status.ts` (1.6)
+- Agents overview helper → `src/lib/agents/overview.ts` (1.8)
 - Admin auth helpers → `src/lib/admin/auth.ts`
 - Cleanup cron → `src/app/api/cron/cleanup/route.ts`
 - Recovery cron → `src/app/api/cron/hot-leads-sales-recovery/route.ts`
 - withRetry utility → `src/lib/with-retry.ts`
 - Anti-AI strip utility → `src/lib/safety/anti-ai-strip.ts`
 - PII scrubber → `src/lib/safety/pii-scrubber.ts`
-- Settings server action (1.7) → `src/app/dashboard/settings/actions.ts`
-- Agents overview helper (1.8) → `src/lib/agents/overview.ts`
-- Onboarding banner (1.6) → `src/components/dashboard/onboarding-banner.tsx`
+- Onboarding banner → `src/components/dashboard/onboarding-banner.tsx` (1.6)
+- Settings form → `src/components/dashboard/settings-form.tsx` (1.7)
+- Agent overview card → `src/components/dashboard/agent-overview-card.tsx` (1.8)
+- Settings server action → `src/app/dashboard/settings/actions.ts` (1.7)
+- Showcase page → `src/app/dashboard/showcase/page.tsx` (1.6, replaces /demo)
 
 ---
 
