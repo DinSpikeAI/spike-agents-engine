@@ -4,12 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireOnboarded } from "@/lib/auth/require-onboarded";
 import { isAdminEmail } from "@/lib/admin/auth";
+import { getOnboardingStatus } from "@/lib/auth/onboarding-status";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { MobileHeader } from "@/components/dashboard/mobile-header";
 import { BottomNav } from "@/components/dashboard/bottom-nav";
 import { Topbar } from "@/components/dashboard/topbar";
 import { KpiStrip } from "@/components/dashboard/kpi-strip";
 import { ApprovalBanner } from "@/components/dashboard/approval-banner";
+import { OnboardingBanner } from "@/components/dashboard/onboarding-banner";
 import { WhatsAppFab } from "@/components/dashboard/whatsapp-fab";
 import { AppleBg } from "@/components/ui/apple-bg";
 import { Glass } from "@/components/ui/glass";
@@ -196,11 +198,13 @@ export default async function DashboardPage() {
   // Display name for greeting: owner_name from onboarding > email username
   const userName = ownerName || userEmail.split("@")[0] || "משתמש";
 
-  const [draftsResult, managerLockResult, kpiResult] = await Promise.all([
-    listPendingDrafts(),
-    getManagerLockState(),
-    getDashboardKpis(),
-  ]);
+  const [draftsResult, managerLockResult, kpiResult, onboardingStatus] =
+    await Promise.all([
+      listPendingDrafts(),
+      getManagerLockState(),
+      getDashboardKpis(),
+      getOnboardingStatus(tenantId),
+    ]);
 
   const pendingCount = draftsResult.success
     ? draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0
@@ -319,6 +323,13 @@ export default async function DashboardPage() {
             monthlySpend={kpis.monthlySpend}
             monthlyCap={kpis.monthlyCap}
           />
+
+          {/* Sub-stage 1.6 — Onboarding banner shown to tenants with 0 non-mock runs.
+              Auto-hides when getOnboardingStatus reports realRunCount > 0.
+              The Banner component itself handles manual X dismissal via localStorage. */}
+          {onboardingStatus.hasNoRealRuns && (
+            <OnboardingBanner tenantId={tenantId} />
+          )}
 
           {pendingCount > 0 && (
             <Link

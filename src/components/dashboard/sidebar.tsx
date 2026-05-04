@@ -22,10 +22,13 @@ interface SidebarProps {
   pendingCount?: number;
 }
 
+// Sub-stage 1.6 — Showcase added to NAV_ITEMS (was admin-only "demo").
+// Now visible to all onboarded users as part of the standard nav.
 const NAV_ITEMS = [
   { id: "dash", label: "סקירה", href: "/dashboard", icon: Home },
   { id: "agents", label: "הסוכנים שלי", href: "/dashboard/agents", icon: LayoutGrid },
   { id: "inbox", label: "דורש אישור", href: "/dashboard/approvals", icon: Inbox, hasBadge: true },
+  { id: "showcase", label: "Showcase", href: "/dashboard/showcase", icon: Sparkles },
   { id: "reports", label: "דוחות", href: "/dashboard/reports", icon: BarChart3 },
   { id: "alerts", label: "התראות", href: "/dashboard/alerts", icon: Bell },
   { id: "control", label: "מרכז בקרה", href: "/dashboard/control", icon: SlidersHorizontal },
@@ -48,8 +51,6 @@ export function Sidebar({
   const displayBusiness =
     (businessName && businessName.trim()) || "Spike Demo";
   const userInitial = (displayName.charAt(0) || "?").toUpperCase();
-
-  const isDemoActive = pathname === "/dashboard/demo";
 
   return (
     <aside
@@ -137,28 +138,6 @@ export function Sidebar({
           >
             <ShieldCheck size={14} strokeWidth={1.5} />
             מרכז ניהול
-          </Link>
-        )}
-
-        {isAdmin && (
-          <Link
-            href="/dashboard/demo"
-            className="mt-2 flex items-center gap-2.5 rounded-[9px] px-[11px] py-2 text-[13px] transition-colors"
-            style={{
-              background: isDemoActive ? "rgba(255,255,255,0.85)" : "transparent",
-              color: isDemoActive ? "var(--color-ink)" : "var(--color-ink-3)",
-              fontWeight: isDemoActive ? 500 : 400,
-              boxShadow: isDemoActive ? "0 1px 2px rgba(15,20,30,0.05)" : "none",
-            }}
-          >
-            <Sparkles
-              size={14}
-              strokeWidth={1.5}
-              style={{
-                color: isDemoActive ? "var(--color-sys-blue)" : "var(--color-ink-3)",
-              }}
-            />
-            דמו
           </Link>
         )}
       </nav>

@@ -26,10 +26,13 @@ interface MobileDrawerProps {
   pendingCount?: number;
 }
 
+// Sub-stage 1.6 — Showcase added to NAV_ITEMS (was admin-only "demo").
+// Now visible to all onboarded users as part of the standard nav.
 const NAV_ITEMS = [
   { id: "dash", label: "סקירה", href: "/dashboard", icon: Home },
   { id: "agents", label: "הסוכנים שלי", href: "/dashboard/agents", icon: LayoutGrid },
   { id: "inbox", label: "דורש אישור", href: "/dashboard/approvals", icon: Inbox, hasBadge: true },
+  { id: "showcase", label: "Showcase", href: "/dashboard/showcase", icon: Sparkles },
   { id: "reports", label: "דוחות", href: "/dashboard/reports", icon: BarChart3 },
   { id: "alerts", label: "התראות", href: "/dashboard/alerts", icon: Bell },
   { id: "control", label: "מרכז בקרה", href: "/dashboard/control", icon: SlidersHorizontal },
@@ -73,8 +76,6 @@ export function MobileDrawer({
   const displayBusiness =
     (businessName && businessName.trim()) || "Spike Demo";
   const userInitial = (displayName.charAt(0) || "?").toUpperCase();
-
-  const isDemoActive = pathname === "/dashboard/demo";
 
   return (
     <>
@@ -205,30 +206,6 @@ export function MobileDrawer({
             >
               <ShieldCheck size={17} strokeWidth={1.6} />
               מרכז ניהול
-            </Link>
-          )}
-
-          {isAdmin && (
-            <Link
-              href="/dashboard/demo"
-              onClick={onClose}
-              className="mt-2 flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[14px] transition-colors active:scale-[0.98]"
-              style={{
-                background: isDemoActive ? "rgba(10, 132, 255, 0.08)" : "transparent",
-                color: isDemoActive ? "var(--color-sys-blue)" : "var(--color-ink-3)",
-                fontWeight: isDemoActive ? 600 : 500,
-              }}
-            >
-              <Sparkles
-                size={17}
-                strokeWidth={isDemoActive ? 2 : 1.6}
-                style={{
-                  color: isDemoActive
-                    ? "var(--color-sys-blue)"
-                    : "var(--color-ink-3)",
-                }}
-              />
-              דמו
             </Link>
           )}
         </nav>

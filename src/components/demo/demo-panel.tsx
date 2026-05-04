@@ -1,6 +1,7 @@
 // src/components/demo/demo-panel.tsx
 //
 // Sub-stage 1.4 — Demo UI orchestrator.
+// Sub-stage 1.6 — import path updated: /dashboard/demo → /dashboard/showcase
 //
 // Visual: Calm Frosted (Direction D) — uses <Glass> primitive, agent-card
 // hover utility, section-divider headers, and inline CSS variables for
@@ -12,7 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, AlertCircle, CheckCircle2, RotateCcw } from "lucide-react";
 import { Glass } from "@/components/ui/glass";
-import { runDemoTemplate } from "@/app/dashboard/demo/actions";
+import { runDemoTemplate } from "@/app/dashboard/showcase/actions";
 import {
   DEMO_TEMPLATES,
   type DemoTemplate,
@@ -56,7 +57,7 @@ const TEMPLATE_VISUALS: Record<DemoTemplate, TemplateVisual> = {
       "linear-gradient(135deg, rgba(232,239,255,0.95), rgba(225,234,250,0.7))",
     pillBg: "var(--color-cat-routine)",
     pillFg: "var(--color-cat-routine-fg)",
-    outcomeHint: "Spike יסמן וימתין שתגיב — לא חם מספיק לטיוטה אוטומטית",
+    outcomeHint: "Spike יסמן וימתין שתגיב, לא חם מספיק לטיוטה אוטומטית",
   },
   complaint: {
     emoji: "⚠️",
@@ -292,7 +293,7 @@ export function DemoPanel({ tenantId: _tenantId }: DemoPanelProps) {
             ? { kind: "complete", template, eventId, status: current.status }
             : {
                 kind: "error",
-                message: "Timeout — ה-pipeline לא הסתיים תוך דקה.",
+                message: "Timeout, ה-pipeline לא הסתיים תוך דקה.",
               };
         });
         return;
