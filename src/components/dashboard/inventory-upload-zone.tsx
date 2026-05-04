@@ -1,8 +1,19 @@
+// src/components/dashboard/inventory-upload-zone.tsx
+//
+// Sub-stage 1.12 fixes (was 1.11+):
+//   1. Race guards on onDrop and onChange — was an in-file race where dropping
+//      a second file during in-progress upload fired a parallel startTransition
+//      with stale isPending=false, leaving two snapshots in the DB and the UI
+//      writing whichever returned last.
+//   2. Sync local isPending up to the page-level context so RunInventoryButton
+//      can disable itself during upload (cross-component race fix).
+
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { uploadInventoryCsv } from "@/app/dashboard/actions";
+import { useInventoryAction } from "@/components/dashboard/inventory-action-context";
 import {
   Upload,
   Check,
@@ -32,6 +43,16 @@ export function InventoryUploadZone({
   const [showWarnings, setShowWarnings] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { setUploadInProgress } = useInventoryAction();
+
+  // Sub-stage 1.12: sync our local pending state up to the page context so
+  // RunInventoryButton can disable itself while we're uploading. Cleanup on
+  // unmount sets it back to false so a stale "true" doesn't outlive this
+  // component if the user navigates away mid-upload.
+  useEffect(() => {
+    setUploadInProgress(isPending);
+    return () => setUploadInProgress(false);
+  }, [isPending, setUploadInProgress]);
 
   const reset = () => {
     setError(null);
@@ -86,6 +107,15 @@ export function InventoryUploadZone({
   };
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Sub-stage 1.12 race guard — defensive. The onClick handler already
+    // gates fileInputRef.current?.click() on !isPending so the picker
+    // shouldn't open during upload, but if a previous picker session was
+    // already open when isPending became true the user could still pick
+    // a file and trigger onChange. Belt and suspenders.
+    if (isPending) {
+      e.target.value = "";
+      return;
+    }
     const file = e.target.files?.[0];
     if (file) handleFile(file);
     // Allow re-uploading the same filename
@@ -95,6 +125,10 @@ export function InventoryUploadZone({
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
+    // Sub-stage 1.12 race guard — primary fix. Without this, a drop during
+    // in-progress upload fired a parallel startTransition with the OLD
+    // closure's stale isPending=false, leaving two snapshots in the DB.
+    if (isPending) return;
     const file = e.dataTransfer.files[0];
     if (file) handleFile(file);
   };

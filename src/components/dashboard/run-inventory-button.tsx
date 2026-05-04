@@ -1,9 +1,24 @@
+// src/components/dashboard/run-inventory-button.tsx
+//
+// Sub-stage 1.12 fixes:
+//   Cross-component race fix — read uploadInProgress from the page-level
+//   Inventory action context. While the upload zone is uploading a new CSV,
+//   this button must NOT fire triggerInventoryAgentAction; otherwise the
+//   trigger reads the OLD snapshot from the DB (the new one isn't INSERTED
+//   yet) and runs the Inventory agent on stale data, silently producing
+//   wrong results.
+//
+//   The fix: disable the button while uploadInProgress is true, and show a
+//   small hint text below it. The user sees the upload spinner above and
+//   understands they need to wait.
+
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { triggerInventoryAgentAction } from "@/app/dashboard/actions";
+import { useInventoryAction } from "@/components/dashboard/inventory-action-context";
 import {
   Package,
   Check,
@@ -28,6 +43,13 @@ export function RunInventoryButton() {
   const [noOpReason, setNoOpReason] = useState<string | null>(null);
   const [needsUpload, setNeedsUpload] = useState(false);
   const [loadingStage, setLoadingStage] = useState(0);
+  const { uploadInProgress } = useInventoryAction();
+
+  // Sub-stage 1.12: disabled when EITHER our own action is pending OR an
+  // upload is in progress on the same page. The OR captures both cases:
+  // user clicking twice fast (own pending) and user clicking during upload
+  // (uploadInProgress).
+  const isDisabled = isPending || uploadInProgress;
 
   useEffect(() => {
     if (!isPending) {
@@ -44,6 +66,11 @@ export function RunInventoryButton() {
   }, [isPending]);
 
   const handleClick = () => {
+    // Defensive: even though `disabled` blocks the click in the browser,
+    // re-check here in case React state lags. Same race-guard pattern as
+    // inventory-upload-zone's onDrop.
+    if (isDisabled) return;
+
     setError(null);
     setSuccess(null);
     setNoOpReason(null);
@@ -105,7 +132,7 @@ export function RunInventoryButton() {
     <>
       <button
         onClick={handleClick}
-        disabled={isPending}
+        disabled={isDisabled}
         className="inline-flex items-center gap-2 rounded-[10px] px-4 py-2 text-[13px] font-medium text-white transition-all disabled:opacity-50"
         style={{
           background: "var(--color-sys-blue)",
@@ -128,6 +155,18 @@ export function RunInventoryButton() {
           </>
         )}
       </button>
+
+      {/* Sub-stage 1.12: hint text when blocked by upload-in-progress.
+          Only shown when uploadInProgress is true AND our own action is
+          NOT pending — otherwise the spinner-with-stage covers the state. */}
+      {uploadInProgress && !isPending && (
+        <div
+          className="mt-2 text-[11.5px]"
+          style={{ color: "var(--color-ink-3)" }}
+        >
+          ממתין לסיום העלאת הקובץ...
+        </div>
+      )}
 
       {success && (
         <div

@@ -1,3 +1,11 @@
+// src/app/dashboard/inventory/page.tsx
+//
+// Sub-stage 1.12: wrap the snapshot panel + results card + upload zone with
+// InventoryActionProvider so the upload zone and run button can coordinate
+// via shared context. Without this wrapper they fall back to the default
+// no-op context (uploadInProgress=false) and lose the cross-component race
+// fix. See src/components/dashboard/inventory-action-context.tsx for details.
+
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -9,6 +17,7 @@ import { Glass } from "@/components/ui/glass";
 import { InventoryResultsCard } from "@/components/dashboard/inventory-results-card";
 import { RunInventoryButton } from "@/components/dashboard/run-inventory-button";
 import { InventoryUploadZone } from "@/components/dashboard/inventory-upload-zone";
+import { InventoryActionProvider } from "@/components/dashboard/inventory-action-context";
 import {
   listPendingDrafts,
   getLatestInventorySnapshot,
@@ -151,76 +160,89 @@ export default async function InventoryPage() {
             </p>
           </div>
 
-          {/* Snapshot status panel — only when a CSV is loaded */}
-          {snapshot && (
-            <Glass className="mb-5 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div
-                    className="flex items-center gap-2 text-[14.5px] font-semibold"
-                    style={{ color: "var(--color-ink)" }}
-                  >
-                    <FileText
-                      size={14}
-                      strokeWidth={1.75}
-                      style={{ color: "var(--color-ink-2)" }}
-                    />
-                    <span className="truncate">{snapshot.source_filename}</span>
+          {/* Sub-stage 1.12: Provider wraps everything below the header so
+              InventoryUploadZone and RunInventoryButton can coordinate via
+              shared context (uploadInProgress flag prevents the run button
+              from firing during in-progress upload, which would otherwise
+              read the OLD snapshot from the DB). */}
+          <InventoryActionProvider>
+            {/* Snapshot status panel — only when a CSV is loaded */}
+            {snapshot && (
+              <Glass className="mb-5 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="flex items-center gap-2 text-[14.5px] font-semibold"
+                      style={{ color: "var(--color-ink)" }}
+                    >
+                      <FileText
+                        size={14}
+                        strokeWidth={1.75}
+                        style={{ color: "var(--color-ink-2)" }}
+                      />
+                      <span className="truncate">
+                        {snapshot.source_filename}
+                      </span>
+                    </div>
+                    <div
+                      className="mt-0.5 text-[11.5px]"
+                      style={{ color: "var(--color-ink-3)" }}
+                    >
+                      {snapshot.row_count}{" "}
+                      {snapshot.row_count === 1 ? "מוצר" : "מוצרים"} · הועלה{" "}
+                      {formatDate(snapshot.uploaded_at)}
+                      {snapshot.last_analyzed_at && (
+                        <>
+                          {" "}
+                          · נותח לאחרונה{" "}
+                          {formatDate(snapshot.last_analyzed_at)}
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div
-                    className="mt-0.5 text-[11.5px]"
-                    style={{ color: "var(--color-ink-3)" }}
-                  >
-                    {snapshot.row_count}{" "}
-                    {snapshot.row_count === 1 ? "מוצר" : "מוצרים"} · הועלה{" "}
-                    {formatDate(snapshot.uploaded_at)}
-                    {snapshot.last_analyzed_at && (
-                      <> · נותח לאחרונה {formatDate(snapshot.last_analyzed_at)}</>
-                    )}
+                  <div className="flex-shrink-0">
+                    <RunInventoryButton />
                   </div>
                 </div>
-                <div className="flex-shrink-0">
-                  <RunInventoryButton />
+              </Glass>
+            )}
+
+            {/* Results card — when an analysis exists */}
+            {analysis && analyzedAt ? (
+              <div className="mb-6">
+                <InventoryResultsCard
+                  analysis={analysis}
+                  analyzedAt={analyzedAt}
+                />
+              </div>
+            ) : snapshot ? (
+              <Glass className="mb-6 p-8 text-center">
+                <AlertCircle
+                  size={20}
+                  strokeWidth={1.5}
+                  className="mx-auto mb-2"
+                  style={{ color: "var(--color-ink-3)" }}
+                />
+                <div
+                  className="text-[14px] font-semibold"
+                  style={{ color: "var(--color-ink)" }}
+                >
+                  הקובץ נטען אבל לא נותח עדיין
                 </div>
-              </div>
-            </Glass>
-          )}
+                <div
+                  className="mt-1 text-[12.5px]"
+                  style={{ color: "var(--color-ink-3)" }}
+                >
+                  לחץ "הרץ עכשיו" למעלה כדי שהסוכן ינתח את המלאי.
+                </div>
+              </Glass>
+            ) : null}
 
-          {/* Results card — when an analysis exists */}
-          {analysis && analyzedAt ? (
-            <div className="mb-6">
-              <InventoryResultsCard
-                analysis={analysis}
-                analyzedAt={analyzedAt}
-              />
-            </div>
-          ) : snapshot ? (
-            <Glass className="mb-6 p-8 text-center">
-              <AlertCircle
-                size={20}
-                strokeWidth={1.5}
-                className="mx-auto mb-2"
-                style={{ color: "var(--color-ink-3)" }}
-              />
-              <div
-                className="text-[14px] font-semibold"
-                style={{ color: "var(--color-ink)" }}
-              >
-                הקובץ נטען אבל לא נותח עדיין
-              </div>
-              <div
-                className="mt-1 text-[12.5px]"
-                style={{ color: "var(--color-ink-3)" }}
-              >
-                לחץ "הרץ עכשיו" למעלה כדי שהסוכן ינתח את המלאי.
-              </div>
+            {/* Upload zone — always available; primary CTA when no snapshot */}
+            <Glass className="p-5">
+              <InventoryUploadZone hasSnapshot={!!snapshot} />
             </Glass>
-          ) : null}
-
-          {/* Upload zone — always available; primary CTA when no snapshot */}
-          <Glass className="p-5">
-            <InventoryUploadZone hasSnapshot={!!snapshot} />
-          </Glass>
+          </InventoryActionProvider>
         </main>
       </div>
     </div>
