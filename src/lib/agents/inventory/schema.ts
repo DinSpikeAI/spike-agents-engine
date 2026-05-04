@@ -4,10 +4,21 @@
  * Native JSON Schema (NOT tool_use) — Anthropic's structured output format.
  * Sonnet 4.6 will produce strictly this shape.
  *
+ * IMPORTANT — Anthropic Structured Outputs restrictions (matches the header
+ * comment in manager/reviews/sales/social schemas; previously missing here):
+ *   - 'integer' type does NOT support `minimum` or `maximum` constraints
+ *   - 'string' type does NOT support `minLength`, `maxLength`, or `pattern`
+ *   - Arrays do NOT support `minItems` or `maxItems`
+ *   - The API returns 400 with `output_config.format.schema: For 'integer'
+ *     type, property 'minimum' is not supported` if any of these are present.
+ *   - Use `description` to guide the LLM toward the desired range, then
+ *     enforce hard constraints in code (after parse, before persist) if
+ *     safety-critical.
+ *
  * The LLM does NOT compute daysOfCoverage / status — those are computed
  * in code from CSV data and passed to the LLM as facts. The LLM's job is:
  *   1. Write a Hebrew insight per product (1-line natural language)
- *   2. Assign priority (1 = most important)
+ *   2. Assign priority (1 = most important — see priority.description below)
  *   3. Write the overall summary and topConcernsHe prose
  *
  * Why split it this way:
@@ -64,7 +75,10 @@ export const INVENTORY_AGENT_OUTPUT_SCHEMA = {
           },
           priority: {
             type: "integer",
-            minimum: 1,
+            // DO NOT add `minimum: 1` here — Anthropic returns 400 with
+            // "For 'integer' type, property 'minimum' is not supported".
+            // The description below guides the LLM; if values ever drift
+            // out of [1, ∞), clamp in code after JSON.parse.
             description:
               "1 = הכי דחוף לתשומת לב הבעלים. critical תמיד 1, low תמיד 2, ok ו-overstocked 3+.",
           },
