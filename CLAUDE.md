@@ -2,7 +2,7 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-04 (end of Sub-stage 1.8) — Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8 also complete and live in production. Onboarding banner + showcase rename + tenant settings page + agents overview page all shipped. Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead.
+> **Last updated:** 2026-05-04 (end of Sub-stage 1.9 — refactor of dashboard actions). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9 also complete and live in production. Onboarding banner + showcase rename + tenant settings page + agents overview page + actions.ts split into 7 focused files. Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead.
 
 ---
 
@@ -17,8 +17,8 @@
 - **Repo (landing):** https://github.com/DinSpikeAI/spike-agents — separate marketing site (Next.js 16, Tailwind v4, RTL, Web3Forms). Don't confuse the two.
 - **Local dev:** `C:\Users\Din\Desktop\spike-engine`
 - **Domain:** `app.spikeai.co.il` (production) · `localhost:3000` (dev).
-- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. **Post-Stage-1 polish (1.6, 1.7, 1.8) also complete:** onboarding banner shows for new tenants with 0 non-mock runs; tenant settings page lets owners edit core fields; agents overview page shows per-agent activity stats. Verified live in production. Pre-launch — no real customers yet.
-- **Don't propose:** NPS surveys · schedule optimization for staff · contract review · crypto/Web3 · "senior manager of agents" · OpenAI fallback · standalone mobile app · 360dialog or other BSP middlemen.
+- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. **Post-Stage-1 polish (1.6, 1.7, 1.8, 1.9) also complete:** onboarding banner shows for new tenants with 0 non-mock runs; tenant settings page lets owners edit core fields; agents overview page shows per-agent activity stats; **`src/app/dashboard/actions.ts` refactored from 1430-line monolith into 7 focused files under `actions/`**. Verified live in production. Pre-launch — no real customers yet.
+- **Don't propose:** NPS surveys · schedule optimization for staff · contract review · crypto/Web3 · "senior manager of agents" · OpenAI fallback · standalone mobile app · 360dialog or other BSP middlemen · merging the split actions/ files back into one.
 - **Next up (Stage 2):** Meta Business verification + Embedded Signup UI + production WhatsApp templates. See §12.3.
 
 ---
@@ -96,6 +96,17 @@ Tenants have `business_owner_gender`. Used by Sales (both entry points); Reviews
 - ✅ Israeli-tone calibration on Reviews + Social
 - ✅ Verified live in production (2026-05-03 — em-dashes and hashtags eliminated from Social/Morning output)
 
+### 1.10 Server Actions Architecture (1.9)
+The `src/app/dashboard/actions.ts` file is a **re-export shim only**. Implementation lives in 7 focused files under `src/app/dashboard/actions/`.
+
+- **DO:** Add new server actions to the appropriate file in `actions/` and re-export from `actions.ts`
+- **DO:** Update header comments when adding new exports
+- **DO NOT:** Add server action implementations directly to `actions.ts`
+- **DO NOT:** Merge the split files back into one — the 1430-line monolith was a maintenance liability for a reason
+- **DO NOT:** Add `"use server"` to `actions/_shared.ts` — it exports helpers, not server actions
+
+See §10.23 for the full split structure.
+
 ---
 
 ## 2. Working with Dean
@@ -129,6 +140,7 @@ Always full file. When 2 files share the same name, use distinct names in `/outp
 - Anthropic-only permanent
 - Pricing: Solo ₪290 / Pro ₪690 / Chain ₪1,490 + ₪990 setup. NO freemium.
 - Meta Cloud API direct (not BSPs).
+- **`actions.ts` split (1.9) permanent — don't merge back.**
 - See §13 "What NOT to Build"
 
 ### 2.5 Three Options + Recommendation
@@ -179,7 +191,7 @@ Claude.ai sometimes wraps `INTEGRATION-NOTES.md`, `CLAUDE.md`, and `localhost` a
 - 30-60 min code + self-audit
 - 5-15 min Move-Item + tsc + manual test
 - 5 min commit + push + vercel --prod
-- **Total: ~1-2.5 hours typical.** Mechanical sweeps (1.5.1, 1.5.5) ~30-45 min. UI features (1.4, 1.7, 1.8) ~1.5h with proper §2.12 prep.
+- **Total: ~1-2.5 hours typical.** Mechanical sweeps (1.5.1, 1.5.5) ~30-45 min. UI features (1.4, 1.7, 1.8) ~1.5h with proper §2.12 prep. **Refactor (1.9) ~2 hours** including smoke test in production.
 
 ### 2.12 Design Tokens & Patterns First (1.4 lesson)
 
@@ -194,6 +206,14 @@ Claude.ai sometimes wraps `INTEGRATION-NOTES.md`, `CLAUDE.md`, and `localhost` a
 - `<AppleBg>` from `@/components/ui/apple-bg` is page background
 - Colors via CSS variables in inline `style={{}}` — NOT Tailwind classes like `bg-rose-500`
 - Typography in arbitrary pixels: `text-[15.5px]`, `text-[12.5px]`, `tracking-[-0.025em]`
+
+### 2.13 Refactor Strategy (1.9 lesson)
+**For any structural refactor of a multi-import file:**
+
+1. **Re-export pattern** is safer than migrating imports. The 1430-line `actions.ts` was split into 7 files via re-exports — 15+ Client Components didn't need any changes.
+2. **Three commits, not one:** (A) Refactor with no behavior change → (B) Smoke test in production → (C) Docs update. Each commit is small and reversible.
+3. **Header comments are mandatory** for every new file. They explain scope + exports + cross-references. Without them, a refactor is "works" but not "maintainable".
+4. **Smoke test in production is non-negotiable** — tsc passes ≠ runtime works. Click every button, verify every loader, screenshot the proof.
 
 ---
 
@@ -255,12 +275,20 @@ spike-engine/
 │   │   │   ├── showcase/                      # 1.6 (renamed from /demo). Public, all onboarded users
 │   │   │   │   ├── page.tsx
 │   │   │   │   └── actions.ts                 # 1.6: restored from git history at 69d066c
-│   │   │   ├── settings/                      # 1.7 — tenant settings page (NEW)
+│   │   │   ├── settings/                      # 1.7 — tenant settings page
 │   │   │   │   ├── page.tsx
 │   │   │   │   └── actions.ts                 # updateTenantSettings server action
-│   │   │   ├── agents/                        # 1.8 — agents overview page (NEW)
+│   │   │   ├── agents/                        # 1.8 — agents overview page
 │   │   │   │   └── page.tsx
-│   │   │   └── actions.ts                     # 1430 lines (refactor liability)
+│   │   │   ├── actions.ts                     # 1.9 REFACTOR: 81 lines, re-exports only
+│   │   │   └── actions/                       # 1.9 NEW: split implementations
+│   │   │       ├── _shared.ts                 # helpers: getActiveTenant + checkAgentRateLimit (no "use server")
+│   │   │       ├── manager.ts                 # weekly-lock state machine + 3 server actions
+│   │   │       ├── agent-triggers.ts          # 7 trigger* functions + 3 internal loaders
+│   │   │       ├── drafts.ts                  # listPendingDrafts/approveDraft/rejectDraft
+│   │   │       ├── leads.ts                   # listClassifiedLeads/markLeadContacted/dismissLead
+│   │   │       ├── reports-kpis.ts            # listManagerReports + getDashboardKpis
+│   │   │       └── inventory.ts               # uploadInventoryCsv + 2 query functions
 │   │   ├── api/
 │   │   │   ├── webhooks/whatsapp/route.ts
 │   │   │   ├── cron/
@@ -284,9 +312,9 @@ spike-engine/
 │   │   ├── dashboard/
 │   │   │   ├── sidebar.tsx                    # 1.6: Showcase added to NAV_ITEMS, admin gate removed
 │   │   │   ├── mobile-drawer.tsx              # 1.6: same as sidebar
-│   │   │   ├── onboarding-banner.tsx          # 1.6 NEW
-│   │   │   ├── settings-form.tsx              # 1.7 NEW
-│   │   │   ├── agent-overview-card.tsx        # 1.8 NEW
+│   │   │   ├── onboarding-banner.tsx          # 1.6
+│   │   │   ├── settings-form.tsx              # 1.7
+│   │   │   ├── agent-overview-card.tsx        # 1.8
 │   │   │   └── ... (other dashboard components)
 │   │   ├── demo/                              # NB: still named /demo even though page is /showcase. Internal-only naming.
 │   │   │   ├── demo-panel.tsx                 # 1.6: import path updated to /showcase/actions
@@ -299,7 +327,7 @@ spike-engine/
 │       ├── supabase/
 │       ├── auth/
 │       │   ├── require-onboarded.ts           # → { userId, userEmail, tenantId }
-│       │   └── onboarding-status.ts           # 1.6 NEW: getOnboardingStatus(tenantId)
+│       │   └── onboarding-status.ts           # 1.6: getOnboardingStatus(tenantId)
 │       ├── safety/
 │       │   ├── pii-scrubber.ts                # 1.5.5: IL phone formats audited
 │       │   ├── defamation-guard.ts
@@ -314,7 +342,7 @@ spike-engine/
 │       └── agents/
 │           ├── types.ts
 │           ├── config.ts                      # AGENTS{} record + AGENT_LIST[]
-│           ├── overview.ts                    # 1.8 NEW: getAgentsOverview(tenantId)
+│           ├── overview.ts                    # 1.8: getAgentsOverview(tenantId)
 │           ├── run-agent.ts
 │           ├── run-agent-safe.ts
 │           ├── morning/                       # 1.5.3 anti-AI
@@ -694,6 +722,63 @@ DELETED: `src/app/dashboard/demo/` folder (after restoring `actions.ts` via `git
 - running → blue Loader2 (animated spin)
 - no_op → gray CheckCircle2
 
+### 10.23 Sub-stage 1.9 — DONE (commit `799bfc4`)
+**Refactor of `src/app/dashboard/actions.ts`: 1430-line monolith → 7 focused files.**
+
+**Why:** Every session added ~50 lines and finding any function required scrolling through unrelated code. The file had become a maintenance liability — risky to edit, slow to navigate, hard to onboard onto.
+
+**Strategy:** Re-export pattern (gist (א) from spec discussion). The public API is unchanged: `actions.ts` becomes a thin shim that re-exports from 7 files under `actions/`. The 15+ Client Components that import from `@/app/dashboard/actions` need zero changes.
+
+**New structure:**
+
+```
+src/app/dashboard/
+├── actions.ts                          # 81 lines, re-exports only
+└── actions/
+    ├── _shared.ts                      # 150 lines, helpers (NO "use server")
+    ├── manager.ts                      # 243 lines
+    ├── agent-triggers.ts               # 581 lines (largest)
+    ├── drafts.ts                       # 148 lines
+    ├── leads.ts                        # 150 lines
+    ├── reports-kpis.ts                 # 188 lines
+    └── inventory.ts                    # 216 lines
+                                        # 1757 total (~327 added: header comments)
+```
+
+**File-by-file responsibilities:**
+
+- **`_shared.ts`** — `getActiveTenant()`, `checkAgentRateLimit()`, `RATE_LIMIT_MINUTES` record. Used by every other file. **Deliberately NOT marked `"use server"`** — it exports helper utilities, not server actions. Adding `"use server"` would expose `getActiveTenant` and `checkAgentRateLimit` as RPC endpoints unnecessarily.
+
+- **`manager.ts`** — Manager weekly-lock state machine. Exports `ManagerLockState` interface + `getManagerLockState()`, `markManagerReportRead()`, `triggerManagerAgentAction()`. Internal `getManagerLockStateForTenant()` helper not exported.
+
+- **`agent-triggers.ts`** — 7 trigger* functions for non-Manager agents (Manager has its own file due to its weekly-lock model). Plus 3 internal loaders that convert DB events into agent input shapes: `loadReviewEventsAsReviews()`, `loadLeadEventsAsLeads()`, `loadMorningContext()`.
+
+- **`drafts.ts`** — Approval inbox: `PendingDraft` + `listPendingDrafts()` + `approveDraft()` + `rejectDraft()`.
+
+- **`leads.ts`** — Hot Leads board: `ClassifiedLead` + `listClassifiedLeads()` + `markLeadContacted()` + `dismissLead()`.
+
+- **`reports-kpis.ts`** — Manager reports listing + Dashboard KPI strip queries: `ManagerReportRow` + `listManagerReports()` + `DashboardKpis` + `getDashboardKpis()`.
+
+- **`inventory.ts`** — Inventory CSV upload + snapshot/analysis queries: `UploadInventoryResult` + `InventorySnapshotRow` + `uploadInventoryCsv()` + `getLatestInventorySnapshot()` + `getLatestInventoryAnalysis()`. (`triggerInventoryAgentAction` lives in agent-triggers.ts for symmetry with the other 7 trigger functions.)
+
+**Why three commits, not one:**
+- **Commit A — Refactor (no behavior change)** — pure structural change, easy to revert if anything breaks. tsc passes.
+- **Commit B — Smoke test in production** — visited `/dashboard`, ran Morning + Watcher agents (modal-based runs verified loaders work), visited `/dashboard/settings` and changed owner_name (verified updateTenantSettings + revalidate), screenshotted as proof. No regressions found.
+- **Commit C — Docs update (this commit)** — CLAUDE.md updated to reflect new structure.
+
+**Behavioral byte-for-byte equivalence verified:**
+- All function bodies copy-pasted unchanged
+- Same error messages, same DB queries, same return shapes
+- tsc --noEmit passes with zero errors
+- Production smoke test green
+
+**Architectural notes worth recording:**
+1. Header comment in every new file is non-negotiable. It explains scope, exports, and overlap with siblings. Without it, refactor is "works" but not "maintainable". This is the artifact that pays back in 3 months.
+2. Re-export inheritance: each file's `"use server"` directive applies to its own server actions. The top-level `actions.ts` doesn't need `"use server"` because re-exports inherit the directive from the source file.
+3. Internal loaders (loadReviewEventsAsReviews, etc.) live in `agent-triggers.ts` because each is used by exactly one trigger. They're not in `_shared.ts` because they're not shared.
+
+**See §1.10 for the iron rules around this structure (don't merge back, don't add to top-level, etc).**
+
 ---
 
 ## 11. Current Status
@@ -709,13 +794,14 @@ DELETED: `src/app/dashboard/demo/` folder (after restoring `actions.ts` via `git
 - **Onboarding banner for new tenants (1.6)**
 - **Tenant settings page (1.7)** — owners can edit `owner_name`, `business_name`, gender, vertical
 - **Agents overview page (1.8)** — per-agent activity stats
+- **`actions.ts` refactored from 1430-line monolith into 7 focused files (1.9)**
 - Real-time WhatsApp pipeline (~15-16s end-to-end, ~₪0.04/hot-lead)
 - Cleanup cron + Recovery cron daily
 - All deployed live to `app.spikeai.co.il`
 
 ### 11.2 Pending — Not Blocking 🚧
 - **4 sidebar pages still 404** (was 7 before 1.6/1.7/1.8): דוחות, התראות, מרכז בקרה, אמון ופרטיות
-- `actions.ts` 1430 lines — split (refactor liability)
+- ~~`actions.ts` 1430 lines — split~~ ✅ DONE (1.9)
 - Race in `inventory-upload-zone` + `run-inventory-button`
 - 2 moderate npm audit vulnerabilities
 - `integrations` table schema not finalized
@@ -765,6 +851,7 @@ DELETED: `src/app/dashboard/demo/` folder (after restoring `actions.ts` via `git
 - 1.6 ✅ Onboarding banner + rename demo→showcase
 - 1.7 ✅ Tenant settings page
 - 1.8 ✅ Agents overview page
+- 1.9 ✅ Refactor of dashboard actions.ts (1430 lines → 7 focused files)
 
 ### 12.3 Stage 2 — Production WhatsApp (NEXT)
 1. **PRE-REQ:** Dean registers as עוסק פטור (~30 min, free, online at רשות המסים)
@@ -817,6 +904,7 @@ vcita inTandem partnership (OEM) · Voicenter voice channel · Israeli franchise
 | Generic chatbot widget | That's the "בוט" we don't sell. |
 | 360dialog / BSP middleman | Direct Meta = $0. |
 | Refer customers to competitors | Decided 1.3.5. Hurts retention. |
+| Merge actions/ files back into one | 1430-line monolith was a maintenance liability. See §1.10, §10.23. |
 
 ---
 
@@ -857,6 +945,9 @@ Competitors: vcita, HubSpot Breeze, Salesforce Agentforce, Toast IQ, GlossGenius
 - ❌ Call `anthropic.messages.create` directly. Always wrap in `withRetry(...)`.
 - ❌ Add a Vercel cron with non-daily schedule on Hobby tier. §15.8.
 - ❌ **Display ₪ cost or % quota on agents overview (1.8 decision).** Activity-only counts.
+- ❌ **Add new server actions to top-level `actions.ts` (1.9).** Add to the appropriate file in `actions/` and re-export.
+- ❌ **Merge the `actions/` files back into one (1.9).** The split is permanent.
+- ❌ **Add `"use server"` to `actions/_shared.ts` (1.9).** It exports helpers, not server actions.
 
 ### 15.5 PowerShell
 - 2 separate windows (dev + commands)
@@ -883,7 +974,8 @@ If skipped: expect 3-4 design iterations.
 - 1.1: ~2h · 1.2: ~1.5h · 1.3: ~3h · 1.3.5: ~2h · 1.4: ~4-5h
 - 1.4.5: ~30min · 1.5.1: ~45min + 15min hotfix · 1.5.2: ~45min
 - 1.5.3: ~1.5h · 1.5.4: ~1.5h · 1.5.5: ~30min
-- **1.6: ~1.5h · 1.7: ~1.5h · 1.8: ~1h** (with proper §2.12 prep)
+- 1.6: ~1.5h · 1.7: ~1.5h · 1.8: ~1h
+- **1.9: ~2h** (refactor + smoke test + docs)
 
 ### 15.8 Vercel Hobby Tier Cron Limit (Session 4 lesson — CRITICAL) ⚠️
 
@@ -908,13 +1000,22 @@ On Pro tier upgrade: restore Watcher to `0 * * * *` for sub-hour catchup of miss
 
 **Workaround:** Always run `vercel --prod` after critical pushes if Vercel webhook seems stuck.
 
+### 15.9 Refactor Workflow (1.9 lesson)
+For any structural refactor of a multi-import file:
+
+1. **Re-export pattern over import migration.** The 1430-line `actions.ts` was split via re-exports — 15+ Client Components needed zero changes. Migrating imports across 15+ files would have mixed structural and behavioral changes.
+2. **Three commits, never one:** (A) Refactor with byte-for-byte equivalent behavior → (B) Smoke test in production → (C) Docs update.
+3. **`"use server"` belongs on actual server-action files only.** Helper-only files (like `_shared.ts`) should NOT have it — that would expose helpers as RPC endpoints.
+4. **Header comment is mandatory.** Every new file gets a comment explaining scope + exports + overlap. Without it, refactor is "works" but not "maintainable".
+5. **Smoke test in production is non-negotiable.** tsc passes ≠ runtime works. Click every button. Screenshot the proof.
+
 ---
 
 ## 16. Commit Conventions
 
 Conventional commits, English subject, Hebrew body OK.
 Format: `<type>(<scope>): <subject>`
-Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `sidebar`, `cron`, `pii`, `settings`.
+Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `sidebar`, `cron`, `pii`, `settings`, `actions`.
 
 ---
 
@@ -930,7 +1031,7 @@ If you are Claude reading this for the first time:
 6. ✅ Confirm you've read this file in your first reply, in 2-3 lines max.
 
 **Sample first reply:**
-> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1 עד 1.5.5) + Post-Stage-1 polish (1.6 banner+showcase, 1.7 settings, 1.8 agents overview). הכל בייצור על app.spikeai.co.il. הצעד הבא הוא Stage 2 (Meta verification + Embedded Signup) או placeholder pages נוספים (4 שנשארו). מה אתה רוצה לעשות?
+> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1 עד 1.5.5) + Post-Stage-1 polish (1.6 banner+showcase, 1.7 settings, 1.8 agents overview, 1.9 actions refactor). הכל בייצור על app.spikeai.co.il. הצעד הבא הוא Stage 2 (Meta verification + Embedded Signup) או placeholder pages נוספים (4 שנשארו). מה אתה רוצה לעשות?
 
 ---
 
@@ -945,6 +1046,8 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 
 | Hash | What |
 |---|---|
+| `799bfc4` | refactor(actions): split monolithic actions.ts into 7 focused files (Sub-stage 1.9) |
+| `f70178d` | docs: update CLAUDE.md for sub-stages 1.6, 1.7, 1.8 |
 | `8796d8e` | feat(agents): agents overview page (Sub-stage 1.8) |
 | `9680c96` | feat(settings): tenant settings page (Sub-stage 1.7) |
 | `848fbdf` | feat(onboarding): banner + rename demo to showcase (Sub-stage 1.6) |
@@ -996,6 +1099,15 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 - Agent overview card → `src/components/dashboard/agent-overview-card.tsx` (1.8)
 - Settings server action → `src/app/dashboard/settings/actions.ts` (1.7)
 - Showcase page → `src/app/dashboard/showcase/page.tsx` (1.6, replaces /demo)
+- **Dashboard server actions (1.9 split):**
+  - Re-export shim → `src/app/dashboard/actions.ts`
+  - Shared helpers → `src/app/dashboard/actions/_shared.ts`
+  - Manager actions → `src/app/dashboard/actions/manager.ts`
+  - Agent triggers → `src/app/dashboard/actions/agent-triggers.ts`
+  - Drafts inbox → `src/app/dashboard/actions/drafts.ts`
+  - Hot Leads board → `src/app/dashboard/actions/leads.ts`
+  - Reports + KPIs → `src/app/dashboard/actions/reports-kpis.ts`
+  - Inventory → `src/app/dashboard/actions/inventory.ts`
 
 ---
 
