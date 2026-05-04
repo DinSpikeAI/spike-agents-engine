@@ -1,10 +1,16 @@
 // src/app/dashboard/inventory/page.tsx
 //
-// Sub-stage 1.12: wrap the snapshot panel + results card + upload zone with
-// InventoryActionProvider so the upload zone and run button can coordinate
-// via shared context. Without this wrapper they fall back to the default
-// no-op context (uploadInProgress=false) and lose the cross-component race
-// fix. See src/components/dashboard/inventory-action-context.tsx for details.
+// Sub-stage 1.12: InventoryActionProvider wraps the snapshot panel + results
+//   card + upload zone so the upload zone and run button can coordinate via
+//   shared context (uploadInProgress). See inventory-action-context.tsx.
+//
+// Sub-stage 1.13: Print / Save-as-PDF support.
+//   - Chrome elements (AppleBg, Sidebar, action buttons, upload zone) are
+//     wrapped in `print:hidden` so they don't appear in the printout.
+//   - The right-margin override (`md:mr-[232px]`) is reset on print so the
+//     content uses full width once the sidebar is hidden.
+//   - PrintButton appears in the snapshot panel toolbar, but only when an
+//     analysis exists (no point printing an empty state).
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -18,6 +24,7 @@ import { InventoryResultsCard } from "@/components/dashboard/inventory-results-c
 import { RunInventoryButton } from "@/components/dashboard/run-inventory-button";
 import { InventoryUploadZone } from "@/components/dashboard/inventory-upload-zone";
 import { InventoryActionProvider } from "@/components/dashboard/inventory-action-context";
+import { PrintButton } from "@/components/ui/print-button";
 import {
   listPendingDrafts,
   getLatestInventorySnapshot,
@@ -103,23 +110,29 @@ export default async function InventoryPage() {
       dir="rtl"
       style={{ color: "var(--color-ink)" }}
     >
-      <AppleBg />
+      {/* Chrome — all hidden on print. AppleBg is a fixed gradient bg, the
+          Sidebar is fixed-position, both safe to wrap in a div without
+          affecting layout. */}
+      <div className="print:hidden">
+        <AppleBg />
+        <Sidebar
+          userEmail={userEmail}
+          ownerName={ownerName}
+          businessName={businessName}
+          isAdmin={isAdminEmail(userEmail)}
+          pendingCount={pendingCount}
+        />
+      </div>
 
-      <Sidebar
-        userEmail={userEmail}
-        ownerName={ownerName}
-        businessName={businessName}
-        isAdmin={isAdminEmail(userEmail)}
-        pendingCount={pendingCount}
-      />
-
-      <div className="md:mr-[232px]">
-        <main className="spike-scroll mx-auto max-w-[1280px] px-6 pb-20 pt-8 md:px-10">
+      {/* Right margin reserved for the sidebar on desktop; reset to 0 on
+          print so the content uses the full page width. */}
+      <div className="md:mr-[232px] print:!mr-0">
+        <main className="spike-scroll mx-auto max-w-[1280px] px-6 pb-20 pt-8 md:px-10 print:!px-0 print:!py-4">
           {/* Page header */}
-          <div className="mb-7">
+          <div className="mb-7 print:mb-3">
             <div className="mb-2 flex items-center gap-3">
               <div
-                className="flex h-11 w-11 items-center justify-center rounded-[12px] text-[22px]"
+                className="flex h-11 w-11 items-center justify-center rounded-[12px] text-[22px] print:hidden"
                 style={{
                   background:
                     "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(245,247,252,0.7))",
@@ -139,7 +152,7 @@ export default async function InventoryPage() {
                 </h1>
                 {isMocked && (
                   <span
-                    className="rounded-full px-2 py-0.5 text-[10.5px] font-medium"
+                    className="rounded-full px-2 py-0.5 text-[10.5px] font-medium print:hidden"
                     style={{
                       background: "rgba(224, 169, 61, 0.12)",
                       color: "var(--color-sys-amber)",
@@ -152,7 +165,7 @@ export default async function InventoryPage() {
               </div>
             </div>
             <p
-              className="text-[13.5px] leading-[1.55]"
+              className="text-[13.5px] leading-[1.55] print:hidden"
               style={{ color: "var(--color-ink-2)" }}
             >
               העלה קובץ CSV מהקופה או ממערכת המלאי. הסוכן יחשב ימי כיסוי לכל
@@ -160,15 +173,12 @@ export default async function InventoryPage() {
             </p>
           </div>
 
-          {/* Sub-stage 1.12: Provider wraps everything below the header so
-              InventoryUploadZone and RunInventoryButton can coordinate via
-              shared context (uploadInProgress flag prevents the run button
-              from firing during in-progress upload, which would otherwise
-              read the OLD snapshot from the DB). */}
           <InventoryActionProvider>
-            {/* Snapshot status panel — only when a CSV is loaded */}
+            {/* Snapshot status panel — only when a CSV is loaded.
+                Sub-stage 1.13: PrintButton sits in the toolbar next to the
+                Run button, but only when an analysis exists. */}
             {snapshot && (
-              <Glass className="mb-5 p-5">
+              <Glass className="mb-5 p-5 print:!shadow-none print:!border-0 print:!bg-transparent print:!p-0 print:!mb-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div
@@ -200,23 +210,25 @@ export default async function InventoryPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex-shrink-0">
+                  <div className="flex flex-shrink-0 flex-wrap items-center gap-2 print:hidden">
                     <RunInventoryButton />
+                    {analysis && <PrintButton />}
                   </div>
                 </div>
               </Glass>
             )}
 
-            {/* Results card — when an analysis exists */}
+            {/* Results card — when an analysis exists. This is the printable
+                content; no print:hidden here. */}
             {analysis && analyzedAt ? (
-              <div className="mb-6">
+              <div className="mb-6 print:mb-0">
                 <InventoryResultsCard
                   analysis={analysis}
                   analyzedAt={analyzedAt}
                 />
               </div>
             ) : snapshot ? (
-              <Glass className="mb-6 p-8 text-center">
+              <Glass className="mb-6 p-8 text-center print:hidden">
                 <AlertCircle
                   size={20}
                   strokeWidth={1.5}
@@ -238,8 +250,9 @@ export default async function InventoryPage() {
               </Glass>
             ) : null}
 
-            {/* Upload zone — always available; primary CTA when no snapshot */}
-            <Glass className="p-5">
+            {/* Upload zone — always available; primary CTA when no snapshot.
+                Hidden on print since it's an action surface, not content. */}
+            <Glass className="p-5 print:hidden">
               <InventoryUploadZone hasSnapshot={!!snapshot} />
             </Glass>
           </InventoryActionProvider>

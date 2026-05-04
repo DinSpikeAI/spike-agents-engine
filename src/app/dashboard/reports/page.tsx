@@ -1,8 +1,13 @@
 // src/app/dashboard/reports/page.tsx
 //
-// Sub-stage (in progress) — Manager reports LIST view (replaces the
-// /dashboard/reports placeholder, one of the 3 remaining 404s tracked in
-// CLAUDE.md §11.2).
+// Sub-stage 1.11 — Manager reports LIST view.
+// Sub-stage 1.11 hotfix — render-time stripAiTellsDeep over JSONB.
+// Sub-stage 1.13 — Print/PDF support: chrome elements get `print:hidden` so
+//   if the user runs Ctrl+P from this page, only the latest expanded report
+//   prints cleanly. The expanded ManagerReportCard at the top is the
+//   printable content (already shown via `isLatest`). No explicit
+//   PrintButton on this page — to print a specific historical report, the
+//   user clicks into its detail page where the dedicated button lives.
 //
 // Layout (Dean's UX choice (א) from spec discussion):
 //   - Page header: title + subtitle.
@@ -59,14 +64,136 @@ const DEFAULT_LOCK_STATE: ManagerLockState = {
   nextEligibleAt: null,
   daysUntilNext: 0,
   hoursUntilNext: 0,
-  unreadReportId: null,
-  lastReadAt: null,
+  lastReadReportId: null,
 };
 
 const REPORTS_LIMIT = 12;
 
-export default async function ManagerReportsListPage() {
-  const { userEmail, tenantId } = await requireOnboarded();
+// ─── Hebrew date helpers ──────────────────────────────────────────────
+
+const HE_MONTHS = [
+  "ינואר",
+  "פברואר",
+  "מרץ",
+  "אפריל",
+  "מאי",
+  "יוני",
+  "יולי",
+  "אוגוסט",
+  "ספטמבר",
+  "אוקטובר",
+  "נובמבר",
+  "דצמבר",
+];
+
+function formatDateRange(startIso: string, endIso: string): string {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  const sameMonth =
+    start.getMonth() === end.getMonth() &&
+    start.getFullYear() === end.getFullYear();
+  const sameYear = start.getFullYear() === end.getFullYear();
+
+  if (sameMonth) {
+    return `${start.getDate()}–${end.getDate()} ${HE_MONTHS[start.getMonth()]}`;
+  }
+  if (sameYear) {
+    return `${start.getDate()} ${HE_MONTHS[start.getMonth()]} – ${end.getDate()} ${HE_MONTHS[end.getMonth()]}`;
+  }
+  return `${start.getDate()} ${HE_MONTHS[start.getMonth()]} ${start.getFullYear()} – ${end.getDate()} ${HE_MONTHS[end.getMonth()]} ${end.getFullYear()}`;
+}
+
+function formatRelative(iso: string): string {
+  const now = Date.now();
+  const ts = new Date(iso).getTime();
+  const diffMs = now - ts;
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "היום";
+  if (diffDays === 1) return "אתמול";
+  if (diffDays < 7) return `לפני ${diffDays} ימים`;
+  if (diffDays < 14) return "לפני שבוע";
+  if (diffDays < 30) return `לפני ${Math.floor(diffDays / 7)} שבועות`;
+  if (diffDays < 60) return "לפני חודש";
+  return `לפני ${Math.floor(diffDays / 30)} חודשים`;
+}
+
+// ─── Compact list item for older reports ─────────────────────────────
+
+function ReportListItem({ report }: { report: ManagerReportRow }) {
+  const isUnread = report.read_at === null;
+  const isCritical = report.has_critical_issues;
+  const dateRange = formatDateRange(report.window_start, report.window_end);
+  const createdRelative = formatRelative(report.created_at);
+
+  return (
+    <Link
+      href={`/dashboard/reports/${report.id}`}
+      className="group block transition-opacity hover:opacity-90"
+    >
+      <Glass className="p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              {isCritical ? (
+                <AlertTriangle
+                  size={14}
+                  strokeWidth={1.75}
+                  style={{ color: "var(--color-sys-pink)" }}
+                  aria-label="דוח עם ממצאים קריטיים"
+                />
+              ) : (
+                <CheckCircle2
+                  size={14}
+                  strokeWidth={1.75}
+                  style={{ color: "var(--color-sys-green)" }}
+                  aria-label="דוח ללא ממצאים קריטיים"
+                />
+              )}
+              <span
+                className="text-[14px] font-semibold tracking-tight"
+                style={{ color: "var(--color-ink)" }}
+              >
+                {dateRange}
+              </span>
+              {isUnread && (
+                <span
+                  className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={{
+                    background: "rgba(10, 132, 255, 0.12)",
+                    color: "var(--color-sys-blue)",
+                  }}
+                >
+                  לא נקרא
+                </span>
+              )}
+            </div>
+            <div
+              className="mt-1 text-[12px]"
+              style={{ color: "var(--color-ink-3)" }}
+            >
+              נוצר {createdRelative} · {report.agents_succeeded} סוכנים רצו
+              {report.drafts_flagged > 0 && (
+                <> · {report.drafts_flagged} ממצאים</>
+              )}
+            </div>
+          </div>
+          <ChevronRight
+            size={16}
+            strokeWidth={1.5}
+            className="flex-shrink-0 -rotate-180 transition-transform group-hover:-translate-x-0.5"
+            style={{ color: "var(--color-ink-3)" }}
+          />
+        </div>
+      </Glass>
+    </Link>
+  );
+}
+
+// ─── Main page ───────────────────────────────────────────────────────
+
+export default async function ReportsListPage() {
+  await requireOnboarded();
 
   const supabase = await createClient();
   const {
@@ -74,38 +201,57 @@ export default async function ManagerReportsListPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Tenant chrome (mirrors agents/page.tsx pattern).
+  const userEmail = user.email ?? "";
+
+  // Tenant identity for the sidebar profile.
   const adminDb = createAdminClient();
-  const { data: tenantRow } = await adminDb
-    .from("tenants")
-    .select("name, config")
-    .eq("id", tenantId)
-    .maybeSingle();
+  const {
+    data: { user: u2 },
+  } = await supabase.auth.getUser();
+  const userId = u2?.id;
+  const { data: membership } = userId
+    ? await adminDb
+        .from("memberships")
+        .select("tenant_id")
+        .eq("user_id", userId)
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+  const tenantId = membership?.tenant_id ?? null;
 
-  const tenantConfig =
-    (tenantRow?.config as Record<string, unknown> | null) ?? {};
-  const ownerName =
-    typeof tenantConfig.owner_name === "string"
-      ? tenantConfig.owner_name
-      : null;
-  const businessName =
-    typeof tenantConfig.business_name === "string"
-      ? tenantConfig.business_name
-      : (tenantRow?.name as string | undefined) ?? null;
+  let ownerName: string | null = null;
+  let businessName: string | null = null;
+  if (tenantId) {
+    const { data: tenantRow } = await adminDb
+      .from("tenants")
+      .select("name, config")
+      .eq("id", tenantId)
+      .maybeSingle();
+    const tenantConfig =
+      (tenantRow?.config as Record<string, unknown> | null) ?? {};
+    ownerName =
+      typeof tenantConfig.owner_name === "string"
+        ? tenantConfig.owner_name
+        : null;
+    businessName =
+      typeof tenantConfig.business_name === "string"
+        ? tenantConfig.business_name
+        : (tenantRow?.name as string | undefined) ?? null;
+  }
 
-  // 3 parallel loads.
+  // 3 parallel queries.
   const [reportsResult, lockResult, draftsResult] = await Promise.all([
     listManagerReports(REPORTS_LIMIT),
     getManagerLockState(),
     listPendingDrafts(),
   ]);
 
-  // Sanitize JSONB payloads at render time. Defense-in-depth on top of
-  // manager/run.ts which already applies stripAiTellsDeep at write time
-  // (1.5.1 hotfix in commit 06b686d). This catches pre-1.5.1 reports that
-  // were persisted before the agent-side strip existed, and protects against
-  // future regex-coverage gaps. Per CLAUDE.md §1.9, em-dash (—), en-dash (–)
-  // mid-sentence, and inline #hashtags are forbidden in any agent output.
+  // Sub-stage 1.11 hotfix: sanitize JSONB payloads at render time.
+  // Defense-in-depth on top of manager/run.ts which applies stripAiTellsDeep
+  // at write time (06b686d). Catches pre-1.5.1 reports persisted before
+  // the agent-side strip existed and protects against future regex-coverage
+  // gaps. Per CLAUDE.md §1.9, em-dash, en-dash mid-sentence, and inline
+  // #hashtags are forbidden in any agent output.
   const reports: ManagerReportRow[] = (
     reportsResult.success ? reportsResult.reports ?? [] : []
   ).map((r) => ({
@@ -113,12 +259,15 @@ export default async function ManagerReportsListPage() {
     report: stripAiTellsDeep(r.report),
   }));
 
-  const lockState: ManagerLockState =
-    lockResult.success && lockResult.state ? lockResult.state : DEFAULT_LOCK_STATE;
+  const lockState = lockResult.success
+    ? lockResult.state ?? DEFAULT_LOCK_STATE
+    : DEFAULT_LOCK_STATE;
 
   const pendingCount = draftsResult.success
     ? draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0
     : 0;
+
+  const isAdmin = isAdminEmail(userEmail);
 
   return (
     <div
@@ -126,252 +275,134 @@ export default async function ManagerReportsListPage() {
       dir="rtl"
       style={{ color: "var(--color-ink)" }}
     >
-      <AppleBg />
+      {/* Chrome — hidden on print so a Ctrl+P from this page produces a
+          clean printout of just the latest expanded report. */}
+      <div className="print:hidden">
+        <AppleBg />
+        <Sidebar
+          userEmail={userEmail}
+          ownerName={ownerName}
+          businessName={businessName}
+          isAdmin={isAdmin}
+          pendingCount={pendingCount}
+        />
+        <MobileHeader pendingCount={pendingCount} />
+        <BottomNav pendingCount={pendingCount} />
+        <WhatsAppFab />
+      </div>
 
-      <Sidebar
-        userEmail={userEmail}
-        ownerName={ownerName}
-        businessName={businessName}
-        isAdmin={isAdminEmail(userEmail)}
-        pendingCount={pendingCount}
-      />
-      <MobileHeader
-        userEmail={userEmail}
-        ownerName={ownerName}
-        businessName={businessName}
-        isAdmin={isAdminEmail(userEmail)}
-        pendingCount={pendingCount}
-      />
-
-      <div className="md:mr-[232px]">
-        <main className="spike-scroll mx-auto max-w-[920px] px-4 pb-[96px] pt-6 sm:px-6 md:px-10 md:pb-20 md:pt-10">
+      <div className="md:mr-[232px] print:!mr-0">
+        <main className="spike-scroll mx-auto max-w-[920px] px-4 pb-20 pt-6 md:px-8 md:pt-8 print:!px-0 print:!py-4 print:!max-w-none">
           {/* Page header */}
-          <h1
-            className="mb-2 text-[26px] font-semibold leading-[1.15] tracking-[-0.025em] sm:text-[30px]"
-            style={{ color: "var(--color-ink)" }}
-          >
-            דוחות מנהל
-          </h1>
-          <p
-            className="mb-8 text-[14px] leading-[1.55]"
-            style={{ color: "var(--color-ink-3)" }}
-          >
-            סקירה שבועית של ביצועי הסוכנים, איכות הטיוטות, מדדי צמיחה
-            והמלצה לפעולה. מתעדכן כל יום ראשון או בהפעלה ידנית.
-          </p>
+          <div className="mb-6 print:mb-3">
+            <div className="mb-2 flex items-center gap-3">
+              <div
+                className="flex h-11 w-11 items-center justify-center rounded-[12px] text-[22px] print:hidden"
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(245,247,252,0.7))",
+                  border: "1px solid rgba(255,255,255,0.9)",
+                  boxShadow:
+                    "0 4px 12px rgba(15,20,30,0.06), inset 0 1px 0 rgba(255,255,255,0.6)",
+                }}
+              >
+                📊
+              </div>
+              <h1
+                className="text-[24px] font-semibold tracking-[-0.02em]"
+                style={{ color: "var(--color-ink)" }}
+              >
+                דוחות
+              </h1>
+            </div>
+            <p
+              className="text-[13.5px] leading-[1.55] print:hidden"
+              style={{ color: "var(--color-ink-2)" }}
+            >
+              סקירה שבועית שמסכמת את ביצועי הסוכנים, איכות הטיוטות, מצב
+              המערכת והמלצה אחת על מה שכדאי לטפל בקרוב.
+            </p>
+          </div>
 
+          {/* Empty state */}
           {reports.length === 0 ? (
-            <EmptyState lockState={lockState} />
+            <Glass className="p-8 text-center print:hidden">
+              <div
+                className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full"
+                style={{
+                  background: "rgba(10, 132, 255, 0.08)",
+                }}
+              >
+                <CheckCircle2
+                  size={20}
+                  strokeWidth={1.5}
+                  style={{ color: "var(--color-sys-blue)" }}
+                />
+              </div>
+              <div
+                className="text-[15px] font-semibold"
+                style={{ color: "var(--color-ink)" }}
+              >
+                עוד אין דוחות
+              </div>
+              <div
+                className="mx-auto mt-1.5 max-w-[420px] text-[12.5px] leading-[1.6]"
+                style={{ color: "var(--color-ink-2)" }}
+              >
+                הסוכן Manager רץ אוטומטית פעם בשבוע (ראשון בבוקר). אפשר גם
+                להריץ אותו ידנית עכשיו כדי לקבל את הדוח הראשון.
+              </div>
+              <div className="mt-4 flex justify-center">
+                <RunManagerButton lockState={lockState} />
+              </div>
+            </Glass>
           ) : (
             <>
-              {/* Latest report — fully expanded.
-                  ManagerReportCard handles all 5 schema sections internally;
-                  this page does NOT re-implement that rendering. */}
-              <ManagerReportCard report={reports[0]} isLatest={true} />
+              {/* Latest report — fully expanded via ManagerReportCard isLatest.
+                  This is the printable content. Subsequent items are hidden
+                  on print (compact list isn't useful in a printout). */}
+              <div className="mb-6 print:mb-0">
+                <ManagerReportCard report={reports[0]!} isLatest />
+              </div>
 
+              {/* Older reports — compact list. Hidden on print. */}
               {reports.length > 1 && (
-                <section className="mt-8">
-                  <div className="mb-4 flex items-baseline gap-3">
+                <div className="print:hidden">
+                  <div className="mb-3 flex items-center justify-between">
                     <h2
-                      className="text-[17px] font-semibold tracking-[-0.01em]"
-                      style={{ color: "var(--color-ink)" }}
+                      className="text-[14px] font-semibold tracking-tight"
+                      style={{ color: "var(--color-ink-2)" }}
                     >
                       דוחות קודמים
+                      <span
+                        className="ml-1.5 text-[12px] font-normal"
+                        style={{ color: "var(--color-ink-3)" }}
+                      >
+                        ({reports.length - 1})
+                      </span>
                     </h2>
-                    <span
-                      className="text-[12.5px]"
-                      style={{ color: "var(--color-ink-3)" }}
-                    >
-                      ({reports.length - 1})
-                    </span>
-                    <div className="section-divider flex-1" />
                   </div>
-
-                  <div className="flex flex-col gap-3">
-                    {reports.slice(1).map((r) => (
-                      <ReportListItem key={r.id} report={r} />
+                  <div className="space-y-2.5">
+                    {reports.slice(1).map((report) => (
+                      <ReportListItem key={report.id} report={report} />
                     ))}
                   </div>
 
                   {reports.length === REPORTS_LIMIT && (
-                    <p
-                      className="mt-5 text-center text-[12.5px]"
+                    <div
+                      className="mt-3 text-center text-[11.5px]"
                       style={{ color: "var(--color-ink-3)" }}
                     >
-                      מציג את {REPORTS_LIMIT} הדוחות האחרונים.
-                    </p>
+                      מציג {REPORTS_LIMIT} דוחות אחרונים. דוחות ישנים יותר
+                      קיימים אבל לא מוצגים כאן בגרסה זו.
+                    </div>
                   )}
-                </section>
+                </div>
               )}
             </>
           )}
         </main>
-
-        <WhatsAppFab />
       </div>
-
-      <BottomNav pendingCount={pendingCount} />
     </div>
   );
-}
-
-// ═════════════════════════════════════════════════════════════
-// Helper components — private to this file
-// ═════════════════════════════════════════════════════════════
-
-/**
- * Empty state shown when no reports exist for the tenant.
- *
- * Per Dean's UX answer (3-א): explanatory text + RunManagerButton (which
- * itself handles the lock state machine). When canRun is false the button
- * gracefully degrades to a different visual; no need to gate it here.
- */
-function EmptyState({ lockState }: { lockState: ManagerLockState }) {
-  return (
-    <Glass className="p-8 text-center sm:p-10">
-      <div className="mb-4 text-[40px] leading-none">📊</div>
-      <h2
-        className="mb-2 text-[18px] font-semibold tracking-[-0.01em]"
-        style={{ color: "var(--color-ink)" }}
-      >
-        אין דוחות עדיין
-      </h2>
-      <p
-        className="mx-auto mb-5 max-w-[480px] text-[14px] leading-[1.6]"
-        style={{ color: "var(--color-ink-2)" }}
-      >
-        סוכן המנהל מסכם שבועית את ביצועי כל הסוכנים, דוגם טיוטות לבקרת
-        איכות, ומציע פעולה אחת לשיפור. רוצה דוח ראשון?
-      </p>
-      <div className="flex justify-center">
-        <RunManagerButton lockState={lockState} />
-      </div>
-    </Glass>
-  );
-}
-
-/**
- * Compact card for an older report. The whole card is a link to the
- * detail page. Renders summary headline (truncated), date range, relative
- * "X days ago", critical badge if applicable, and read/unread pill.
- */
-function ReportListItem({ report }: { report: ManagerReportRow }) {
-  // Defensive read of summary — payload is typed Record<string, unknown>
-  // by the action layer; runtime guarantees from manager/schema.ts.
-  const payload = report.report as { summary?: string };
-  const summary =
-    typeof payload.summary === "string" && payload.summary.length > 0
-      ? payload.summary
-      : "דוח שבועי";
-
-  const isUnread = report.read_at === null;
-  const isCritical = report.has_critical_issues;
-
-  return (
-    <Link
-      href={`/dashboard/reports/${report.id}`}
-      className="block transition-opacity hover:opacity-90"
-    >
-      <Glass
-        className="p-4 sm:p-5"
-        style={
-          isCritical
-            ? { borderColor: "rgba(214, 51, 108, 0.30)" }
-            : undefined
-        }
-      >
-        <div className="flex items-start justify-between gap-3">
-          {/* Left: dates + summary */}
-          <div className="min-w-0 flex-1">
-            <div
-              className="mb-1 text-[11.5px]"
-              style={{ color: "var(--color-ink-3)" }}
-            >
-              {formatDateRange(report.window_start, report.window_end)} ·{" "}
-              {formatRelative(report.created_at)}
-            </div>
-            <p
-              className="line-clamp-2 text-[14px] leading-[1.45]"
-              style={{ color: "var(--color-ink)" }}
-            >
-              {summary}
-            </p>
-          </div>
-
-          {/* Right: badges + chevron */}
-          <div className="flex flex-shrink-0 flex-col items-end gap-1.5">
-            {isCritical && (
-              <span
-                className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-semibold"
-                style={{
-                  background: "rgba(214, 51, 108, 0.10)",
-                  border: "1px solid rgba(214, 51, 108, 0.30)",
-                  color: "var(--color-sys-pink)",
-                }}
-              >
-                <AlertTriangle size={10} strokeWidth={2.4} />
-                דחוף
-              </span>
-            )}
-            {isUnread ? (
-              <span
-                className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-medium"
-                style={{
-                  background: "var(--color-sys-blue-soft)",
-                  color: "var(--color-sys-blue)",
-                }}
-              >
-                לא נקרא
-              </span>
-            ) : (
-              <span
-                className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px]"
-                style={{ color: "var(--color-ink-3)" }}
-              >
-                <CheckCircle2 size={10} strokeWidth={2.4} />
-                נקרא
-              </span>
-            )}
-            <ChevronRight
-              size={14}
-              strokeWidth={1.75}
-              style={{ color: "var(--color-ink-3)" }}
-            />
-          </div>
-        </div>
-      </Glass>
-    </Link>
-  );
-}
-
-// ═════════════════════════════════════════════════════════════
-// Format helpers
-// ═════════════════════════════════════════════════════════════
-
-function formatDateRange(startIso: string, endIso: string): string {
-  const start = new Date(startIso);
-  const end = new Date(endIso);
-  const startStr = start.toLocaleDateString("he-IL", {
-    day: "numeric",
-    month: "short",
-  });
-  const endStr = end.toLocaleDateString("he-IL", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-  return `${startStr} – ${endStr}`;
-}
-
-function formatRelative(iso: string): string {
-  const d = new Date(iso);
-  const diffMs = Date.now() - d.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays <= 0) return "היום";
-  if (diffDays === 1) return "אתמול";
-  if (diffDays < 7) return `לפני ${diffDays} ימים`;
-  if (diffDays < 14) return "לפני שבוע";
-  if (diffDays < 30) return `לפני ${Math.floor(diffDays / 7)} שבועות`;
-  if (diffDays < 60) return "לפני חודש";
-  return `לפני ${Math.floor(diffDays / 30)} חודשים`;
 }
