@@ -2,7 +2,7 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-04 (end of Sub-stage 1.9 — refactor of dashboard actions). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9 also complete and live in production. Onboarding banner + showcase rename + tenant settings page + agents overview page + actions.ts split into 7 focused files. Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead.
+> **Last updated:** 2026-05-04 (end of Sub-stage 1.10 — Alerts page). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9, 1.10 also complete and live in production. Onboarding banner + showcase rename + tenant settings page + agents overview page + actions.ts split into 7 files + alerts/notifications inbox. Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead.
 
 ---
 
@@ -17,7 +17,7 @@
 - **Repo (landing):** https://github.com/DinSpikeAI/spike-agents — separate marketing site (Next.js 16, Tailwind v4, RTL, Web3Forms). Don't confuse the two.
 - **Local dev:** `C:\Users\Din\Desktop\spike-engine`
 - **Domain:** `app.spikeai.co.il` (production) · `localhost:3000` (dev).
-- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. **Post-Stage-1 polish (1.6, 1.7, 1.8, 1.9) also complete:** onboarding banner shows for new tenants with 0 non-mock runs; tenant settings page lets owners edit core fields; agents overview page shows per-agent activity stats; **`src/app/dashboard/actions.ts` refactored from 1430-line monolith into 7 focused files under `actions/`**. Verified live in production. Pre-launch — no real customers yet.
+- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. **Post-Stage-1 polish (1.6-1.10) also complete:** onboarding banner shows for new tenants with 0 non-mock runs; tenant settings page lets owners edit core fields; agents overview page shows per-agent activity stats; `src/app/dashboard/actions.ts` refactored from 1430-line monolith into 7 focused files under `actions/`; **alerts/notifications inbox page at `/dashboard/alerts` with 4-tab filtering and click-to-read**. Verified live in production. Pre-launch — no real customers yet.
 - **Don't propose:** NPS surveys · schedule optimization for staff · contract review · crypto/Web3 · "senior manager of agents" · OpenAI fallback · standalone mobile app · 360dialog or other BSP middlemen · merging the split actions/ files back into one.
 - **Next up (Stage 2):** Meta Business verification + Embedded Signup UI + production WhatsApp templates. See §12.3.
 
@@ -107,6 +107,8 @@ The `src/app/dashboard/actions.ts` file is a **re-export shim only**. Implementa
 
 See §10.23 for the full split structure.
 
+**Page-specific server actions:** New pages (settings 1.7, alerts 1.10) get their OWN `actions.ts` co-located with the page (e.g. `src/app/dashboard/alerts/actions.ts`). They import shared helpers from `@/app/dashboard/actions/_shared` but don't go through the top-level re-export shim. This keeps page-scoped logic close to the page.
+
 ---
 
 ## 2. Working with Dean
@@ -132,6 +134,8 @@ Always full file. When 2 files share the same name, use distinct names in `/outp
 **Browser download gotcha:** Sometimes Edge silently saves a 0-byte file from `present_files`. Always verify with `Get-Item "$HOME\Downloads\file" | Select-Object Length` if a Move-Item fails. If 0 bytes, re-download.
 
 **file-tree generation gotcha:** When asked for a file tree, generate it to `$HOME\Downloads` or `$env:TEMP`, not in repo root.
+
+**Commit/push/deploy in one message (session 6 rule):** When tsc passes, send commit + push + deploy commands in the SAME message — don't split across two turns. Dean explicitly requested this mid-session 6.
 
 ### 2.4 Don't Relitigate Settled Decisions
 - 9 agents stay 9 (8 customer-facing + 1 cleanup)
@@ -191,7 +195,7 @@ Claude.ai sometimes wraps `INTEGRATION-NOTES.md`, `CLAUDE.md`, and `localhost` a
 - 30-60 min code + self-audit
 - 5-15 min Move-Item + tsc + manual test
 - 5 min commit + push + vercel --prod
-- **Total: ~1-2.5 hours typical.** Mechanical sweeps (1.5.1, 1.5.5) ~30-45 min. UI features (1.4, 1.7, 1.8) ~1.5h with proper §2.12 prep. **Refactor (1.9) ~2 hours** including smoke test in production.
+- **Total: ~1-2.5 hours typical.** Mechanical sweeps (1.5.1, 1.5.5) ~30-45 min. UI features (1.4, 1.7, 1.8, 1.10) ~1-1.5h with proper §2.12 prep. **Refactor (1.9) ~2 hours** including smoke test in production.
 
 ### 2.12 Design Tokens & Patterns First (1.4 lesson)
 
@@ -280,6 +284,9 @@ spike-engine/
 │   │   │   │   └── actions.ts                 # updateTenantSettings server action
 │   │   │   ├── agents/                        # 1.8 — agents overview page
 │   │   │   │   └── page.tsx
+│   │   │   ├── alerts/                        # 1.10 — notifications inbox
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── actions.ts                 # listNotifications, markRead, markAllRead
 │   │   │   ├── actions.ts                     # 1.9 REFACTOR: 81 lines, re-exports only
 │   │   │   └── actions/                       # 1.9 NEW: split implementations
 │   │   │       ├── _shared.ts                 # helpers: getActiveTenant + checkAgentRateLimit (no "use server")
@@ -315,6 +322,7 @@ spike-engine/
 │   │   │   ├── onboarding-banner.tsx          # 1.6
 │   │   │   ├── settings-form.tsx              # 1.7
 │   │   │   ├── agent-overview-card.tsx        # 1.8
+│   │   │   ├── alerts-list.tsx                # 1.10
 │   │   │   └── ... (other dashboard components)
 │   │   ├── demo/                              # NB: still named /demo even though page is /showcase. Internal-only naming.
 │   │   │   ├── demo-panel.tsx                 # 1.6: import path updated to /showcase/actions
@@ -403,6 +411,21 @@ Status values: `pending`, `rejected`, `expired` (1.5.4 — migration 021 idempot
 `idempotency_keys` schema (verified): `key text, tenant_id uuid, request_hash text, response jsonb, status text, expires_at timestamptz, created_at timestamptz`. Cleanup cron uses table's own `expires_at`.
 
 `agent_runs.is_mocked` (boolean, nullable): true for runs from `/dashboard/showcase` demo. Onboarding banner (1.6) and agents overview (1.8) filter it out via `.or("is_mocked.is.null,is_mocked.eq.false")`.
+
+**`notifications` table schema (verified from migration 002):**
+```
+id          uuid primary key default gen_random_uuid()
+tenant_id   uuid not null references tenants(id) on delete cascade
+user_id     uuid references auth.users(id)  -- NULL = visible to all tenant members
+type        text not null
+title_he    text not null
+body_he     text
+link        text
+read_at     timestamptz
+created_at  timestamptz default now()
+```
+Index: `notifications_user_unread_idx on (user_id, created_at desc) where read_at is null`.
+Used by Alerts page (1.10). Tab filtering uses `type` patterns: `agents` matches a fixed list (agent_succeeded, draft_created, watcher_alert, etc.); `costs` matches `LIKE 'cost_%'`. See `src/app/dashboard/alerts/actions.ts` for the canonical list.
 
 ### 5.5 Tenant Config
 - `name` — business
@@ -779,6 +802,56 @@ src/app/dashboard/
 
 **See §1.10 for the iron rules around this structure (don't merge back, don't add to top-level, etc).**
 
+### 10.24 Sub-stage 1.10 — DONE (commit `644a5ef`)
+**Notifications inbox at `/dashboard/alerts`.**
+
+**Why:** Third placeholder 404 page replaced. Tenants need a centralized place to see what their agents have been doing — succeeded runs, failed runs, drafts created, hot leads classified, cost alerts. The `notifications` table existed since migration 002 but had no UI.
+
+**Three new files:**
+- `src/app/dashboard/alerts/actions.ts` — Three server actions:
+  - `listNotifications(tab)` — scoped to tenant + (user_id=current OR user_id IS NULL for tenant-wide). Tab filtering is server-side via `.in()` / `.like()` / `.is()`. Capped at 100 rows. Also returns `unreadCount` via separate count query for the tab badge.
+  - `markNotificationRead(id)` — idempotent (only updates if `read_at IS NULL`). Calls `revalidatePath("/dashboard/alerts")`.
+  - `markAllNotificationsRead()` — bulk update for current user, returns `markedCount` for toast feedback. Note: tenant-wide notifications (user_id IS NULL) are also affected — schema limitation we accept (read_at is per-row, not per-user).
+- `src/app/dashboard/alerts/page.tsx` — Server Component, full chrome. Initial-loads notifications for tab='all' + drafts count in parallel. Page is `max-w-[920px]`.
+- `src/components/dashboard/alerts-list.tsx` — Client Component. Owns currentTab/notifications/unreadCount state. useEffect refetches on tab change. Optimistic mark-read on click for instant feedback. Sonner toast on mark-all-read.
+
+**4 tabs:**
+- **הכל** — no filter
+- **לא נקראו** — `read_at IS NULL`. Tab shows numeric badge with unread count.
+- **סוכנים** — `type IN [agent_succeeded, agent_failed, draft_created, draft_approved, draft_rejected, manager_report_ready, watcher_alert, hot_lead_classified]`
+- **כספיות** — `type LIKE 'cost_%'`
+
+**Click on notification:**
+- Optimistic local state update (mark read instantly in UI)
+- Fire-and-forget server `markNotificationRead`
+- Navigate to `notification.link` if set (e.g. `/dashboard/approvals`)
+
+**Empty state per tab (decision: professional but warm):**
+- **all:** "אין התראות כרגע" / "כשתפעיל סוכנים, התראות יופיעו כאן עם דיווחים על לידים, טיוטות וחריגות."
+- **unread:** "הכל נקרא" / "אין התראות שלא נקראו. תוכל לעבור לטאב 'הכל' לראות את כל ההיסטוריה."
+- **agents:** "אין דיווחים מהסוכנים" / "התראות מהסוכנים על ריצות מוצלחות, לידים חדשים וטיוטות יופיעו כאן."
+- **costs:** "אין התראות כספיות" / "התראות על הוצאות, מגבלות תקציב ושימוש חריג ב-AI יופיעו כאן."
+
+**Visual:**
+- Tab bar in rounded inset Glass frame (active tab gets white background + tiny shadow)
+- Card per notification: blue dot for unread, subtle blue border tint when unread
+- "לפרטים →" link affordance with ExternalLink icon when notification has a link
+- Hebrew relative time formatter inlined (mirrors agent-overview-card; can't reuse overview.ts because that file is server-only)
+
+**Schema reference: notifications table (verified from migration 002):**
+```
+id          uuid primary key default gen_random_uuid()
+tenant_id   uuid not null references tenants(id) on delete cascade
+user_id     uuid references auth.users(id)  -- NULL = visible to all tenant members
+type        text not null
+title_he    text not null
+body_he     text
+link        text
+read_at     timestamptz
+created_at  timestamptz default now()
+```
+Index `notifications_user_unread_idx on (user_id, created_at desc) where read_at is null` — fast for unread queries.
+
 ---
 
 ## 11. Current Status
@@ -795,18 +868,19 @@ src/app/dashboard/
 - **Tenant settings page (1.7)** — owners can edit `owner_name`, `business_name`, gender, vertical
 - **Agents overview page (1.8)** — per-agent activity stats
 - **`actions.ts` refactored from 1430-line monolith into 7 focused files (1.9)**
+- **Notifications inbox at /dashboard/alerts (1.10)** — 4-tab filtering, click-to-read, mark-all-read
 - Real-time WhatsApp pipeline (~15-16s end-to-end, ~₪0.04/hot-lead)
 - Cleanup cron + Recovery cron daily
 - All deployed live to `app.spikeai.co.il`
 
 ### 11.2 Pending — Not Blocking 🚧
-- **4 sidebar pages still 404** (was 7 before 1.6/1.7/1.8): דוחות, התראות, מרכז בקרה, אמון ופרטיות
+- **3 sidebar pages still 404** (was 7 before 1.6/1.7/1.8/1.10): דוחות, מרכז בקרה, אמון ופרטיות
 - ~~`actions.ts` 1430 lines — split~~ ✅ DONE (1.9)
 - Race in `inventory-upload-zone` + `run-inventory-button`
 - 2 moderate npm audit vulnerabilities
 - `integrations` table schema not finalized
 - defamation-guard not wrapped in withRetry (low priority)
-- Manager dashboard view (backend exists, no UI)
+- Manager dashboard view (backend exists, no UI) — would replace דוחות placeholder
 
 ### 11.3 Pending — Stage 2 ⚠️
 - Meta Business Manager verification (2-10 days async — needs business registration first; עוסק פטור acceptable per session 5 web research, 3 IL sources confirmed)
@@ -852,6 +926,7 @@ src/app/dashboard/
 - 1.7 ✅ Tenant settings page
 - 1.8 ✅ Agents overview page
 - 1.9 ✅ Refactor of dashboard actions.ts (1430 lines → 7 focused files)
+- 1.10 ✅ Notifications inbox at /dashboard/alerts
 
 ### 12.3 Stage 2 — Production WhatsApp (NEXT)
 1. **PRE-REQ:** Dean registers as עוסק פטור (~30 min, free, online at רשות המסים)
@@ -948,6 +1023,7 @@ Competitors: vcita, HubSpot Breeze, Salesforce Agentforce, Toast IQ, GlossGenius
 - ❌ **Add new server actions to top-level `actions.ts` (1.9).** Add to the appropriate file in `actions/` and re-export.
 - ❌ **Merge the `actions/` files back into one (1.9).** The split is permanent.
 - ❌ **Add `"use server"` to `actions/_shared.ts` (1.9).** It exports helpers, not server actions.
+- ❌ **Send commit + push + deploy in two separate messages (session 6 rule).** Always one message.
 
 ### 15.5 PowerShell
 - 2 separate windows (dev + commands)
@@ -975,7 +1051,8 @@ If skipped: expect 3-4 design iterations.
 - 1.4.5: ~30min · 1.5.1: ~45min + 15min hotfix · 1.5.2: ~45min
 - 1.5.3: ~1.5h · 1.5.4: ~1.5h · 1.5.5: ~30min
 - 1.6: ~1.5h · 1.7: ~1.5h · 1.8: ~1h
-- **1.9: ~2h** (refactor + smoke test + docs)
+- 1.9: ~2h (refactor + smoke test + docs)
+- **1.10: ~1h** (alerts page + 4 tabs + 3 server actions)
 
 ### 15.8 Vercel Hobby Tier Cron Limit (Session 4 lesson — CRITICAL) ⚠️
 
@@ -1015,7 +1092,7 @@ For any structural refactor of a multi-import file:
 
 Conventional commits, English subject, Hebrew body OK.
 Format: `<type>(<scope>): <subject>`
-Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `sidebar`, `cron`, `pii`, `settings`, `actions`.
+Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `sidebar`, `cron`, `pii`, `settings`, `actions`, `alerts`.
 
 ---
 
@@ -1031,7 +1108,7 @@ If you are Claude reading this for the first time:
 6. ✅ Confirm you've read this file in your first reply, in 2-3 lines max.
 
 **Sample first reply:**
-> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1 עד 1.5.5) + Post-Stage-1 polish (1.6 banner+showcase, 1.7 settings, 1.8 agents overview, 1.9 actions refactor). הכל בייצור על app.spikeai.co.il. הצעד הבא הוא Stage 2 (Meta verification + Embedded Signup) או placeholder pages נוספים (4 שנשארו). מה אתה רוצה לעשות?
+> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1 עד 1.5.5) + Post-Stage-1 polish (1.6 banner+showcase, 1.7 settings, 1.8 agents overview, 1.9 actions refactor, 1.10 alerts inbox). הכל בייצור על app.spikeai.co.il. הצעד הבא הוא Stage 2 (Meta verification + Embedded Signup) או placeholder pages נוספים (3 שנשארו: דוחות, מרכז בקרה, אמון ופרטיות). מה אתה רוצה לעשות?
 
 ---
 
@@ -1046,6 +1123,8 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 
 | Hash | What |
 |---|---|
+| `644a5ef` | feat(alerts): notifications inbox page (Sub-stage 1.10) |
+| `ec5922f` | docs: update CLAUDE.md for sub-stage 1.9 (actions refactor) |
 | `799bfc4` | refactor(actions): split monolithic actions.ts into 7 focused files (Sub-stage 1.9) |
 | `f70178d` | docs: update CLAUDE.md for sub-stages 1.6, 1.7, 1.8 |
 | `8796d8e` | feat(agents): agents overview page (Sub-stage 1.8) |
@@ -1097,7 +1176,9 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 - Onboarding banner → `src/components/dashboard/onboarding-banner.tsx` (1.6)
 - Settings form → `src/components/dashboard/settings-form.tsx` (1.7)
 - Agent overview card → `src/components/dashboard/agent-overview-card.tsx` (1.8)
+- Alerts list → `src/components/dashboard/alerts-list.tsx` (1.10)
 - Settings server action → `src/app/dashboard/settings/actions.ts` (1.7)
+- Alerts server actions → `src/app/dashboard/alerts/actions.ts` (1.10)
 - Showcase page → `src/app/dashboard/showcase/page.tsx` (1.6, replaces /demo)
 - **Dashboard server actions (1.9 split):**
   - Re-export shim → `src/app/dashboard/actions.ts`
