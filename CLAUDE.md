@@ -2,7 +2,7 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-04 (end of Sub-stage 1.10 — Alerts page). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9, 1.10 also complete and live in production. Onboarding banner + showcase rename + tenant settings page + agents overview page + actions.ts split into 7 files + alerts/notifications inbox. Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead.
+> **Last updated:** 2026-05-05 (end of Sub-stage 1.11 — Manager reports list + detail). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9, 1.10, 1.11 also complete and live in production. Onboarding banner + showcase rename + tenant settings page + agents overview page + actions.ts split into 7 files + alerts/notifications inbox + manager reports pages with render-time AI-tell strip. Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead.
 
 ---
 
@@ -17,7 +17,7 @@
 - **Repo (landing):** https://github.com/DinSpikeAI/spike-agents — separate marketing site (Next.js 16, Tailwind v4, RTL, Web3Forms). Don't confuse the two.
 - **Local dev:** `C:\Users\Din\Desktop\spike-engine`
 - **Domain:** `app.spikeai.co.il` (production) · `localhost:3000` (dev).
-- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. **Post-Stage-1 polish (1.6-1.10) also complete:** onboarding banner shows for new tenants with 0 non-mock runs; tenant settings page lets owners edit core fields; agents overview page shows per-agent activity stats; `src/app/dashboard/actions.ts` refactored from 1430-line monolith into 7 focused files under `actions/`; **alerts/notifications inbox page at `/dashboard/alerts` with 4-tab filtering and click-to-read**. Verified live in production. Pre-launch — no real customers yet.
+- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. **Post-Stage-1 polish (1.6-1.11) also complete:** onboarding banner shows for new tenants with 0 non-mock runs; tenant settings page lets owners edit core fields; agents overview page shows per-agent activity stats; `src/app/dashboard/actions.ts` refactored from 1430-line monolith into 7 focused files under `actions/`; **alerts/notifications inbox page at `/dashboard/alerts` with 4-tab filtering and click-to-read**; **manager reports list at `/dashboard/reports` with latest report expanded + compact history, detail view at `/dashboard/reports/[id]` with explicit mark-as-read CTA triggering the 7-day Manager lock, render-time `stripAiTellsDeep` defense-in-depth on top of write-time strip from 1.5.1**. Verified live in production. Pre-launch — no real customers yet.
 - **Don't propose:** NPS surveys · schedule optimization for staff · contract review · crypto/Web3 · "senior manager of agents" · OpenAI fallback · standalone mobile app · 360dialog or other BSP middlemen · merging the split actions/ files back into one.
 - **Next up (Stage 2):** Meta Business verification + Embedded Signup UI + production WhatsApp templates. See §12.3.
 
@@ -107,7 +107,7 @@ The `src/app/dashboard/actions.ts` file is a **re-export shim only**. Implementa
 
 See §10.23 for the full split structure.
 
-**Page-specific server actions:** New pages (settings 1.7, alerts 1.10) get their OWN `actions.ts` co-located with the page (e.g. `src/app/dashboard/alerts/actions.ts`). They import shared helpers from `@/app/dashboard/actions/_shared` but don't go through the top-level re-export shim. This keeps page-scoped logic close to the page.
+**Page-specific server actions:** New pages (settings 1.7, alerts 1.10, reports 1.11) get their OWN `actions.ts` co-located with the page (e.g. `src/app/dashboard/alerts/actions.ts`, `src/app/dashboard/reports/actions.ts`). They import shared helpers from `@/app/dashboard/actions/_shared` but don't go through the top-level re-export shim. This keeps page-scoped logic close to the page.
 
 ---
 
@@ -287,6 +287,10 @@ spike-engine/
 │   │   │   ├── alerts/                        # 1.10 — notifications inbox
 │   │   │   │   ├── page.tsx
 │   │   │   │   └── actions.ts                 # listNotifications, markRead, markAllRead
+│   │   │   ├── reports/                        # 1.11 — manager reports list + detail
+│   │   │   │   ├── page.tsx                   # list view: latest expanded + compact history
+│   │   │   │   ├── actions.ts                 # getManagerReport(reportId) — page-scoped
+│   │   │   │   └── [id]/page.tsx              # detail view: chrome + breadcrumb + ManagerReportCard
 │   │   │   ├── actions.ts                     # 1.9 REFACTOR: 81 lines, re-exports only
 │   │   │   └── actions/                       # 1.9 NEW: split implementations
 │   │   │       ├── _shared.ts                 # helpers: getActiveTenant + checkAgentRateLimit (no "use server")
@@ -323,6 +327,7 @@ spike-engine/
 │   │   │   ├── settings-form.tsx              # 1.7
 │   │   │   ├── agent-overview-card.tsx        # 1.8
 │   │   │   ├── alerts-list.tsx                # 1.10
+│   │   │   ├── report-mark-read-button.tsx    # 1.11 — explicit mark-as-read (Client Component)
 │   │   │   └── ... (other dashboard components)
 │   │   ├── demo/                              # NB: still named /demo even though page is /showcase. Internal-only naming.
 │   │   │   ├── demo-panel.tsx                 # 1.6: import path updated to /showcase/actions
@@ -852,6 +857,34 @@ created_at  timestamptz default now()
 ```
 Index `notifications_user_unread_idx on (user_id, created_at desc) where read_at is null` — fast for unread queries.
 
+### 10.25 Sub-stage 1.11 — DONE
+**Manager reports list + detail at `/dashboard/reports` and `/dashboard/reports/[id]`.**
+
+**Why:** Replaces the דוחות placeholder — one of the 3 remaining 404s tracked in §11.2 before this sub-stage; 2 remain (מרכז בקרה, אמון ופרטיות). Tenants need history of weekly Manager reports — the existing `/dashboard/manager` page presumably shows the latest, but historical comparison requires a list view. Backend was already complete (`listManagerReports`, `getManagerLockState`, `markManagerReportRead`, `triggerManagerAgentAction`) since Stage 1; this sub-stage is purely UI plus one new page-scoped server action.
+
+**Decision (architectural):** Reuse the existing `<ManagerReportCard>` component (used on `/dashboard/manager`) for ALL report rendering. Do NOT duplicate the 5-section JSONB rendering logic. The first iteration of the detail page in this sub-stage did duplicate this — caught and corrected before commit, with the rewrite being ~70% smaller than the duplicate version. The 1.4 lesson (read existing patterns first) applies equally to existing components.
+
+**Four new files:**
+
+NEW:
+- `src/app/dashboard/reports/actions.ts` — page-scoped server action `getManagerReport(reportId)`. Returns `{ success, report?, notFound?, error? }`. Tenant-scoped via `.eq("tenant_id", ...)` so cross-tenant access fails closed (notFound), not as wrong-tenant data.
+- `src/app/dashboard/reports/page.tsx` — Server Component, full chrome. Loads in parallel: `listManagerReports(12)` + `getManagerLockState()` + `listPendingDrafts()`. Renders empty state with `<RunManagerButton />` if no reports, or latest report via `<ManagerReportCard isLatest />` + compact history of older reports as `<ReportListItem>` linking to `/dashboard/reports/[id]`. Pagination cap at 12 (no "load more" in v1; revisit when a real customer fills it).
+- `src/app/dashboard/reports/[id]/page.tsx` — Server Component, full chrome, `max-w-[920px]`. Breadcrumb back to `/dashboard/reports` + `<ReportMarkReadButton>` placed ABOVE the report card so the action is visible without scrolling on long reports + `<ManagerReportCard isLatest>`. NotFound case → `next/navigation` `notFound()`. Other errors → in-page `<ErrorShell>` retaining chrome navigation.
+- `src/components/dashboard/report-mark-read-button.tsx` — Client Component. `useTransition` pending state + sonner toast. If `initialReadAt !== null` renders a green "נקרא ב-..." pill (read-only); else an active blue CTA. On click: optimistic local state switch + `markManagerReportRead` + `router.refresh()`. Idempotent at server (the action filters `.is("read_at", null)`); the optimistic switch prevents UI flicker during round-trip.
+
+**Render-time defense-in-depth (1.11 hotfix, separate commit):**
+Both pages apply `stripAiTellsDeep(report.report)` before passing to `<ManagerReportCard>`. This catches pre-1.5.1 reports persisted before `manager/run.ts` got `stripAiTellsDeep` at write time (commit `06b686d`), and protects against any future regex-coverage gap. Found in production: existing seed reports contained em-dashes that bypassed the 1.5.1 fix because they were written before it deployed.
+
+**Decision history (Dean's UX answers):**
+- (1) mark-as-read: explicit click button (option א) — the 7-day lock is consequential, never auto-fire on view/scroll/hover
+- (2) list page layout: latest expanded + compact history (option א)
+- (3) empty state: explainer + RunManagerButton (option א)
+- (4) pagination: hard-cap at 12 (option ב, simpler than infinite scroll)
+
+**Iron rules reinforced:**
+- "AI מסמן, בעלים מחליט" — the mark-as-read button is the explicit decision point that opens the lock
+- "Anti-AI hygiene" (§1.9) — render-time strip ensures even pre-1.5.1 data renders clean
+
 ---
 
 ## 11. Current Status
@@ -869,18 +902,18 @@ Index `notifications_user_unread_idx on (user_id, created_at desc) where read_at
 - **Agents overview page (1.8)** — per-agent activity stats
 - **`actions.ts` refactored from 1430-line monolith into 7 focused files (1.9)**
 - **Notifications inbox at /dashboard/alerts (1.10)** — 4-tab filtering, click-to-read, mark-all-read
+- **Manager reports list + detail at /dashboard/reports (1.11)** — latest expanded via existing ManagerReportCard, compact history list, detail view at `/dashboard/reports/[id]` with explicit ReportMarkReadButton CTA triggering the 7-day Manager lock; render-time `stripAiTellsDeep` defense-in-depth on top of write-time strip from 1.5.1
 - Real-time WhatsApp pipeline (~15-16s end-to-end, ~₪0.04/hot-lead)
 - Cleanup cron + Recovery cron daily
 - All deployed live to `app.spikeai.co.il`
 
 ### 11.2 Pending — Not Blocking 🚧
-- **3 sidebar pages still 404** (was 7 before 1.6/1.7/1.8/1.10): דוחות, מרכז בקרה, אמון ופרטיות
+- **2 sidebar pages still 404** (was 7 before 1.6/1.7/1.8/1.10/1.11): מרכז בקרה, אמון ופרטיות
 - ~~`actions.ts` 1430 lines — split~~ ✅ DONE (1.9)
 - Race in `inventory-upload-zone` + `run-inventory-button`
 - 2 moderate npm audit vulnerabilities
 - `integrations` table schema not finalized
 - defamation-guard not wrapped in withRetry (low priority)
-- Manager dashboard view (backend exists, no UI) — would replace דוחות placeholder
 
 ### 11.3 Pending — Stage 2 ⚠️
 - Meta Business Manager verification (2-10 days async — needs business registration first; עוסק פטור acceptable per session 5 web research, 3 IL sources confirmed)
@@ -927,6 +960,7 @@ Index `notifications_user_unread_idx on (user_id, created_at desc) where read_at
 - 1.8 ✅ Agents overview page
 - 1.9 ✅ Refactor of dashboard actions.ts (1430 lines → 7 focused files)
 - 1.10 ✅ Notifications inbox at /dashboard/alerts
+- 1.11 ✅ Manager reports list + detail pages (with render-time stripAiTellsDeep)
 
 ### 12.3 Stage 2 — Production WhatsApp (NEXT)
 1. **PRE-REQ:** Dean registers as עוסק פטור (~30 min, free, online at רשות המסים)
@@ -1053,6 +1087,7 @@ If skipped: expect 3-4 design iterations.
 - 1.6: ~1.5h · 1.7: ~1.5h · 1.8: ~1h
 - 1.9: ~2h (refactor + smoke test + docs)
 - **1.10: ~1h** (alerts page + 4 tabs + 3 server actions)
+- **1.11: ~3h** (would have been ~1.5h without the ManagerReportCard duplication detour — see §15.10)
 
 ### 15.8 Vercel Hobby Tier Cron Limit (Session 4 lesson — CRITICAL) ⚠️
 
@@ -1086,13 +1121,24 @@ For any structural refactor of a multi-import file:
 4. **Header comment is mandatory.** Every new file gets a comment explaining scope + exports + overlap. Without it, refactor is "works" but not "maintainable".
 5. **Smoke test in production is non-negotiable.** tsc passes ≠ runtime works. Click every button. Screenshot the proof.
 
+### 15.10 Reuse Existing Components Before Building (1.11 lesson)
+Before writing a new presentational component, check if one already exists for the same data shape. The 1.11 detail page first iteration re-implemented the entire 5-section JSONB rendering of `<ManagerReportCard>` — a Client Component that already existed at `src/components/dashboard/manager-report-card.tsx` and already handled all the logic. Found before commit, but cost ~1.5h on a sub-stage that should have taken ~1.5h total.
+
+**The check:** before writing JSX for a complex render, search:
+```powershell
+Get-ChildItem -Recurse "src\components" -Filter "*<thing>*" -Name
+```
+And ask Dean to share the contents BEFORE writing similar code, not after.
+
+**Variant of §2.12 (read globals.css first).** Same lesson, different file: read existing components for the same domain before re-implementing.
+
 ---
 
 ## 16. Commit Conventions
 
 Conventional commits, English subject, Hebrew body OK.
 Format: `<type>(<scope>): <subject>`
-Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `sidebar`, `cron`, `pii`, `settings`, `actions`, `alerts`.
+Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `sidebar`, `cron`, `pii`, `settings`, `actions`, `alerts`, `reports`.
 
 ---
 
@@ -1108,7 +1154,7 @@ If you are Claude reading this for the first time:
 6. ✅ Confirm you've read this file in your first reply, in 2-3 lines max.
 
 **Sample first reply:**
-> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1 עד 1.5.5) + Post-Stage-1 polish (1.6 banner+showcase, 1.7 settings, 1.8 agents overview, 1.9 actions refactor, 1.10 alerts inbox). הכל בייצור על app.spikeai.co.il. הצעד הבא הוא Stage 2 (Meta verification + Embedded Signup) או placeholder pages נוספים (3 שנשארו: דוחות, מרכז בקרה, אמון ופרטיות). מה אתה רוצה לעשות?
+> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1 עד 1.5.5) + Post-Stage-1 polish (1.6 banner+showcase, 1.7 settings, 1.8 agents overview, 1.9 actions refactor, 1.10 alerts inbox, 1.11 reports list+detail). הכל בייצור על app.spikeai.co.il. הצעד הבא הוא Stage 2 (Meta verification + Embedded Signup) או placeholder pages נוספים (2 שנשארו: מרכז בקרה, אמון ופרטיות). מה אתה רוצה לעשות?
 
 ---
 
@@ -1123,6 +1169,9 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 
 | Hash | What |
 |---|---|
+| TBD | docs: update CLAUDE.md for sub-stage 1.11 (manager reports + render-time strip) |
+| TBD | fix(reports): strip AI tells from manager report payload at render time |
+| TBD | feat(reports): manager reports list + detail page (Sub-stage 1.11) |
 | `644a5ef` | feat(alerts): notifications inbox page (Sub-stage 1.10) |
 | `ec5922f` | docs: update CLAUDE.md for sub-stage 1.9 (actions refactor) |
 | `799bfc4` | refactor(actions): split monolithic actions.ts into 7 focused files (Sub-stage 1.9) |
@@ -1177,8 +1226,12 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 - Settings form → `src/components/dashboard/settings-form.tsx` (1.7)
 - Agent overview card → `src/components/dashboard/agent-overview-card.tsx` (1.8)
 - Alerts list → `src/components/dashboard/alerts-list.tsx` (1.10)
+- ReportMarkReadButton → `src/components/dashboard/report-mark-read-button.tsx` (1.11)
 - Settings server action → `src/app/dashboard/settings/actions.ts` (1.7)
 - Alerts server actions → `src/app/dashboard/alerts/actions.ts` (1.10)
+- Reports list page → `src/app/dashboard/reports/page.tsx` (1.11)
+- Reports detail page → `src/app/dashboard/reports/[id]/page.tsx` (1.11)
+- Reports server action → `src/app/dashboard/reports/actions.ts` (1.11 — `getManagerReport(reportId)`)
 - Showcase page → `src/app/dashboard/showcase/page.tsx` (1.6, replaces /demo)
 - **Dashboard server actions (1.9 split):**
   - Re-export shim → `src/app/dashboard/actions.ts`
