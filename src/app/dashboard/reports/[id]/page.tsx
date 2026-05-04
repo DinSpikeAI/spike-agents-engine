@@ -34,6 +34,7 @@ import { AppleBg } from "@/components/ui/apple-bg";
 import { Glass } from "@/components/ui/glass";
 import { ManagerReportCard } from "@/components/dashboard/manager-report-card";
 import { ReportMarkReadButton } from "@/components/dashboard/report-mark-read-button";
+import { stripAiTellsDeep } from "@/lib/safety/anti-ai-strip";
 import { listPendingDrafts } from "@/app/dashboard/actions";
 import { getManagerReport } from "../actions";
 
@@ -97,7 +98,16 @@ export default async function ManagerReportDetailPage({ params }: PageProps) {
     );
   }
 
-  const report = reportResult.report;
+  // Sanitize JSONB payload at render time. Defense-in-depth on top of
+  // manager/run.ts which already applies stripAiTellsDeep at write time
+  // (1.5.1 hotfix in commit 06b686d). This catches pre-1.5.1 reports that
+  // were persisted before the agent-side strip existed, and protects against
+  // future regex-coverage gaps. Per CLAUDE.md §1.9, em-dash (—), en-dash (–)
+  // mid-sentence, and inline #hashtags are forbidden in any agent output.
+  const report = {
+    ...reportResult.report,
+    report: stripAiTellsDeep(reportResult.report.report),
+  };
   const isUnread = report.read_at === null;
 
   return (

@@ -38,6 +38,7 @@ import { AppleBg } from "@/components/ui/apple-bg";
 import { Glass } from "@/components/ui/glass";
 import { ManagerReportCard } from "@/components/dashboard/manager-report-card";
 import { RunManagerButton } from "@/components/dashboard/run-manager-button";
+import { stripAiTellsDeep } from "@/lib/safety/anti-ai-strip";
 import {
   listManagerReports,
   getManagerLockState,
@@ -99,9 +100,18 @@ export default async function ManagerReportsListPage() {
     listPendingDrafts(),
   ]);
 
-  const reports: ManagerReportRow[] = reportsResult.success
-    ? reportsResult.reports ?? []
-    : [];
+  // Sanitize JSONB payloads at render time. Defense-in-depth on top of
+  // manager/run.ts which already applies stripAiTellsDeep at write time
+  // (1.5.1 hotfix in commit 06b686d). This catches pre-1.5.1 reports that
+  // were persisted before the agent-side strip existed, and protects against
+  // future regex-coverage gaps. Per CLAUDE.md §1.9, em-dash (—), en-dash (–)
+  // mid-sentence, and inline #hashtags are forbidden in any agent output.
+  const reports: ManagerReportRow[] = (
+    reportsResult.success ? reportsResult.reports ?? [] : []
+  ).map((r) => ({
+    ...r,
+    report: stripAiTellsDeep(r.report),
+  }));
 
   const lockState: ManagerLockState =
     lockResult.success && lockResult.state ? lockResult.state : DEFAULT_LOCK_STATE;
