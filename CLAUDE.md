@@ -2,7 +2,7 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-05 (end of Sub-stage 1.11 — Manager reports list + detail). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9, 1.10, 1.11 also complete and live in production. Onboarding banner + showcase rename + tenant settings page + agents overview page + actions.ts split into 7 files + alerts/notifications inbox + manager reports pages with render-time AI-tell strip. Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead.
+> **Last updated:** 2026-05-05 (end of Sub-stage 1.13 — Print/PDF support). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12, 1.13 also complete and live in production. Onboarding banner + showcase rename + tenant settings + agents overview + actions.ts split + alerts inbox + manager reports pages + inventory race fix + npm postcss override + inventory schema hotfix + print/PDF support. Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead.
 
 ---
 
@@ -17,7 +17,7 @@
 - **Repo (landing):** https://github.com/DinSpikeAI/spike-agents — separate marketing site (Next.js 16, Tailwind v4, RTL, Web3Forms). Don't confuse the two.
 - **Local dev:** `C:\Users\Din\Desktop\spike-engine`
 - **Domain:** `app.spikeai.co.il` (production) · `localhost:3000` (dev).
-- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. **Post-Stage-1 polish (1.6-1.11) also complete:** onboarding banner shows for new tenants with 0 non-mock runs; tenant settings page lets owners edit core fields; agents overview page shows per-agent activity stats; `src/app/dashboard/actions.ts` refactored from 1430-line monolith into 7 focused files under `actions/`; **alerts/notifications inbox page at `/dashboard/alerts` with 4-tab filtering and click-to-read**; **manager reports list at `/dashboard/reports` with latest report expanded + compact history, detail view at `/dashboard/reports/[id]` with explicit mark-as-read CTA triggering the 7-day Manager lock, render-time `stripAiTellsDeep` defense-in-depth on top of write-time strip from 1.5.1**. Verified live in production. Pre-launch — no real customers yet.
+- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. **Post-Stage-1 polish (1.6-1.13) also complete:** onboarding banner; tenant settings page; agents overview page; `src/app/dashboard/actions.ts` refactored into 7 focused files under `actions/`; **alerts inbox at `/dashboard/alerts`**; **manager reports list + detail at `/dashboard/reports`** with explicit mark-as-read CTA + render-time `stripAiTellsDeep`; **inventory upload race fix** via `InventoryActionProvider` Client Context coordinating cross-component state on the otherwise Server-Component-rooted `/dashboard/inventory` page; **npm audit cleared to 0 vulnerabilities** via `overrides: { postcss: ^8.5.10 }` in package.json (not `npm audit fix --force`, which would have downgraded next from 16.2.4 to 9.3.3); **inventory schema hotfix** (removed unsupported `minimum: 1` on integer field — Anthropic structured outputs rejected it, the agent had been silently failing 100% in prod); **print/PDF support** via `window.print()` + Tailwind `print:` variants on inventory + manager reports detail pages. Verified live in production. Pre-launch — no real customers yet.
 - **Don't propose:** NPS surveys · schedule optimization for staff · contract review · crypto/Web3 · "senior manager of agents" · OpenAI fallback · standalone mobile app · 360dialog or other BSP middlemen · merging the split actions/ files back into one.
 - **Next up (Stage 2):** Meta Business verification + Embedded Signup UI + production WhatsApp templates. See §12.3.
 
@@ -318,6 +318,7 @@ spike-engine/
 │   │   │   ├── glass.tsx                      # ⚠️ THE primitive
 │   │   │   ├── apple-bg.tsx                   # ⚠️ THE page bg
 │   │   │   ├── mascot.tsx
+│   │   │   ├── print-button.tsx               # 1.13 — window.print() Client Component
 │   │   │   └── ... shadcn primitives
 │   │   ├── admin/
 │   │   ├── dashboard/
@@ -328,6 +329,7 @@ spike-engine/
 │   │   │   ├── agent-overview-card.tsx        # 1.8
 │   │   │   ├── alerts-list.tsx                # 1.10
 │   │   │   ├── report-mark-read-button.tsx    # 1.11 — explicit mark-as-read (Client Component)
+│   │   │   ├── inventory-action-context.tsx   # 1.12 — Provider lifting uploadInProgress across page
 │   │   │   └── ... (other dashboard components)
 │   │   ├── demo/                              # NB: still named /demo even though page is /showcase. Internal-only naming.
 │   │   │   ├── demo-panel.tsx                 # 1.6: import path updated to /showcase/actions
@@ -885,6 +887,40 @@ Both pages apply `stripAiTellsDeep(report.report)` before passing to `<ManagerRe
 - "AI מסמן, בעלים מחליט" — the mark-as-read button is the explicit decision point that opens the lock
 - "Anti-AI hygiene" (§1.9) — render-time strip ensures even pre-1.5.1 data renders clean
 
+### 10.26 Sub-stage 1.12 — DONE (commit `fcd31d5`)
+**Inventory upload race fix + npm postcss override + inventory schema hotfix.** Three issues addressed in one sub-stage; the schema hotfix was discovered during smoke test of the race fix and shipped as a follow-up commit.
+
+**(A) In-file race in `inventory-upload-zone.tsx`.** `onDrop` had no guard against `isPending`. If the user dropped a second file during an in-progress upload, the OLD closure's stale `isPending=false` allowed `handleFile` to proceed, scheduling a parallel `startTransition`. Both async functions ran, both wrote snapshots to the DB, the UI took whichever returned last. Fix: `if (isPending) return` at the top of `onDrop`; defensive `if (isPending) { e.target.value = ""; return }` in `onChange` for the rare case where a file picker session was already open when isPending became true.
+
+**(B) Cross-component race between `InventoryUploadZone` and `RunInventoryButton`.** Both rendered on `/dashboard/inventory` but neither knew about the other. Clicking "הרץ עכשיו" mid-upload silently fired `triggerInventoryAgentAction` against the OLD snapshot still in the DB (the new INSERT hadn't completed yet). Result: "הניתוח הושלם — 15 מוצרים נסקרו" message but the analysis was on stale data. SILENT data bug. The parent page is a Server Component (`async function InventoryPage()` + `requireOnboarded()`) so it can't hold `useState` and lift state directly. Fix: new Client Context Provider `<InventoryActionProvider>` (`src/components/dashboard/inventory-action-context.tsx`) that wraps the snapshot panel + results card + upload zone. The upload zone writes its own `isPending` into the context via `useEffect`; the run button reads `uploadInProgress` and ORs it with its own `isPending` to compute `disabled`. Hint text "ממתין לסיום העלאת הקובץ..." shows below the button when blocked. Default context value is `{uploadInProgress: false, setUploadInProgress: () => {}}` — so any future page using one component without the other still works (graceful fallback).
+
+**(C) `npm audit` cleared.** Two moderate-severity advisories on `postcss < 8.5.10` (XSS via unescaped `</style>` in CSS Stringify Output) bundled inside next's nested deps. `npm audit fix --force` would have downgraded next from 16.2.4 to 9.3.3 — a 7-major-version backwards leap that breaks App Router, Server Actions, Tailwind v4, etc. Real risk was effectively zero (postcss is build-tooling here, never sees user-controlled CSS at runtime) but the warnings are noise. Fix: add `"overrides": { "postcss": "^8.5.10" }` to package.json. After `npm install`: `found 0 vulnerabilities`. No breaking changes — postcss 8.5.x is a stable patch line.
+
+**(D) Inventory schema hotfix (separate commit, discovered during 1.12 smoke).** When testing the race fix in production, clicking "הרץ עכשיו" returned a 400 from Anthropic: `output_config.format.schema: For 'integer' type, property 'minimum' is not supported`. The inventory schema (`src/lib/agents/inventory/schema.ts` line 67 in the old version) had `priority: { type: "integer", minimum: 1, ... }` — but Anthropic structured outputs do NOT support `minimum`/`maximum` on integers. Grep across `src/lib/agents/**/schema.ts` revealed: the OTHER 4 schemas (manager, reviews, sales, social) explicitly documented this restriction in their header comments. Inventory was the only outlier — written before the rule was discovered, and never had the warning header added back. The agent had been **silently failing 100% in production** since Stage 1, undetected because no one was running it on real data. Fix: removed `minimum: 1`; added the same "IMPORTANT — Anthropic Structured Outputs restrictions" header comment that the other 4 schemas have, plus an in-place `// DO NOT add minimum: 1 here` comment at the priority field. The description (`"1 = הכי דחוף, critical תמיד 1, low תמיד 2"`) already guides the LLM reliably. Verified post-deploy: agent ran cleanly on a 15-row test CSV, classified correctly (1 critical, 1 low, 8 ok, 4 overstocked, 1 no_movement) with Hebrew insights per product.
+
+**Iron rules reinforced:**
+- §2.8 verify-before-coding: read the actual files before designing the fix. The grep for `minimum` across schemas (4 already documented the restriction) was the diagnostic that pointed at the inventory schema as the clear outlier.
+- §15.1 commit-test-deploy: the smoke test of (A)+(B) succeeded for the cross-component race (Run button correctly disabled during upload), but exposed the (D) schema bug that had been hiding for months. Smoke testing post-deploy is non-negotiable.
+
+### 10.27 Sub-stage 1.13 — DONE (commit `235d07b` + 2 build fixes)
+**Print / Save-as-PDF support for inventory analysis and manager reports.**
+
+**Approach:** `window.print()` triggers the browser's native print dialog. From there the user can either print to a real printer or choose "Save as PDF" as the destination — every modern browser including iOS Safari ships this option. Tailwind's `print:` media query variant marks chrome elements (sidebar, FABs, page emoji, action buttons, upload zone) as `print:hidden` so the printout shows only the report card.
+
+**Why not jsPDF / html2pdf:**
+- Hebrew RTL is reliable when the browser uses the page's own DOM and fonts; a re-rendering library would have to handle RTL itself (a known PITA — columns flip, encoding sometimes breaks letters).
+- Mobile (iOS Safari) has built-in "Save as PDF" via the print dialog.
+- One code path serves both real prints and PDF use cases.
+- Zero new dependencies (vs. ~40-80KB for jsPDF + html2canvas).
+
+**Files:**
+- NEW `src/components/ui/print-button.tsx` — Client Component, ~50 lines. Single `<Printer>` icon + Hebrew label, calls `window.print()` on click. Self-hides via `print:hidden`.
+- `src/app/dashboard/inventory/page.tsx` — chrome wrapped in `print:hidden`; PrintButton in the snapshot panel toolbar (only when an analysis exists, no point printing an empty state); `print:!mr-0` on the sidebar margin wrapper; `print:!shadow-none print:!border-0 print:!bg-transparent print:!p-0` on the snapshot Glass panel to flatten it for print.
+- `src/app/dashboard/reports/page.tsx` — chrome wrapped in `print:hidden` so a Ctrl+P from the list page still produces a clean printout of the latest expanded report. No explicit button on the list — to print a historical report, click into its detail page.
+- `src/app/dashboard/reports/[id]/page.tsx` — chrome + breadcrumb + action bar all `print:hidden`; PrintButton sits in the action bar next to ReportMarkReadButton.
+
+**Build failure recovery (lesson logged in §15.5 / §15.11):** The first commit `235d07b` failed Vercel's build with 4 TypeScript errors that local `tsc --noEmit` had reported but the deploy script didn't gate on. Two issues: (1) `DEFAULT_LOCK_STATE` field name was `lastReadReportId` from the 1.11 era — actual `ManagerLockState` type now has `unreadReportId` AND `lastReadAt` (renamed + added during the 1.9 refactor when manager.ts moved to `actions/`); (2) `<MobileHeader>` requires `userEmail` prop, which I'd dropped during the refactor for print support. Production was safe — Vercel rejects failed builds, so `app.spikeai.co.il` stayed on commit `fcd31d5` (1.12) throughout. Two follow-up commits fixed the type drift + props. The lesson: deploy scripts must HALT on `tsc` non-zero exit code (see §15.11).
+
 ---
 
 ## 11. Current Status
@@ -903,6 +939,10 @@ Both pages apply `stripAiTellsDeep(report.report)` before passing to `<ManagerRe
 - **`actions.ts` refactored from 1430-line monolith into 7 focused files (1.9)**
 - **Notifications inbox at /dashboard/alerts (1.10)** — 4-tab filtering, click-to-read, mark-all-read
 - **Manager reports list + detail at /dashboard/reports (1.11)** — latest expanded via existing ManagerReportCard, compact history list, detail view at `/dashboard/reports/[id]` with explicit ReportMarkReadButton CTA triggering the 7-day Manager lock; render-time `stripAiTellsDeep` defense-in-depth on top of write-time strip from 1.5.1
+- **Inventory upload race fixed (1.12)** — `InventoryActionProvider` Client Context lifts `uploadInProgress` across the Server-Component-rooted inventory page so RunInventoryButton disables itself while an upload is in flight (was firing on the OLD snapshot, silently producing wrong analyses); also `onDrop` race guards prevent parallel `startTransition` calls when the user drops a second file mid-upload
+- **npm audit cleared (1.12)** — `overrides: { postcss: ^8.5.10 }` in package.json forces the patched version inside next's nested deps without downgrading next from 16.2.4 to 9.3.3 (which `npm audit fix --force` would have done)
+- **Inventory schema hotfix** — removed unsupported `minimum: 1` constraint on the `priority` integer field; Anthropic structured outputs reject `minimum`/`maximum` on integers, so the inventory agent had been silently failing 100% in production with a 400 since Stage 1. Other 4 schemas (manager, reviews, sales, social) already documented this restriction in their headers; inventory was the outlier
+- **Print / Save-as-PDF (1.13)** — `<PrintButton>` triggers `window.print()` on inventory analysis page and manager reports detail page; chrome elements wrapped in Tailwind `print:hidden` so printout shows only the report card. Single code path serves both real prints and "Save as PDF" via the browser's native dialog
 - Real-time WhatsApp pipeline (~15-16s end-to-end, ~₪0.04/hot-lead)
 - Cleanup cron + Recovery cron daily
 - All deployed live to `app.spikeai.co.il`
@@ -910,8 +950,9 @@ Both pages apply `stripAiTellsDeep(report.report)` before passing to `<ManagerRe
 ### 11.2 Pending — Not Blocking 🚧
 - **2 sidebar pages still 404** (was 7 before 1.6/1.7/1.8/1.10/1.11): מרכז בקרה, אמון ופרטיות
 - ~~`actions.ts` 1430 lines — split~~ ✅ DONE (1.9)
-- Race in `inventory-upload-zone` + `run-inventory-button`
-- 2 moderate npm audit vulnerabilities
+- ~~Race in `inventory-upload-zone` + `run-inventory-button`~~ ✅ DONE (1.12)
+- ~~2 moderate npm audit vulnerabilities~~ ✅ DONE (1.12 — postcss override)
+- ~~Inventory agent silently failing in prod~~ ✅ DONE (schema hotfix — unsupported `minimum` removed)
 - `integrations` table schema not finalized
 - defamation-guard not wrapped in withRetry (low priority)
 
@@ -961,6 +1002,8 @@ Both pages apply `stripAiTellsDeep(report.report)` before passing to `<ManagerRe
 - 1.9 ✅ Refactor of dashboard actions.ts (1430 lines → 7 focused files)
 - 1.10 ✅ Notifications inbox at /dashboard/alerts
 - 1.11 ✅ Manager reports list + detail pages (with render-time stripAiTellsDeep)
+- 1.12 ✅ Inventory upload race fix (Provider context) + npm postcss override + inventory schema hotfix (`minimum` removed)
+- 1.13 ✅ Print / Save-as-PDF on inventory analysis + manager reports detail
 
 ### 12.3 Stage 2 — Production WhatsApp (NEXT)
 1. **PRE-REQ:** Dean registers as עוסק פטור (~30 min, free, online at רשות המסים)
@@ -1088,6 +1131,8 @@ If skipped: expect 3-4 design iterations.
 - 1.9: ~2h (refactor + smoke test + docs)
 - **1.10: ~1h** (alerts page + 4 tabs + 3 server actions)
 - **1.11: ~3h** (would have been ~1.5h without the ManagerReportCard duplication detour — see §15.10)
+- **1.12: ~2.5h** total: ~1h race fix design + Provider, ~30min npm overrides, ~1h discovering and fixing the inventory schema hotfix during smoke test
+- **1.13: ~1.5h** total: ~30min print pattern design + 4 files, ~1h debugging two rounds of build failures (tsc field-name drift + missing MobileHeader props) — see §15.11
 
 ### 15.8 Vercel Hobby Tier Cron Limit (Session 4 lesson — CRITICAL) ⚠️
 
@@ -1132,13 +1177,38 @@ And ask Dean to share the contents BEFORE writing similar code, not after.
 
 **Variant of §2.12 (read globals.css first).** Same lesson, different file: read existing components for the same domain before re-implementing.
 
+### 15.11 tsc Gate Must HALT The Deploy Script (1.13 lesson)
+The 1.13 first commit (`235d07b`) was pushed with TypeScript errors that local `tsc --noEmit` had clearly reported. The deploy script ran `npx tsc --noEmit` AND THEN `git commit && git push && vercel --prod` regardless of the tsc exit code. PowerShell does not auto-stop on errors, so the broken commit landed in `main`. Vercel saved the day by rejecting the failed build (production stayed on the previous good commit), but it cost two extra round-trips to fix and re-deploy.
+
+**The fix to the deploy template — non-negotiable from now on:**
+
+```powershell
+npx tsc --noEmit
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ tsc FAILED — STOPPING. Don't run git commit." -ForegroundColor Red
+    exit 1
+}
+Write-Host "✅ tsc clean — proceeding to commit" -ForegroundColor Green
+git add -A
+git commit -m "..."
+git push
+vercel --prod
+```
+
+The `if ($LASTEXITCODE -ne 0) { exit 1 }` check after `tsc --noEmit` is mandatory in any PowerShell deploy block. Without it, the commit-push-deploy chain runs even when tsc is screaming. The same `exit 1` pattern can also gate `npm audit` if zero vulns are required, or any other validator.
+
+**Also:** when introducing or refactoring code that uses a custom type, re-read the type definition. The 1.13 build failures came from `DEFAULT_LOCK_STATE` carrying `lastReadReportId` (from the pre-1.9 era) when the type now has `unreadReportId` + `lastReadAt` (renamed + added during the 1.9 refactor when manager.ts moved to `actions/`). The 1.11 deploy succeeded with the old field name because TS happened to be looser at that moment, but later strictness caught it. Lesson: when a type lives in `actions/manager.ts`, grep its definition before constructing default values:
+```powershell
+Select-String -Path "src\app\dashboard\actions\manager.ts" -Pattern "ManagerLockState" -Context 0,15
+```
+
 ---
 
 ## 16. Commit Conventions
 
 Conventional commits, English subject, Hebrew body OK.
 Format: `<type>(<scope>): <subject>`
-Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `sidebar`, `cron`, `pii`, `settings`, `actions`, `alerts`, `reports`.
+Scopes: `auth`, `mobile`, `design`, `morning`, `watcher`, `reviews`, `hot_leads`, `social`, `sales`, `inventory`, `manager`, `cleanup`, `approvals`, `onboarding`, `ui`, `db`, `safety`, `whatsapp`, `webhooks`, `agents`, `demo`, `sidebar`, `cron`, `pii`, `settings`, `actions`, `alerts`, `reports`, `print`.
 
 ---
 
@@ -1154,7 +1224,7 @@ If you are Claude reading this for the first time:
 6. ✅ Confirm you've read this file in your first reply, in 2-3 lines max.
 
 **Sample first reply:**
-> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1 עד 1.5.5) + Post-Stage-1 polish (1.6 banner+showcase, 1.7 settings, 1.8 agents overview, 1.9 actions refactor, 1.10 alerts inbox, 1.11 reports list+detail). הכל בייצור על app.spikeai.co.il. הצעד הבא הוא Stage 2 (Meta verification + Embedded Signup) או placeholder pages נוספים (2 שנשארו: מרכז בקרה, אמון ופרטיות). מה אתה רוצה לעשות?
+> קראתי את CLAUDE.md. Spike Engine — 8 סוכני AI מול לקוח + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1 עד 1.5.5) + Post-Stage-1 polish (1.6 banner+showcase, 1.7 settings, 1.8 agents overview, 1.9 actions refactor, 1.10 alerts inbox, 1.11 reports list+detail, 1.12 inventory race fix + npm overrides + schema hotfix, 1.13 print/PDF). הכל בייצור על app.spikeai.co.il. הצעד הבא הוא Stage 2 (Meta verification + Embedded Signup) או 2 placeholder pages שנשארו (מרכז בקרה, אמון ופרטיות). מה אתה רוצה לעשות?
 
 ---
 
@@ -1169,6 +1239,12 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 
 | Hash | What |
 |---|---|
+| TBD | docs: update CLAUDE.md for sub-stages 1.12 + 1.13 + lessons |
+| TBD | fix(reports): add lastReadAt to DEFAULT_LOCK_STATE (1.13 build fix continued) |
+| TBD | fix(reports): correct ManagerLockState field + MobileHeader props (1.13 build fix) |
+| `235d07b` | feat(print): print + Save-as-PDF for inventory + manager reports (Sub-stage 1.13) — INITIAL build failed |
+| TBD | fix(inventory): remove unsupported 'minimum' constraint from priority field (schema hotfix) |
+| `fcd31d5` | fix(inventory): cross-component race + onDrop guard + postcss override (Sub-stage 1.12) |
 | TBD | docs: update CLAUDE.md for sub-stage 1.11 (manager reports + render-time strip) |
 | TBD | fix(reports): strip AI tells from manager report payload at render time |
 | TBD | feat(reports): manager reports list + detail page (Sub-stage 1.11) |
@@ -1227,11 +1303,15 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 - Agent overview card → `src/components/dashboard/agent-overview-card.tsx` (1.8)
 - Alerts list → `src/components/dashboard/alerts-list.tsx` (1.10)
 - ReportMarkReadButton → `src/components/dashboard/report-mark-read-button.tsx` (1.11)
+- InventoryActionContext → `src/components/dashboard/inventory-action-context.tsx` (1.12 — Provider lifting `uploadInProgress` across the inventory page)
+- PrintButton → `src/components/ui/print-button.tsx` (1.13 — `window.print()` trigger)
 - Settings server action → `src/app/dashboard/settings/actions.ts` (1.7)
 - Alerts server actions → `src/app/dashboard/alerts/actions.ts` (1.10)
 - Reports list page → `src/app/dashboard/reports/page.tsx` (1.11)
 - Reports detail page → `src/app/dashboard/reports/[id]/page.tsx` (1.11)
 - Reports server action → `src/app/dashboard/reports/actions.ts` (1.11 — `getManagerReport(reportId)`)
+- Inventory schema → `src/lib/agents/inventory/schema.ts` (DO NOT add `minimum`/`maximum` to integer fields — Anthropic structured outputs reject them; see §10.26)
+- Anti-AI strip → `src/lib/safety/anti-ai-strip.ts` (`stripAiTellsDeep<T>(value: T): T` — recursive em-dash + en-dash + hashtag scrubber; applied at write time in 5 agents and at render time in reports pages)
 - Showcase page → `src/app/dashboard/showcase/page.tsx` (1.6, replaces /demo)
 - **Dashboard server actions (1.9 split):**
   - Re-export shim → `src/app/dashboard/actions.ts`
