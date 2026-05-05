@@ -73,7 +73,7 @@ function ErrorShell({
         isAdmin={isAdminEmail(userEmail)}
         pendingCount={pendingCount}
       />
-      <MobileHeader pendingCount={pendingCount} />
+      <MobileHeader userEmail={userEmail} pendingCount={pendingCount} />
       <BottomNav pendingCount={pendingCount} />
 
       <div className="md:mr-[232px]">
@@ -206,7 +206,7 @@ export default async function ReportDetailPage({ params }: PageProps) {
           isAdmin={isAdminEmail(userEmail)}
           pendingCount={pendingCount}
         />
-        <MobileHeader pendingCount={pendingCount} />
+        <MobileHeader userEmail={userEmail} pendingCount={pendingCount} />
         <BottomNav pendingCount={pendingCount} />
         <WhatsAppFab />
       </div>

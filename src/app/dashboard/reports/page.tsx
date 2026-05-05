@@ -64,7 +64,8 @@ const DEFAULT_LOCK_STATE: ManagerLockState = {
   nextEligibleAt: null,
   daysUntilNext: 0,
   hoursUntilNext: 0,
-  lastReadReportId: null,
+  unreadReportId: null,
+  lastReadAt: null,
 };
 
 const REPORTS_LIMIT = 12;
@@ -286,7 +287,7 @@ export default async function ReportsListPage() {
           isAdmin={isAdmin}
           pendingCount={pendingCount}
         />
-        <MobileHeader pendingCount={pendingCount} />
+        <MobileHeader userEmail={userEmail} pendingCount={pendingCount} />
         <BottomNav pendingCount={pendingCount} />
         <WhatsAppFab />
       </div>
