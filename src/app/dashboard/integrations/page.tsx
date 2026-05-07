@@ -69,14 +69,11 @@ export default async function IntegrationsPage() {
     (tenantRow?.name as string | undefined) ||
     "";
 
-  // Pending drafts count for sidebar badge
-  let pendingCount = 0;
-  try {
-    const drafts = await listPendingDrafts(tenantId);
-    pendingCount = drafts.length;
-  } catch {
-    // Best-effort; sidebar doesn't fail if this query throws.
-  }
+  // Pending count for the "דורש אישור" badge in sidebar/bottom nav.
+  const draftsResult = await listPendingDrafts();
+  const pendingCount = draftsResult.success
+    ? draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0
+    : 0;
 
   // Load this tenant's integrations (all statuses — UI shows connected
   // prominently, others as historical).
