@@ -7,7 +7,15 @@ import { redirect } from "next/navigation";
 export interface OnboardingFormData {
   ownerName: string;
   businessName: string;
-  vertical: "beauty" | "restaurant" | "retail" | "services" | "general";
+  vertical:
+    | "beauty"
+    | "restaurant"
+    | "retail"
+    | "services"
+    | "general"
+    | "clinic"
+    | "financial"
+    | "education";
   gender: "male" | "female" | "plural";
 }
 
