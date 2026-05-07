@@ -42,6 +42,7 @@ export const RATE_LIMIT_MINUTES: Record<AgentId, number> = {
   sales: 30,
   cleanup: 30,
   inventory: 5,
+  growth: 60, // weekly cron + Pro on-demand button (1h cooldown)
 };
 
 export interface RateLimitCheckResult {

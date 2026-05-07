@@ -90,8 +90,15 @@ export const AGENTS: Record<AgentId, AgentConfig> = {
     schedule: "כל 30 דקות",
     description: "דירוג חכם של לידים לפי בשלות",
   },
+  growth: {
+    id: "growth",
+    emoji: "🌱",
+    name: "סוכן צמיחה",
+    gradient: "linear-gradient(135deg, #84CC16, #65A30D)",
+    schedule: "ראשון 07:00 + לפי דרישה",
+    description: "החזרת לקוחות רדומים וגילוי לידים פוטנציאליים",
+  },
 };
-
 export const AGENT_LIST: AgentConfig[] = [
   AGENTS.morning,
   AGENTS.reviews,
@@ -102,4 +109,5 @@ export const AGENT_LIST: AgentConfig[] = [
   AGENTS.sales,
   AGENTS.inventory,
   AGENTS.hot_leads,
+  AGENTS.growth,
 ];

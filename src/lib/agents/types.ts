@@ -20,7 +20,8 @@ export type AgentId =
   | "cleanup"
   | "sales"
   | "inventory"
-  | "hot_leads";
+  | "hot_leads"
+  | "growth";
 
 export type AgentModel =
   | "claude-haiku-4-5"
