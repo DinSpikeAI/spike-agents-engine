@@ -2,7 +2,7 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-07 (end of Sub-stage 1.14.1 — Sales Cascade Audit & Hardening). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 1.14, 1.14.1 also complete and live in production. Onboarding banner + showcase rename + tenant settings + agents overview + actions.ts split + alerts inbox + manager reports pages + inventory race fix + npm postcss override + inventory schema hotfix + print/PDF support + legal compliance package v0.1 (12 new files, 7 public legal pages, cookie banner, consent audit log, sidebar legal integration) + sales cascade audit (10 enum-drift bugs across 9 files fixed: cron `.in()` queries, recovery cron, demo UI, Hebrew prompts, docs; gender enum unified neutral→plural; onboarding verticals expanded 5→8; type drift hardened with `as const satisfies`; UTF-8 mojibake cleanup). Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead. **Latest commit:** `04f4790`.
+> **Last updated:** 2026-05-07 (end of Sub-stage 1.14.2 — Stage 2 MVP: multi-tenant routing + integrations management). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 1.14, 1.14.1, 1.14.2 also complete and live in production. Onboarding banner + showcase rename + tenant settings + agents overview + actions.ts split + alerts inbox + manager reports pages + inventory race fix + npm postcss override + inventory schema hotfix + print/PDF support + legal compliance package v0.1 (12 new files, 7 public legal pages, cookie banner, consent audit log, sidebar legal integration) + sales cascade audit (10 enum-drift bugs across 9 files fixed) + Stage 2 MVP (`integrations` table partial UNIQUE index for `phone_number_id` lookup, `resolveTenant()` in webhook with per-batch cache, customer-facing read-only `/dashboard/integrations`, admin-facing `/admin/integrations` with tenant picker + soft disconnect, Coming Soon cards for Stripe/Calendar). Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead. **Latest commit:** `117cd58` (plus sidebar admin link followup).
 
 ---
 
@@ -1003,6 +1003,16 @@ Pre-1.14 the sidebar item pointed to `/dashboard/trust` (no implementation → 4
 - **Print / Save-as-PDF (1.13)** — `<PrintButton>` triggers `window.print()` on inventory analysis page and manager reports detail page; chrome elements wrapped in Tailwind `print:hidden` so printout shows only the report card. Single code path serves both real prints and "Save as PDF" via the browser's native dialog
 - **Legal compliance package v0.1 (1.14)** — 12 new files + sidebar integration. 7 public Hebrew legal pages live at `/privacy`, `/terms`, `/aup`, `/cookies`, `/sub-processors`, `/dpa`, `/dsar`. Cookie banner with תיקון 13–compliant 3-equal-buttons design. Consent audit log to `consent_log` table (24-month retention). DSAR pipeline ready (`dsar_log` + `/dsar` form + 30-day SLA monitoring view). Sidebar "אמון ופרטיות" → `/privacy` (resolved 404) + 4 quiet legal links + cookie settings button at bottom of sidebar. **NOT yet lawyer-reviewed** — ready for hand-off to Tier-2 boutique firm (₪15K-25K fixed-fee package)
 - **Sales Cascade Audit & Hardening (1.14.1)** — 10-bug audit triggered by discovery that `SALES_CASCADE_BUCKETS` checked `"burning"` while Hot Leads schema returned `"blazing"`. The cast `(arr as readonly string[]).includes(...)` had silenced TypeScript and let the bug ship invisibly since 1.3.5. Bugs fixed across 9 files in 5 commits (`f609fbe`, `a66fcdf`, `25f65e9`/`97eedf6`, `036a3ba`, `33f7762`, `04f4790`): runtime cron query (`runSalesAgent` `.in("bucket", ...)`); recovery cron Stage 2; demo UI status enum; central `lib/demo/types.ts` union; comments + Hebrew prompts + INTEGRATION-NOTES.md docs; UI form `neutral` → `plural` rename (the `gender-lock.ts` canonical type only ever knew male/female/plural — neutral tenants were silently broken); 3 verticals added to onboarding form (clinic/financial/education) to match settings's 8; `BusinessOwnerGender` shadow type eliminated by re-exporting canonical from `gender-lock.ts`; `VALID_GENDERS` typed as `as const satisfies readonly BusinessOwnerGender[]` for compile-time drift detection; `showcase/actions.ts` UTF-8 mojibake cleaned (57 corrupted bytes: 50 `─`, 1 `∈`, 6 `—`, all from a past Windows-1252→CP437→UTF-8 round-trip). DB migration ran by hand: 0 tenants needed `neutral→plural` update. End-to-end verified in production via `/dashboard/showcase` demo: webhook→Watcher+HotLeads(parallel)→Sales QR cascade→draft, ~6.3s, ~₪0.11 cost. Lessons documented in §15.12 (enum drift) and §15.13 (git amend hazard).
+- **Stage 2 MVP — multi-tenant webhook routing + integrations management (1.14.2)** — Pre-1.14.2 every incoming webhook landed on `DEMO_TENANT_ID` (hardcoded); real customers couldn't use the system. Sub-stage 1.14.2 unblocks customer onboarding by introducing `phone_number_id → tenant_id` routing AND a customer/admin-split UI for managing integrations. Components:
+  - **DB**: `supabase/migrations/022_integrations_whatsapp_phone_lookup.sql` adds partial UNIQUE index `idx_integrations_whatsapp_phone` on `(provider, metadata->>'phone_number_id') WHERE provider='whatsapp' AND status='connected'`. Enforces uniqueness AND serves the webhook hot path. Provider-specific identifiers (phone_number_id, display_phone_number, whatsapp_business_account_id) live in `metadata` jsonb so the integrations table stays provider-agnostic for future Stripe/GCal additions.
+  - **Webhook**: `whatsapp/route.ts` adds `resolveTenant()` helper. Resolution priority: `X-Spike-Tenant-Override` header (preserved for `/dashboard/showcase` demo) → `integrations` table lookup → `DEMO_TENANT_ID` fallback with `console.warn` for visibility. Per-batch `Map<phoneNumberId, tenantId>` cache avoids redundant DB queries on multi-message webhooks.
+  - **Customer UI** (`/dashboard/integrations`): read-only display. Hero status banner ("WhatsApp פעיל ומחובר"), `ConnectedDisplay` (status + display_phone_number + Hebrew "מחובר מאז" date), `ManagedByCopy` banner explaining setup is handled by Spike staff. No phone_number_id, no WABA, no manual form, no disconnect button. `PendingSetupState` for tenants without WhatsApp yet (CTA: contact us via chat). `ComingSoonCard` for Stripe (#635bff) and Google Calendar (#4285f4).
+  - **Admin UI** (`/admin/integrations`): full management panel. `requireAdmin()` gate. Lists all tenants with WhatsApp status (3-stat strip: total/connected/pending), tenant picker dropdown + clickable list, per-tenant connect form (when not connected) or status display + disconnect button (when connected). Same `--spike-*` design tokens as `/admin` command center. Sidebar shows 2 admin links when `isAdmin={true}` (`מרכז ניהול` + `אינטגרציות (admin)`).
+  - **Server actions split**: `app/dashboard/integrations/actions.ts` reduced to types only (no `connectWhatsappIntegration` for customers). `app/admin/integrations/actions.ts` exports `connectWhatsappAsAdmin(tenantId, ...)` and `disconnectIntegrationAsAdmin(integrationId)`. Both handle: (1) `UNIQUE(tenant_id, provider)` — INSERT or UPDATE existing row; (2) `UNIQUE partial(provider, metadata->>'phone_number_id')` — friendly Hebrew error before raw 23505; (3) race conditions with generic "try again" fallback. `disconnectIntegration` is SOFT (status='disconnected', no DELETE) so re-connection works and audit trail is preserved.
+  - **Smoke tested end-to-end** in production Supabase: INSERT row with phone_number_id='TEST_PHONE_999' → SELECT lookup returns DEMO_TENANT → `EXPLAIN ANALYZE` shows `Index Scan using idx_integrations_whatsapp_phone` (0.098ms execution, sub-ms) → duplicate INSERT correctly rejected with 23505 on `integrations_tenant_id_provider_key`. Test row deleted post-verification.
+  - **Architectural lesson**: original `/dashboard/integrations` exposed phone_number_id + WABA + a manual connect form to end customers. That violated the product principle "customers should not handle technical setup". The customer/admin split fixes this — Spike sales staff handles all OAuth/credential bits during onboarding calls, customers just see ✓ green status. Lesson documented in §15.14 (PowerShell escape gotcha discovered during this work).
+  - **Files**: `supabase/migrations/022_integrations_whatsapp_phone_lookup.sql`, `src/app/api/webhooks/whatsapp/route.ts`, `src/app/dashboard/integrations/{page,actions}.ts`, `src/components/dashboard/integrations-form.tsx`, `src/app/admin/integrations/{page,actions}.ts`, `src/components/admin/admin-integrations-form.tsx`, `src/components/dashboard/sidebar.tsx`. **Commits**: `8a3022f` (DB+webhook), `d7d0055` (initial customer UI), hotfix for `listPendingDrafts()` signature, polish pass (Hero banner + ConnectedCard + Coming Soon cards), `117cd58` (customer/admin split), sidebar admin link followup.
+  - **What 1.14.2 unblocks**: Spike can now onboard a real customer manually — Dean inserts integration row via `/admin/integrations`, customer's WhatsApp messages route to their tenant, agents process for them. **What's still blocking real production launch**: Meta Business Verification (external, 2-10 days), HSM template approval (external), `WHATSAPP_APP_SECRET` env var to activate signature verification (currently bypass mode), Embedded Signup UI (replaces manual admin form when Meta App is configured), vault encryption for stored access tokens.
 - Real-time WhatsApp pipeline (~15-16s end-to-end, ~₪0.04/hot-lead)
 - Cleanup cron + Recovery cron daily
 - All deployed live to `app.spikeai.co.il`
@@ -1331,6 +1341,37 @@ fc git-version.txt working-tree.txt      # crude but reliable
 ```
 
 **Bias toward regular commits over amends during multi-batch fixes.** A noisy commit log with a "hotfix follows hotfix" arc is far better than a single broken amend that ships to production. Amend is for last-keystroke typo fixes on a clean feature branch — not for live mid-deploy state juggling.
+
+### 15.14 PowerShell `\"` Does Not Escape — Use `""` Or Avoid Inline Quotes (1.14.2 lesson)
+
+Commit messages with `\"` inside a double-quoted PowerShell string hang the shell in multi-line input mode (`>>` prompt). Reason: PowerShell's escape character is backtick (`` ` ``), NOT backslash. The sequence `\"` is parsed as a literal `\` followed by a string-terminating `"`. Whatever follows becomes orphaned tokens, and depending on what those tokens are (especially if they contain stray quotes), PowerShell will keep waiting for more input until you Ctrl+C.
+
+**Wrong (will hang):**
+```powershell
+git commit -m "managed by 'ע\"י' team"
+#                         ^^ string ends here unexpectedly
+```
+
+**Right — option A — double-double quote (the most portable):**
+```powershell
+git commit -m "managed by 'ע""י' team"
+```
+
+**Right — option B — backtick escape (PowerShell-native):**
+```powershell
+git commit -m "managed by 'ע`"י' team"
+```
+
+**Right — option C — rephrase to avoid the inline `"` entirely:**
+```powershell
+git commit -m "managed by Spike team"
+```
+
+For Claude generating commit messages on Dean's behalf, **option C is the rule**: never include `\"`, `'...'` with embedded `"`, or other clever escapes. Bash, zsh, fish, and PowerShell all behave differently — rephrasing is the only universally-portable approach. If a quote MUST be in the message, use either backticks (Markdown style: `` ` `` for code) or just describe the term in words (e.g. "the field tenant_id" instead of `'tenant_id'` with quotes around it).
+
+**Recovery if stuck**: `Ctrl+C` aborts the multi-line input cleanly. No state is committed. Re-run with a fixed message.
+
+This came up during the 1.14.2 customer/admin split commit — the message contained `'ההקמה והניהול ע\"י צוות Spike'` (Hebrew "by Spike team"). The `\"` consumed the closing quote of the outer `"..."` string, the rest of the message became orphaned, and Dean was stuck typing `>>` for several lines before realizing.
 
 ---
 
