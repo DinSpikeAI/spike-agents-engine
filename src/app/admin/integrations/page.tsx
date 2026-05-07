@@ -16,7 +16,7 @@ import { Sidebar } from "@/components/dashboard/sidebar";
 import { AdminIntegrationsManager } from "@/components/admin/admin-integrations-form";
 
 export const dynamic = "force-dynamic";
-
+export const runtime = "edge";
 export interface TenantWithIntegrations {
   id: string;
   name: string | null;
