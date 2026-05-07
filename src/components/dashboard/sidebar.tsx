@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Settings,
   Sparkles,
+  Plug,
 } from "lucide-react";
 import { reopenCookieBanner } from "@/components/legal/CookieBanner";
 
@@ -36,6 +37,7 @@ const NAV_ITEMS = [
   { id: "alerts", label: "התראות", href: "/dashboard/alerts", icon: Bell },
   { id: "control", label: "מרכז בקרה", href: "/dashboard/control", icon: SlidersHorizontal },
   { id: "trust", label: "אמון ופרטיות", href: "/privacy", icon: ShieldCheck },
+  { id: "integrations", label: "אינטגרציות", href: "/dashboard/integrations", icon: Plug },
   { id: "settings", label: "הגדרות", href: "/dashboard/settings", icon: Settings },
 ];
 
