@@ -55,6 +55,7 @@ import type {
 } from "@/app/dashboard/actions";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 // Default lock state used when getManagerLockState() fails — assume free
 // to run; the action will re-validate before doing anything destructive.

@@ -28,6 +28,7 @@ import { AuditLogViewer } from "@/components/admin/audit-log-viewer";
 
 // Always fresh — no caching for admin views
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export default async function AdminPage() {
   // Auth — throws redirect if not admin

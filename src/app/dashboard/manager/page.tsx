@@ -15,6 +15,7 @@ import { Glass } from "@/components/ui/glass";
 import { ArrowRight, Brain, Lock, BarChart3 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export default async function ManagerPage() {
   const supabase = await createClient();

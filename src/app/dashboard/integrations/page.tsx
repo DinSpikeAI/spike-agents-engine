@@ -21,6 +21,7 @@ import { IntegrationsForm } from "@/components/dashboard/integrations-form";
 import { listPendingDrafts } from "@/app/dashboard/actions";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export interface IntegrationRow {
   id: string;

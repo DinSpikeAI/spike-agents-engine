@@ -39,6 +39,7 @@ import { listPendingDrafts } from "@/app/dashboard/actions";
 import { getManagerReport } from "../actions";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 interface PageProps {
   params: Promise<{ id: string }>;

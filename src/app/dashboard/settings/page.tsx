@@ -19,6 +19,7 @@ import { SettingsForm } from "@/components/dashboard/settings-form";
 import { listPendingDrafts } from "@/app/dashboard/actions";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export default async function SettingsPage() {
   const { userEmail, tenantId } = await requireOnboarded();

@@ -10,6 +10,7 @@ import { Glass } from "@/components/ui/glass";
 import { ArrowRight, Flame, ShieldCheck } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export default async function LeadsPage() {
   const supabase = await createClient();

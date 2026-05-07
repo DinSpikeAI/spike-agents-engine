@@ -27,6 +27,7 @@ import {
 } from "@/app/dashboard/actions";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 function getGreeting(): string {
   const hour = new Date().getHours();

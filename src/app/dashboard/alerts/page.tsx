@@ -25,6 +25,7 @@ import { listPendingDrafts } from "@/app/dashboard/actions";
 import { listNotifications } from "./actions";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export default async function AlertsPage() {
   const { userEmail, tenantId } = await requireOnboarded();

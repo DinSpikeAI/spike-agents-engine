@@ -23,6 +23,7 @@ import { listPendingDrafts } from "@/app/dashboard/actions";
 import { DemoPanel } from "@/components/demo/demo-panel";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export default async function ShowcasePage() {
   const { userEmail, tenantId } = await requireOnboarded();

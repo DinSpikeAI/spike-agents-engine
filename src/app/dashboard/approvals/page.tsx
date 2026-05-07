@@ -14,6 +14,7 @@ import { listPendingDrafts } from "@/app/dashboard/actions";
 import { Inbox, CheckCircle2 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 export default async function ApprovalsPage() {
   // Block access if user hasn't completed onboarding yet.

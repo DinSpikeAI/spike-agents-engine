@@ -29,6 +29,7 @@ import { getAgentsOverview } from "@/lib/agents/overview";
 import type { AgentId } from "@/lib/agents/types";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 // Category mapping mirrors dashboard/page.tsx — same logical groups.
 type AgentCategory = "routine" | "content" | "insight";

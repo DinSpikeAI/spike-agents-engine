@@ -34,6 +34,7 @@ import type { InventoryAgentOutput } from "@/lib/agents/types";
 import { FileText, AlertCircle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("he-IL", {
