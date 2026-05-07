@@ -156,6 +156,16 @@ export function Sidebar({
             מרכז ניהול
           </Link>
         )}
+        {isAdmin && (
+          <Link
+            href="/admin/integrations"
+            className="flex items-center gap-2.5 rounded-[9px] px-[11px] py-2 text-[13px] transition-colors hover:bg-white/50"
+            style={{ color: "var(--color-ink-3)" }}
+          >
+            <Plug size={14} strokeWidth={1.5} />
+            אינטגרציות (admin)
+          </Link>
+        )}
       </nav>
 
       {/* Bottom area: legal links + profile */}
