@@ -2,7 +2,7 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-06 (end of Sub-stage 1.14 — Legal Compliance Package v0.1). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 1.14 also complete and live in production. Onboarding banner + showcase rename + tenant settings + agents overview + actions.ts split + alerts inbox + manager reports pages + inventory race fix + npm postcss override + inventory schema hotfix + print/PDF support + legal compliance package v0.1 (12 new files, 7 public legal pages, cookie banner, consent audit log, sidebar legal integration). Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead. **Latest commit:** `bd198a0`.
+> **Last updated:** 2026-05-07 (end of Sub-stage 1.14.1 — Sales Cascade Audit & Hardening). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 1.14, 1.14.1 also complete and live in production. Onboarding banner + showcase rename + tenant settings + agents overview + actions.ts split + alerts inbox + manager reports pages + inventory race fix + npm postcss override + inventory schema hotfix + print/PDF support + legal compliance package v0.1 (12 new files, 7 public legal pages, cookie banner, consent audit log, sidebar legal integration) + sales cascade audit (10 enum-drift bugs across 9 files fixed: cron `.in()` queries, recovery cron, demo UI, Hebrew prompts, docs; gender enum unified neutral→plural; onboarding verticals expanded 5→8; type drift hardened with `as const satisfies`; UTF-8 mojibake cleanup). Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead. **Latest commit:** `04f4790`.
 
 ---
 
@@ -17,7 +17,7 @@
 - **Repo (landing):** https://github.com/DinSpikeAI/spike-agents — separate marketing site (Next.js 16, Tailwind v4, RTL, Web3Forms). Don't confuse the two.
 - **Local dev:** `C:\Users\Din\Desktop\spike-engine`
 - **Domain:** `app.spikeai.co.il` (production) · `localhost:3000` (dev).
-- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/burning, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. **Post-Stage-1 polish (1.6-1.13) also complete:** onboarding banner; tenant settings page; agents overview page; `src/app/dashboard/actions.ts` refactored into 7 focused files under `actions/`; **alerts inbox at `/dashboard/alerts`**; **manager reports list + detail at `/dashboard/reports`** with explicit mark-as-read CTA + render-time `stripAiTellsDeep`; **inventory upload race fix** via `InventoryActionProvider` Client Context coordinating cross-component state on the otherwise Server-Component-rooted `/dashboard/inventory` page; **npm audit cleared to 0 vulnerabilities** via `overrides: { postcss: ^8.5.10 }` in package.json (not `npm audit fix --force`, which would have downgraded next from 16.2.4 to 9.3.3); **inventory schema hotfix** (removed unsupported `minimum: 1` on integer field — Anthropic structured outputs rejected it, the agent had been silently failing 100% in prod); **print/PDF support** via `window.print()` + Tailwind `print:` variants on inventory + manager reports detail pages. Verified live in production. Pre-launch — no real customers yet.
+- **State (May 2026):** Stage 1 COMPLETE. Full WhatsApp pipeline: webhook → events → Watcher + Hot Leads (parallel, withRetry) → if hot/blazing, Sales QR cascade → Hebrew draft. All 5 prompts pass anti-AI sweep. PII scrubber covers all Israeli phone formats. Cleanup cron + recovery cron run daily. **Post-Stage-1 polish (1.6-1.13) also complete:** onboarding banner; tenant settings page; agents overview page; `src/app/dashboard/actions.ts` refactored into 7 focused files under `actions/`; **alerts inbox at `/dashboard/alerts`**; **manager reports list + detail at `/dashboard/reports`** with explicit mark-as-read CTA + render-time `stripAiTellsDeep`; **inventory upload race fix** via `InventoryActionProvider` Client Context coordinating cross-component state on the otherwise Server-Component-rooted `/dashboard/inventory` page; **npm audit cleared to 0 vulnerabilities** via `overrides: { postcss: ^8.5.10 }` in package.json (not `npm audit fix --force`, which would have downgraded next from 16.2.4 to 9.3.3); **inventory schema hotfix** (removed unsupported `minimum: 1` on integer field — Anthropic structured outputs rejected it, the agent had been silently failing 100% in prod); **print/PDF support** via `window.print()` + Tailwind `print:` variants on inventory + manager reports detail pages. Verified live in production. Pre-launch — no real customers yet.
 - **Don't propose:** NPS surveys · schedule optimization for staff · contract review · crypto/Web3 · "senior manager of agents" · OpenAI fallback · standalone mobile app · 360dialog or other BSP middlemen · merging the split actions/ files back into one.
 - **Next up (Stage 2):** Meta Business verification + Embedded Signup UI + production WhatsApp templates. See §12.3.
 
@@ -400,7 +400,7 @@ spike-engine/
 
 Idempotency: partial UNIQUE `idx_hot_leads_tenant_event_id` on `(tenant_id, event_id) WHERE event_id IS NOT NULL`.
 
-Bucket values: `cold` · `warm` · `hot` · `burning` · `spam_or_unclear`. Sales QR cascade triggers on `hot` and `burning` only.
+Bucket values: `cold` · `warm` · `hot` · `blazing` · `spam_or_unclear`. Sales QR cascade triggers on `hot` and `blazing` only.
 
 ### 5.3 drafts Table
 Sales writes two distinct draft types:
@@ -408,7 +408,7 @@ Sales writes two distinct draft types:
 | draft.type | Created by | When | TTL |
 |---|---|---|---|
 | `sales_followup` | `runSalesAgent` (cron) | Stuck leads (3+ days) | 24h |
-| `sales_quick_response` | `runSalesQuickResponseOnEvent` (webhook cascade) | Fresh hot/burning | 24h |
+| `sales_quick_response` | `runSalesQuickResponseOnEvent` (webhook cascade) | Fresh hot/blazing | 24h |
 
 Status values: `pending`, `rejected`, `expired` (1.5.4 — migration 021 idempotently adds it).
 
@@ -519,10 +519,10 @@ Two entry points:
 1. `runHotLeadsAgent(tenantId, leads, triggerSource, eventIdByLeadId?)` — batch
 2. `runHotLeadsOnEvent(tenantId, eventId)` — single event from webhook
    - Pre-flight idempotency `(tenant_id, event_id)`
-   - **(1.3.5):** if bucket ∈ {hot, burning}, fire `runSalesQuickResponseOnEvent` via `waitUntil()`. Cold/warm/spam don't cascade.
+   - **(1.3.5):** if bucket ∈ {hot, blazing}, fire `runSalesQuickResponseOnEvent` via `waitUntil()`. Cold/warm/spam don't cascade.
    - **Recovery cron (1.5.2):** `/api/cron/hot-leads-sales-recovery` runs daily at `0 2 * * *` UTC.
      - Stage 1: scans events from last 48h with no matching `hot_leads` row, runs classification on up to 50.
-     - Stage 2: scans hot/burning leads with no `sales_quick_response` draft, runs cascade.
+     - Stage 2: scans hot/blazing leads with no `sales_quick_response` draft, runs cascade.
 
 Bias firewall: LLM sees behavior features + scrubbed message. `display_name` and `source_handle` never reach model.
 
@@ -599,7 +599,7 @@ Meta Cloud API → POST /api/webhooks/whatsapp
             ↓                     ↓
     Dashboard alerts      hot_leads.insert
                                   │
-                          bucket ∈ {hot, burning}?
+                          bucket ∈ {hot, blazing}?
                                   │
                                   ↓
                        waitUntil(Sales QuickResponse)
@@ -1002,6 +1002,7 @@ Pre-1.14 the sidebar item pointed to `/dashboard/trust` (no implementation → 4
 - **Inventory schema hotfix** — removed unsupported `minimum: 1` constraint on the `priority` integer field; Anthropic structured outputs reject `minimum`/`maximum` on integers, so the inventory agent had been silently failing 100% in production with a 400 since Stage 1. Other 4 schemas (manager, reviews, sales, social) already documented this restriction in their headers; inventory was the outlier
 - **Print / Save-as-PDF (1.13)** — `<PrintButton>` triggers `window.print()` on inventory analysis page and manager reports detail page; chrome elements wrapped in Tailwind `print:hidden` so printout shows only the report card. Single code path serves both real prints and "Save as PDF" via the browser's native dialog
 - **Legal compliance package v0.1 (1.14)** — 12 new files + sidebar integration. 7 public Hebrew legal pages live at `/privacy`, `/terms`, `/aup`, `/cookies`, `/sub-processors`, `/dpa`, `/dsar`. Cookie banner with תיקון 13–compliant 3-equal-buttons design. Consent audit log to `consent_log` table (24-month retention). DSAR pipeline ready (`dsar_log` + `/dsar` form + 30-day SLA monitoring view). Sidebar "אמון ופרטיות" → `/privacy` (resolved 404) + 4 quiet legal links + cookie settings button at bottom of sidebar. **NOT yet lawyer-reviewed** — ready for hand-off to Tier-2 boutique firm (₪15K-25K fixed-fee package)
+- **Sales Cascade Audit & Hardening (1.14.1)** — 10-bug audit triggered by discovery that `SALES_CASCADE_BUCKETS` checked `"burning"` while Hot Leads schema returned `"blazing"`. The cast `(arr as readonly string[]).includes(...)` had silenced TypeScript and let the bug ship invisibly since 1.3.5. Bugs fixed across 9 files in 5 commits (`f609fbe`, `a66fcdf`, `25f65e9`/`97eedf6`, `036a3ba`, `33f7762`, `04f4790`): runtime cron query (`runSalesAgent` `.in("bucket", ...)`); recovery cron Stage 2; demo UI status enum; central `lib/demo/types.ts` union; comments + Hebrew prompts + INTEGRATION-NOTES.md docs; UI form `neutral` → `plural` rename (the `gender-lock.ts` canonical type only ever knew male/female/plural — neutral tenants were silently broken); 3 verticals added to onboarding form (clinic/financial/education) to match settings's 8; `BusinessOwnerGender` shadow type eliminated by re-exporting canonical from `gender-lock.ts`; `VALID_GENDERS` typed as `as const satisfies readonly BusinessOwnerGender[]` for compile-time drift detection; `showcase/actions.ts` UTF-8 mojibake cleaned (57 corrupted bytes: 50 `─`, 1 `∈`, 6 `—`, all from a past Windows-1252→CP437→UTF-8 round-trip). DB migration ran by hand: 0 tenants needed `neutral→plural` update. End-to-end verified in production via `/dashboard/showcase` demo: webhook→Watcher+HotLeads(parallel)→Sales QR cascade→draft, ~6.3s, ~₪0.11 cost. Lessons documented in §15.12 (enum drift) and §15.13 (git amend hazard).
 - Real-time WhatsApp pipeline (~15-16s end-to-end, ~₪0.04/hot-lead)
 - Cleanup cron + Recovery cron daily
 - All deployed live to `app.spikeai.co.il`
@@ -1269,6 +1270,67 @@ The `if ($LASTEXITCODE -ne 0) { exit 1 }` check after `tsc --noEmit` is mandator
 ```powershell
 Select-String -Path "src\app\dashboard\actions\manager.ts" -Pattern "ManagerLockState" -Context 0,15
 ```
+
+### 15.12 Enum Drift Hidden by `as const` + readonly Cast (1.14.1 lesson) ⚠️
+
+`SALES_CASCADE_BUCKETS = ["warm", "hot", "burning"] as const` was used as `(SALES_CASCADE_BUCKETS as readonly string[]).includes(bucket)`. The `as readonly string[]` cast silenced TypeScript when `bucket` was a different literal (`"blazing"` from the schema). Result: `.includes("blazing")` returned `false` in production for ~3 weeks (since 1.3.5 cascade introduction) and the highest-intent leads — exactly the ones the cascade exists for — never got Sales QR drafts. The bug was invisible to grep, invisible to tsc, and invisible to runtime errors because `.includes` doesn't throw, it just returns `false`.
+
+**Why the cast existed at all:** without it, tsc errored: `Type 'string' is not assignable to type '"warm" | "hot" | "burning"'`. The "easy" fix was to widen the array type with the cast. The right fix is to narrow the input type, OR to declare the array as the canonical type:
+
+```typescript
+// ❌ WRONG — drift between array and bucket value silently allowed
+const SALES_CASCADE_BUCKETS = ["warm", "hot", "burning"] as const;
+if ((SALES_CASCADE_BUCKETS as readonly string[]).includes(bucket)) { ... }
+
+// ✅ RIGHT — explicit array type, tsc enforces conformance both ways
+import type { LeadBucket } from "../types";
+const SALES_CASCADE_BUCKETS: LeadBucket[] = ["warm", "hot", "blazing"];
+if (SALES_CASCADE_BUCKETS.includes(bucket)) { ... }
+
+// ✅ ALSO RIGHT — keep literal narrowing AND enforce canonical type
+const SALES_CASCADE_BUCKETS = ["warm", "hot", "blazing"] as const satisfies readonly LeadBucket[];
+```
+
+**The `satisfies` form (TS 4.9+) is the most defensive** because it preserves literal types for downstream narrowing AND fails the compile if anyone adds a non-canonical value to the array. Used in `settings/actions.ts` post-1.14.1 for `VALID_GENDERS`.
+
+**Audit checklist when reviewing other enum-like arrays:**
+
+```powershell
+Select-String -Path "src\**\*.ts" -Pattern "as const" -Context 0,2 | findstr /i ".includes"
+Select-String -Path "src\**\*.ts" -Pattern "as readonly string\[\]"
+```
+
+Either pattern is a smell. The first is fine if the literals match a wider type elsewhere. The second is almost always a drift hazard.
+
+### 15.13 `git commit --amend` Captures Stale File State Mid-Batch (1.14.1 lesson)
+
+During multi-file batched fixes, a hotfix may be delivered after the first round of `Move-Item`s. If the user runs `git add <fix-file> && git commit --amend` BEFORE running the new `Move-Item`, the amend captures the original (un-fixed) file. Local `tsc --noEmit` passes (because the working tree DOES have the fix on disk now, after the eventual Move-Item) but Vercel build fails (because the committed bytes don't have it). Symptom: identical TS error in Vercel that local tsc cleared seconds before push.
+
+**Concrete chain (1.14.1 batch 3):** Claude delivered `onboarding-actions.ts`. Move-Item happened. tsc errored on `OnboardingFormData.vertical` mismatch. Claude delivered a fixed `onboarding-actions.ts`. Dean ran `git add onboarding-actions.ts && git commit --amend --no-edit && git push --force-with-lease` — but the SECOND Move-Item never happened. The amend captured the file as it sat on disk, which was still the un-fixed first delivery. Local tsc (run before the amend) had passed somehow because the working tree had been edited by some other path. Vercel saw the actual git tree and threw the same TS2322. Required a follow-up commit `33f7762` re-doing the fix.
+
+**The protocol — verify-before-amend:**
+
+```powershell
+# Before any amend, ALWAYS confirm the working tree matches expectations:
+git diff HEAD <file>                     # see exactly what's about to be amended
+git diff --cached <file>                 # see what's currently staged
+
+# If both are empty AND you expected changes, the Move-Item didn't happen.
+# DON'T amend an empty diff.
+```
+
+**When Vercel fails but local tsc just passed (or vice versa):**
+
+```powershell
+# Show what's literally in the latest commit:
+git show HEAD:<file>                     # full file content as committed
+git show HEAD:<file> | findstr /n "<expected-content>"   # quick spot-check
+
+# Compare with working tree:
+fc git-version.txt working-tree.txt      # crude but reliable
+```
+
+**Bias toward regular commits over amends during multi-batch fixes.** A noisy commit log with a "hotfix follows hotfix" arc is far better than a single broken amend that ships to production. Amend is for last-keystroke typo fixes on a clean feature branch — not for live mid-deploy state juggling.
 
 ---
 
