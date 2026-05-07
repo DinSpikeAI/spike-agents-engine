@@ -16,6 +16,7 @@
 // All exports are imported by sibling files in src/app/dashboard/actions/.
 // They are never imported by Client Components directly.
 
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AgentId } from "@/lib/agents/types";
@@ -123,28 +124,38 @@ export async function checkAgentRateLimit(
 // Authentication failures and missing tenant both produce Hebrew error
 // messages safe to show the user.
 
-export async function getActiveTenant(): Promise<
-  { tenantId: string } | { error: string }
-> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+/**
+ * Resolve the current user's active tenant_id.
+ *
+ * Sub-stage 1.14.3: wrapped in React `cache()` so multiple parallel
+ * action calls within the SAME request (e.g. Promise.all of 4 actions
+ * on /dashboard) share a single execution. Each action used to do its
+ * own auth.getUser + user_settings lookup — that was 8+ wasted
+ * round-trips per dashboard load. With cache, this happens once per
+ * request. Cross-request the cache is fresh.
+ */
+export const getActiveTenant = cache(
+  async (): Promise<{ tenantId: string } | { error: string }> => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-  if (authError || !user) {
-    return { error: "לא מחובר. אנא התחבר מחדש." };
+    if (authError || !user) {
+      return { error: "לא מחובר. אנא התחבר מחדש." };
+    }
+
+    const { data: settings, error: settingsError } = await supabase
+      .from("user_settings")
+      .select("active_tenant_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (settingsError || !settings?.active_tenant_id) {
+      return { error: "לא נמצא tenant פעיל. צור קשר עם התמיכה." };
+    }
+
+    return { tenantId: settings.active_tenant_id };
   }
-
-  const { data: settings, error: settingsError } = await supabase
-    .from("user_settings")
-    .select("active_tenant_id")
-    .eq("user_id", user.id)
-    .single();
-
-  if (settingsError || !settings?.active_tenant_id) {
-    return { error: "לא נמצא tenant פעיל. צור קשר עם התמיכה." };
-  }
-
-  return { tenantId: settings.active_tenant_id };
-}
+);
