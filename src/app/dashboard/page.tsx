@@ -1,7 +1,4 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { requireOnboarded } from "@/lib/auth/require-onboarded";
 import { isAdminEmail } from "@/lib/admin/auth";
 import { getOnboardingStatus } from "@/lib/auth/onboarding-status";
@@ -162,30 +159,14 @@ const CATEGORY_META: Record<
 export default async function DashboardPage() {
   // Block access if user hasn't completed onboarding yet.
   // requireOnboarded() also handles the not-logged-in case (redirects to /login).
-  const { tenantId } = await requireOnboarded();
+  // Sub-stage 1.14.3: requireOnboarded now returns user + tenantConfig +
+  // tenantName already-fetched, so we don't re-query auth.getUser() or
+  // the tenants table here. Saves ~200ms (2 round-trips to Frankfurt).
+  const { userEmail, tenantId, tenantConfig, tenantName } =
+    await requireOnboarded();
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const userEmail = user.email ?? "";
   const greeting = getGreeting();
 
-  // Load tenant identity for greeting (owner_name set during onboarding).
-  const adminDb = createAdminClient();
-  const { data: tenantRow } = await adminDb
-    .from("tenants")
-    .select("name, config")
-    .eq("id", tenantId)
-    .maybeSingle();
-
-  const tenantConfig =
-    (tenantRow?.config as Record<string, unknown> | null) ?? {};
   const ownerName =
     typeof tenantConfig.owner_name === "string"
       ? tenantConfig.owner_name
@@ -193,7 +174,7 @@ export default async function DashboardPage() {
   const businessName =
     typeof tenantConfig.business_name === "string"
       ? tenantConfig.business_name
-      : (tenantRow?.name as string | undefined) ?? null;
+      : tenantName;
 
   // Display name for greeting: owner_name from onboarding > email username
   const userName = ownerName || userEmail.split("@")[0] || "משתמש";
