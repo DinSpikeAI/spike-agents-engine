@@ -52,7 +52,6 @@ import {
 } from "@/lib/quotas/check-cap";
 import { computeAndPersistHealthScore } from "@/lib/health/score";
 import type { ManagerAgentOutput, RunResult } from "../types";
-import { randomUUID } from "node:crypto";
 
 const MODEL = "claude-sonnet-4-6" as const;
 const THINKING_BUDGET = 8000;
@@ -70,7 +69,7 @@ export async function runManagerAgent(
   windowDays = 7
 ): Promise<ManagerRunResult> {
   const db = createAdminClient();
-  const runId = randomUUID();
+ const runId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
 
   // ─── Step 1: Pre-flight spend cap check (Day 11A) ────────
