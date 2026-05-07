@@ -159,6 +159,7 @@ const AGENT_COST_ESTIMATES_ILS: Record<string, number> = {
   sales: 0.15,
   cleanup: 0.05,
   inventory: 0.05,
+  growth: 0.50, // Haiku scan + 15 Sonnet drafts; conservative
 };
 
 export function estimateAgentRunCostIls(agentId: string): number {
