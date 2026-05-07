@@ -2,7 +2,7 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-07 (end of Sub-stage 1.14.2 — Stage 2 MVP: multi-tenant routing + integrations management). Stage 1 COMPLETE. Sub-stages 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 1.14, 1.14.1, 1.14.2 also complete and live in production. Onboarding banner + showcase rename + tenant settings + agents overview + actions.ts split + alerts inbox + manager reports pages + inventory race fix + npm postcss override + inventory schema hotfix + print/PDF support + legal compliance package v0.1 (12 new files, 7 public legal pages, cookie banner, consent audit log, sidebar legal integration) + sales cascade audit (10 enum-drift bugs across 9 files fixed) + Stage 2 MVP (`integrations` table partial UNIQUE index for `phone_number_id` lookup, `resolveTenant()` in webhook with per-batch cache, customer-facing read-only `/dashboard/integrations`, admin-facing `/admin/integrations` with tenant picker + soft disconnect, Coming Soon cards for Stripe/Calendar). Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead. **Latest commit:** `117cd58` (plus sidebar admin link followup).
+> **Last updated:** 2026-05-07 (end of Sub-stage 1.14.3 — Perf overhaul: Edge runtime + React cache + duplicate query elimination). Stage 1 COMPLETE. Sub-stages 1.6 through 1.14.3 complete and live in production. Sales Cascade Audit (10 enum-drift bugs, 9 files) + Stage 2 MVP (`integrations` table partial UNIQUE index for `phone_number_id` lookup, `resolveTenant()` in webhook with per-batch cache, customer-facing read-only `/dashboard/integrations`, admin-facing `/admin/integrations` with tenant picker + soft disconnect, Coming Soon cards for Stripe/Calendar) + Perf overhaul (loading.tsx for instant nav feedback, `requireOnboarded` returns user+tenantConfig+tenantName already-fetched and is wrapped in React `cache()`, `getActiveTenant` wrapped in React `cache()` to dedupe within Promise.all, all 13 dashboard+admin pages migrated to Edge runtime cutting cold starts from 1500ms to 50ms on Vercel Hobby tier, `node:crypto` import in manager/run.ts replaced with global `crypto.randomUUID` for Edge compat). Verified Hebrew output. ~15-16s end-to-end latency, ~₪0.04 per hot lead. **Latest commit:** `5e58d82` (Edge runtime migration) + node:crypto compat hotfix.
 
 ---
 
@@ -1013,6 +1013,15 @@ Pre-1.14 the sidebar item pointed to `/dashboard/trust` (no implementation → 4
   - **Architectural lesson**: original `/dashboard/integrations` exposed phone_number_id + WABA + a manual connect form to end customers. That violated the product principle "customers should not handle technical setup". The customer/admin split fixes this — Spike sales staff handles all OAuth/credential bits during onboarding calls, customers just see ✓ green status. Lesson documented in §15.14 (PowerShell escape gotcha discovered during this work).
   - **Files**: `supabase/migrations/022_integrations_whatsapp_phone_lookup.sql`, `src/app/api/webhooks/whatsapp/route.ts`, `src/app/dashboard/integrations/{page,actions}.ts`, `src/components/dashboard/integrations-form.tsx`, `src/app/admin/integrations/{page,actions}.ts`, `src/components/admin/admin-integrations-form.tsx`, `src/components/dashboard/sidebar.tsx`. **Commits**: `8a3022f` (DB+webhook), `d7d0055` (initial customer UI), hotfix for `listPendingDrafts()` signature, polish pass (Hero banner + ConnectedCard + Coming Soon cards), `117cd58` (customer/admin split), sidebar admin link followup.
   - **What 1.14.2 unblocks**: Spike can now onboard a real customer manually — Dean inserts integration row via `/admin/integrations`, customer's WhatsApp messages route to their tenant, agents process for them. **What's still blocking real production launch**: Meta Business Verification (external, 2-10 days), HSM template approval (external), `WHATSAPP_APP_SECRET` env var to activate signature verification (currently bypass mode), Embedded Signup UI (replaces manual admin form when Meta App is configured), vault encryption for stored access tokens.
+- **Perf overhaul — Edge runtime + React cache + duplicate query elimination (1.14.3)** — Triggered by Dean's report that sidebar navigation felt frozen (1-2s of "nothing happens" after click). Investigation revealed three layered bottlenecks: (1) cold starts on Vercel Hobby tier add 500-1500ms before any code runs; (2) `requireOnboarded()` already fetches user + tenant.config but every page.tsx re-queried `auth.getUser` and `tenants` right after, costing ~200ms × 8 pages; (3) every server action called inside `Promise.all([listPendingDrafts, getManagerLockState, getDashboardKpis, getOnboardingStatus])` runs `getActiveTenant()` independently, each one re-executing `auth.getUser` + `user_settings` lookup, costing ~3 round-trips × 200ms = ~600ms wasted per dashboard load. Sub-stage 1.14.3 fixes all three:
+  - **Loading states** (instant feedback): `app/dashboard/loading.tsx` and `app/admin/loading.tsx` added. Next.js streams these immediately on navigation, before page.tsx finishes server-side. Sidebar will flicker once per nav (Sidebar still lives in page.tsx) but the alternative — no feedback at all — felt worse. Long-term fix: lift Sidebar into route-group `layout.tsx` (deferred to Stage 3).
+  - **`requireOnboarded` enriched + cached**: now returns `user`, `tenantConfig`, `tenantName` already-fetched (eliminates the duplicate `auth.getUser` + `tenants` lookup in calling pages). Wrapped in React's `cache()` so callers within the same request share one execution. `OnboardedContext` interface gains 3 fields without breaking existing callers (additive only). `/dashboard/page.tsx` updated to use the new fields and removes 3 unused imports (`redirect`, `createClient`, `createAdminClient`). The same pattern applies to 7 other dashboard pages — left for follow-up since each needs careful regression check.
+  - **`getActiveTenant` cached**: `src/app/dashboard/actions/_shared.ts` wraps the helper in React's `cache()`. Was called by all 7 dashboard server actions independently — each re-running `auth.getUser` + `user_settings` lookup. Now runs once per request regardless of how many actions invoke it. Net savings on `/dashboard` Promise.all: 3 redundant round-trips × 200ms = ~600ms.
+  - **Edge runtime migration**: the dominant latency contributor was Vercel Hobby cold starts (500-1500ms). Edge runtime cold starts in ~50ms instead — 25× faster — without requiring a paid tier upgrade. Tested first on `/admin/integrations` (commit `27eabf4`); confirmed working in production. Then expanded via a one-time `edge-migration.js` script to all 13 page.tsx files under `src/app/dashboard` and `src/app/admin` (commit `5e58d82`). Each got `export const runtime = "edge";` added below `export const dynamic = "force-dynamic";`. The Anthropic SDK, Supabase JS, and Resend SDK are all Edge-compatible. API routes (webhooks, crons) remain on Node since they need Node-specific APIs (raw-body signature verification, longer execution time).
+  - **`node:crypto` Edge incompatibility hotfix**: the migration's first build failed because `src/lib/agents/manager/run.ts` imported `randomUUID` from `node:crypto`. Even though only `/dashboard/inventory/page.tsx` directly used the manager actions, the index file `src/app/dashboard/actions.ts` re-exports everything — so the Node-only import transitively poisoned every Edge page that imported anything from actions. Fix: remove the `node:crypto` import, replace `randomUUID()` call sites with `crypto.randomUUID()` (Web Crypto API, globally available in Edge runtime AND Node 19+). The other `node:crypto` user (`api/cron/cleanup/route.ts`) stays on Node runtime so it's unaffected. **Lesson documented in §15.15**.
+  - **Result**: Dean confirmed navigation feels noticeably faster post-deploy. Cold start window went from "frozen for 1-2s after click" to "spinner + page" within ~250ms typical, ~1s worst-case. Real production speed-up of ~1-1.5s per first-paint navigation, achieved without paying for Vercel Pro.
+  - **Files**: `src/lib/auth/require-onboarded.ts`, `src/app/dashboard/actions/_shared.ts`, `src/app/dashboard/page.tsx`, `src/app/dashboard/loading.tsx` (new), `src/app/admin/loading.tsx` (new), `src/components/admin/admin-integrations-form.tsx` (card-based redesign), all 13 page.tsx files under `src/app/dashboard` and `src/app/admin`, `src/lib/agents/manager/run.ts`. **Commits**: `27eabf4` (Edge experiment on /admin/integrations), `c56161b` (cache wrappers + dashboard query dedup), `5e58d82` (Edge migration to all dashboard+admin pages), node:crypto compat hotfix.
+  - **Still pending for full perf optimization**: lift Sidebar into `/dashboard/layout.tsx` (eliminates flicker on nav, currently the last visible UX glitch); apply the requireOnboarded refactor to the 7 remaining dashboard pages; potentially apply `unstable_cache` to slow-changing data like tenant config. None blocking — all polish.
 - Real-time WhatsApp pipeline (~15-16s end-to-end, ~₪0.04/hot-lead)
 - Cleanup cron + Recovery cron daily
 - All deployed live to `app.spikeai.co.il`
@@ -1372,6 +1381,51 @@ For Claude generating commit messages on Dean's behalf, **option C is the rule**
 **Recovery if stuck**: `Ctrl+C` aborts the multi-line input cleanly. No state is committed. Re-run with a fixed message.
 
 This came up during the 1.14.2 customer/admin split commit — the message contained `'ההקמה והניהול ע\"י צוות Spike'` (Hebrew "by Spike team"). The `\"` consumed the closing quote of the outer `"..."` string, the rest of the message became orphaned, and Dean was stuck typing `>>` for several lines before realizing.
+
+### 15.15 `node:crypto` Blocks Edge Runtime — Index Files Transitively Poison Every Importer (1.14.3 lesson) ⚠️
+
+When migrating pages to Edge runtime, the build error was misleading:
+
+```
+./src/lib/agents/manager/run.ts:55:1
+A Node.js module is loaded ('node:crypto' at line 55) which is not supported in the Edge Runtime.
+
+Import traces:
+  #1 [Edge Server Component]:
+    ./src/lib/agents/manager/run.ts
+    ./src/app/admin/actions.ts
+
+  #2 [Edge Server Component]:
+    ./src/lib/agents/manager/run.ts
+    ./src/app/dashboard/actions/manager.ts
+    ./src/app/dashboard/actions.ts
+    ./src/app/dashboard/inventory/page.tsx
+```
+
+The trace shows that ONLY `/dashboard/inventory` and `/admin` directly imported the manager. But the build failed for ALL Edge pages — because `src/app/dashboard/actions.ts` is an **index file** that re-exports from `actions/manager.ts`, `actions/leads.ts`, `actions/drafts.ts`, etc. Every page that imports anything from actions transitively loads ALL re-exported modules — including `node:crypto` from manager.
+
+**The lesson has two parts:**
+
+1. **Edge runtime bans `node:*` imports.** Use Web Crypto globals instead. Available in Edge AND Node 19+:
+   - `node:crypto` `randomUUID` → `crypto.randomUUID()` (global)
+   - `node:crypto` `subtle` → `crypto.subtle` (global)
+   - `node:crypto` `getRandomValues` → `crypto.getRandomValues()` (global)
+   - For HMAC/hash primitives that the global `crypto.subtle` doesn't expose ergonomically, consider keeping that route on Node runtime instead of Edge.
+
+2. **Index files transitively poison every importer.** A single Node-only import deep in a re-exported module breaks ALL Edge pages that import the index — even if they don't use the offending function. **When migrating to Edge:**
+   - Audit every `index.ts` / barrel export your Edge pages reach
+   - Verify each re-exported module is Edge-safe (no `node:*` imports, no `Buffer`, no `fs`, no `process.binding`, no `child_process`)
+   - If a single helper needs Node, consider exporting it from a dedicated module (`actions/internal-only/...`) that Edge pages NEVER import
+
+**Verification command** (find all `node:*` imports in a project):
+
+```bash
+grep -rn 'from "node:' src/
+```
+
+Each match needs to be evaluated: Edge-safe replacement, or stays on Node runtime. Don't blindly delete imports without understanding what the replacement does.
+
+**For Spike Engine post-1.14.3**: only `node:crypto` was removed from `manager/run.ts`. The other `node:crypto` user (`api/cron/cleanup/route.ts`) stays as-is because cron routes run on Node runtime — they're not in the user-facing fast path so the cold-start tradeoff doesn't apply.
 
 ---
 
