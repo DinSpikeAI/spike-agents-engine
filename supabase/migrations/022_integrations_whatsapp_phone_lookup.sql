@@ -1,0 +1,61 @@
+-- migrations/023_integrations_whatsapp_phone_lookup.sql
+--
+-- Stage 2 — phone_number_id → tenant_id routing for incoming WhatsApp webhooks.
+--
+-- Storage strategy:
+-- The `integrations` table is provider-agnostic (whatsapp, stripe, google_calendar, ...).
+-- Provider-specific identifiers live in `metadata` jsonb rather than dedicated
+-- columns, so adding a new provider doesn't require a schema migration.
+--
+-- For WhatsApp Cloud API, the relevant identifiers are:
+--   metadata.phone_number_id            -- Meta's PHONE_NUMBER_ID (the routing key)
+--   metadata.display_phone_number       -- "+972..." for UI display
+--   metadata.whatsapp_business_account_id -- WABA ID (for templates, profile, etc.)
+--
+-- This migration adds a partial unique index on (provider, phone_number_id) for
+-- WhatsApp connected rows. Two roles:
+--   1. Uniqueness  — no two tenants can claim the same Meta phone_number_id.
+--   2. Hot lookup  — webhook resolves tenant in O(log n) instead of full scan.
+--
+-- The index is partial (WHERE provider='whatsapp' AND status='connected') so
+-- disconnected/revoked rows don't block re-connection by another tenant later
+-- (the previous tenant must explicitly reconnect or the row must be marked
+-- non-connected). Status values follow the existing convention: 'connected',
+-- 'disconnected', 'revoked', 'pending'.
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_integrations_whatsapp_phone
+  ON integrations (provider, (metadata->>'phone_number_id'))
+  WHERE provider = 'whatsapp' AND status = 'connected';
+
+-- ─── Sanity probes (run manually after applying) ────────────────────────────
+--
+-- Check index landed:
+--   SELECT indexname, indexdef
+--   FROM pg_indexes
+--   WHERE tablename = 'integrations' AND indexname = 'idx_integrations_whatsapp_phone';
+--
+-- Check no existing duplicates would block the index:
+--   SELECT metadata->>'phone_number_id' AS phone_number_id, count(*)
+--   FROM integrations
+--   WHERE provider = 'whatsapp' AND status = 'connected'
+--   GROUP BY 1 HAVING count(*) > 1;
+--   -- Expected: 0 rows.
+--
+-- ─── Manual test row (run only when ready to onboard a real WhatsApp tenant) ──
+--
+-- INSERT INTO integrations (tenant_id, provider, status, metadata)
+-- VALUES (
+--   '<TENANT_UUID_HERE>',
+--   'whatsapp',
+--   'connected',
+--   jsonb_build_object(
+--     'phone_number_id',              '<META_PHONE_NUMBER_ID>',
+--     'display_phone_number',         '+972...',
+--     'whatsapp_business_account_id', '<WABA_ID>',
+--     'connected_via',                'manual'
+--   )
+-- );
+--
+-- After insert, any incoming webhook with the matching phone_number_id will route
+-- to that tenant_id. Until insert, webhooks fall back to DEMO_TENANT_ID (the
+-- behavior preserved by resolveTenantFromPhoneNumberId in whatsapp/route.ts).

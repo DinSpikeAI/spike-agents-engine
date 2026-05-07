@@ -75,6 +75,14 @@ export const dynamic = "force-dynamic";
  * here). Once Stage 2 lands a real integrations schema, this becomes a true
  * fallback for unmapped phone_number_ids only. From CLAUDE.md §5.4.
  */
+/**
+ * Stage 1 fallback only. From CLAUDE.md §5.4. Used when:
+ *   1. The incoming webhook has no phone_number_id (e.g., status callbacks).
+ *   2. The phone_number_id has no matching `integrations` row (unmapped).
+ *   3. The X-Spike-Tenant-Override header is absent and lookup fails.
+ * Real tenants are resolved via `resolveTenantFromPhoneNumberId` against
+ * the `integrations` table (Stage 2 — migration 023).
+ */
 const DEMO_TENANT_ID = "15ef2c6e-a064-49bf-9455-217ba937ccf2";
 
 /**
@@ -170,11 +178,59 @@ export async function POST(request: NextRequest) {
   // independently — so we run it once per event.
   const freshEvents: Array<{ tenantId: string; eventId: string }> = [];
 
+  // Stage 2: phone_number_id → tenant_id resolution via the `integrations`
+  // table (migration 023). For each unique phone_number_id seen in this
+  // webhook batch, we query at most once and cache the result. Falls back to
+  // DEMO_TENANT_ID for: header override absent + no phone_number_id + lookup
+  // failures + unmapped phone_number_ids. The override header still wins
+  // unconditionally (used by the `/dashboard/showcase` demo flow).
+  const phoneIdToTenantId = new Map<string, string | null>();
+
+  async function resolveTenant(
+    phoneNumberId: string | null | undefined
+  ): Promise<string> {
+    if (tenantOverride) return tenantOverride;
+    if (!phoneNumberId) return DEMO_TENANT_ID;
+
+    if (phoneIdToTenantId.has(phoneNumberId)) {
+      return phoneIdToTenantId.get(phoneNumberId) ?? DEMO_TENANT_ID;
+    }
+
+    const { data, error } = await supabase
+      .from("integrations")
+      .select("tenant_id")
+      .eq("provider", "whatsapp")
+      .eq("status", "connected")
+      .filter("metadata->>phone_number_id", "eq", phoneNumberId)
+      .maybeSingle();
+
+    if (error) {
+      console.error(
+        "[webhook] integrations lookup failed for phone_number_id=" +
+          phoneNumberId +
+          ":",
+        error
+      );
+      phoneIdToTenantId.set(phoneNumberId, null);
+      return DEMO_TENANT_ID;
+    }
+
+    const resolved = data?.tenant_id ?? null;
+    phoneIdToTenantId.set(phoneNumberId, resolved);
+
+    if (!resolved) {
+      console.warn(
+        "[webhook] No integration row for phone_number_id=" +
+          phoneNumberId +
+          " — falling back to DEMO_TENANT_ID. Insert a row in `integrations` to onboard this number."
+      );
+    }
+
+    return resolved ?? DEMO_TENANT_ID;
+  }
+
   for (const msg of messages) {
-    // Stage 1: every message lands on DEMO_TENANT_ID unless explicitly
-    // overridden via header. Stage 2 will reintroduce phone_number_id-based
-    // tenant resolution against a finalized integrations schema.
-    const tenantId = tenantOverride ?? DEMO_TENANT_ID;
+    const tenantId = await resolveTenant(msg.whatsappPhoneNumberId);
 
     const summary = buildHebrewSummary(msg);
 
