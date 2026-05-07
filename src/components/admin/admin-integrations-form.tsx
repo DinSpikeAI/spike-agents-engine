@@ -2,17 +2,30 @@
 
 // src/components/admin/admin-integrations-form.tsx
 //
-// Sub-stage 2.0 (revision 2026-05-07) — Admin integrations manager.
+// Sub-stage 1.14.3 — Card-based admin integrations UI.
 //
-// Single-screen admin tool. Pick a tenant from the dropdown; that tenant's
-// WhatsApp connection state is shown below. If not connected, the form
-// appears for setup. If connected, status + a Disconnect button.
+// Replaces the previous "dropdown + WhatsApp section + tenant list" layout
+// (which had 4 competing elements on screen) with a single clean list of
+// tenant cards. Click a card → inline expand → form OR connected details.
 //
-// Style: matches /admin theme (--spike-* tokens).
+// Why this design:
+//   - No dropdown: the dropdown was redundant with the tenant list below
+//   - No tenant_id text exposed in body: distracting UUIDs hidden
+//     unless explicitly toggled
+//   - One card per tenant, click to expand: matches Stripe/Linear admin patterns
+//   - Connected vs disconnected state visible at a glance via badge color
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  MessageCircle,
+} from "lucide-react";
 import {
   connectWhatsappAsAdmin,
   disconnectIntegrationAsAdmin,
@@ -25,7 +38,7 @@ interface AdminIntegrationsManagerProps {
 
 type FieldErrors = Partial<
   Record<
-    "tenantId" | "phoneNumberId" | "displayPhoneNumber" | "whatsappBusinessAccountId",
+    "phoneNumberId" | "displayPhoneNumber" | "whatsappBusinessAccountId",
     string
   >
 >;
@@ -33,31 +46,16 @@ type FieldErrors = Partial<
 export function AdminIntegrationsManager({
   tenants,
 }: AdminIntegrationsManagerProps) {
-  const [selectedTenantId, setSelectedTenantId] = useState<string>(
-    tenants[0]?.id ?? ""
-  );
+  const [expandedTenantId, setExpandedTenantId] = useState<string | null>(null);
   const [phoneNumberId, setPhoneNumberId] = useState("");
   const [displayPhoneNumber, setDisplayPhoneNumber] = useState("");
-  const [whatsappBusinessAccountId, setWhatsappBusinessAccountId] =
-    useState("");
+  const [whatsappBusinessAccountId, setWhatsappBusinessAccountId] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [isConnecting, startConnecting] = useTransition();
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
 
-  const selected = tenants.find((t) => t.id === selectedTenantId) ?? null;
-  const isConnected = selected?.whatsapp?.status === "connected";
-
-  const canSubmit =
-    !!selected &&
-    !isConnected &&
-    phoneNumberId.trim().length > 0 &&
-    displayPhoneNumber.trim().length > 0 &&
-    whatsappBusinessAccountId.trim().length > 0 &&
-    !isConnecting;
-
-  function handleSelectTenant(id: string) {
-    setSelectedTenantId(id);
+  function resetForm() {
     setPhoneNumberId("");
     setDisplayPhoneNumber("");
     setWhatsappBusinessAccountId("");
@@ -65,21 +63,41 @@ export function AdminIntegrationsManager({
     setGeneralError(null);
   }
 
-  function handleConnect() {
-    if (!canSubmit || !selected) return;
+  function handleToggleExpand(tenantId: string) {
+    if (expandedTenantId === tenantId) {
+      setExpandedTenantId(null);
+      resetForm();
+    } else {
+      setExpandedTenantId(tenantId);
+      resetForm();
+    }
+  }
+
+  function handleConnect(tenant: TenantWithIntegrations) {
+    if (
+      !phoneNumberId.trim() ||
+      !displayPhoneNumber.trim() ||
+      !whatsappBusinessAccountId.trim()
+    ) {
+      return;
+    }
     setFieldErrors({});
     setGeneralError(null);
 
     startConnecting(async () => {
       const result = await connectWhatsappAsAdmin({
-        tenantId: selected.id,
+        tenantId: tenant.id,
         phoneNumberId: phoneNumberId.trim(),
         displayPhoneNumber: displayPhoneNumber.trim(),
         whatsappBusinessAccountId: whatsappBusinessAccountId.trim(),
       });
 
       if (!result.ok) {
-        if (result.fieldErrors) setFieldErrors(result.fieldErrors);
+        if (result.fieldErrors) {
+          setFieldErrors(
+            result.fieldErrors as FieldErrors // tenantId not shown in card UI
+          );
+        }
         if (result.error) {
           setGeneralError(result.error);
           toast.error(result.error);
@@ -87,18 +105,19 @@ export function AdminIntegrationsManager({
         return;
       }
 
-      toast.success(`WhatsApp חובר ל-${tenantLabel(selected)}`);
-      setPhoneNumberId("");
-      setDisplayPhoneNumber("");
-      setWhatsappBusinessAccountId("");
+      toast.success(`WhatsApp חובר ל-${tenantLabel(tenant)}`);
+      resetForm();
+      // keep the card expanded so user sees the new connected state
     });
   }
 
-  function handleDisconnect(integrationId: string) {
-    if (!selected) return;
+  function handleDisconnect(
+    tenant: TenantWithIntegrations,
+    integrationId: string
+  ) {
     if (
       !window.confirm(
-        `לנתק את WhatsApp של ${tenantLabel(selected)}? הודעות נכנסות יפסיקו להגיע ל-tenant הזה.`
+        `לנתק WhatsApp של ${tenantLabel(tenant)}? הודעות נכנסות יפסיקו להגיע.`
       )
     ) {
       return;
@@ -113,252 +132,359 @@ export function AdminIntegrationsManager({
         toast.error(result.error ?? "ניתוק נכשל");
         return;
       }
-
-      toast.success("האינטגרציה נותקה");
+      toast.success("נותק בהצלחה");
     })();
   }
 
-  // ──────────────────────────────────────────────────────────────────
+  if (tenants.length === 0) {
+    return (
+      <div
+        className="rounded-[14px] p-6 text-center"
+        style={{
+          background: "rgba(255,255,255,0.04)",
+          border: "1px dashed rgba(255,255,255,0.10)",
+          color: "var(--spike-text-mute)",
+        }}
+      >
+        אין tenants במערכת עדיין. כשמשתמשים יסיימו onboarding הם יופיעו כאן.
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      {/* Tenant picker */}
-      <AdminCard>
-        <Label>בחר tenant</Label>
-        <div className="mt-2 grid gap-2">
-          <select
-            value={selectedTenantId}
-            onChange={(e) => handleSelectTenant(e.target.value)}
-            className="w-full rounded-[10px] px-3 py-2.5 text-[14px]"
-            style={{
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              color: "var(--spike-text)",
-            }}
-          >
-            {tenants.length === 0 ? (
-              <option value="">אין tenants במערכת</option>
-            ) : (
-              tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {tenantLabel(t)} {t.whatsapp?.status === "connected" ? "✓" : ""}
-                </option>
-              ))
-            )}
-          </select>
-          <div
-            className="text-[11px]"
-            style={{ color: "var(--spike-text-mute)", direction: "ltr" }}
-          >
-            tenant_id: {selectedTenantId || "—"}
-          </div>
-        </div>
-      </AdminCard>
+    <div className="space-y-2">
+      {tenants.map((tenant) => {
+        const isExpanded = expandedTenantId === tenant.id;
+        const isConnected = tenant.whatsapp?.status === "connected";
 
-      {/* Selected tenant's WhatsApp state */}
-      {selected && (
-        <AdminCard>
-          <div className="flex items-center justify-between">
-            <Label>WhatsApp</Label>
-            {isConnected ? (
-              <StatusBadge accent="var(--spike-teal)" Icon={CheckCircle2}>
-                מחובר
-              </StatusBadge>
-            ) : (
-              <StatusBadge accent="#ff9f0a" Icon={AlertCircle}>
-                לא מחובר
-              </StatusBadge>
-            )}
-          </div>
-
-          {isConnected && selected.whatsapp ? (
-            <div className="mt-4 space-y-2">
-              <KV label="display" value={selected.whatsapp.displayPhoneNumber} />
-              <KV
-                label="phone_number_id"
-                value={selected.whatsapp.phoneNumberId}
-              />
-              <KV label="WABA" value={selected.whatsapp.wabaId} />
-              <KV
-                label="connected_at"
-                value={new Date(selected.whatsapp.connectedAt).toLocaleString(
-                  "he-IL"
-                )}
-                ltr={false}
-              />
-
-              <button
-                type="button"
-                onClick={() =>
-                  selected.whatsapp && handleDisconnect(selected.whatsapp.id)
-                }
-                disabled={disconnectingId !== null}
-                className="mt-3 flex items-center gap-2 rounded-[8px] px-3 py-2 text-[12px] font-medium transition-colors disabled:opacity-60"
-                style={{
-                  background: "rgba(255, 69, 58, 0.1)",
-                  border: "1px solid rgba(255, 69, 58, 0.3)",
-                  color: "#ff453a",
-                }}
-              >
-                {disconnectingId ? (
-                  <Loader2 size={12} strokeWidth={2.5} className="animate-spin" />
-                ) : (
-                  <Trash2 size={12} strokeWidth={2} />
-                )}
-                {disconnectingId ? "מנתק..." : "נתק"}
-              </button>
-            </div>
-          ) : (
-            <div className="mt-4 space-y-3">
-              <p
-                className="text-[12px] leading-[1.55]"
-                style={{ color: "var(--spike-text-dim)" }}
-              >
-                העתק את הערכים מ-Meta Business Manager → WhatsApp Manager →
-                Phone Numbers → המספר של ה-tenant הזה.
-              </p>
-
-              <Field
-                label="phone_number_id"
-                value={phoneNumberId}
-                onChange={setPhoneNumberId}
-                placeholder="123456789012345"
-                error={fieldErrors.phoneNumberId}
-                disabled={isConnecting}
-              />
-              <Field
-                label="display_phone_number"
-                value={displayPhoneNumber}
-                onChange={setDisplayPhoneNumber}
-                placeholder="+972-50-1234567"
-                error={fieldErrors.displayPhoneNumber}
-                disabled={isConnecting}
-              />
-              <Field
-                label="whatsapp_business_account_id (WABA)"
-                value={whatsappBusinessAccountId}
-                onChange={setWhatsappBusinessAccountId}
-                placeholder="987654321098765"
-                error={fieldErrors.whatsappBusinessAccountId}
-                disabled={isConnecting}
-              />
-
-              {generalError && (
-                <p className="text-[12px]" style={{ color: "#ff453a" }}>
-                  {generalError}
-                </p>
-              )}
-
-              <button
-                type="button"
-                onClick={handleConnect}
-                disabled={!canSubmit}
-                className="flex w-full items-center justify-center gap-2 rounded-[10px] px-4 py-3 text-[13.5px] font-semibold transition-all disabled:opacity-50"
-                style={{
-                  background: canSubmit
-                    ? "var(--spike-teal)"
-                    : "rgba(255,255,255,0.08)",
-                  color: canSubmit ? "#0b0c0e" : "var(--spike-text-mute)",
-                }}
-              >
-                {isConnecting ? (
-                  <>
-                    <Loader2
-                      size={14}
-                      strokeWidth={2.5}
-                      className="animate-spin"
-                    />
-                    מחבר...
-                  </>
-                ) : (
-                  `חבר WhatsApp עבור ${tenantLabel(selected)}`
-                )}
-              </button>
-            </div>
-          )}
-        </AdminCard>
-      )}
-
-      {/* Tenant overview table */}
-      <AdminCard>
-        <Label>כל ה-tenants ({tenants.length})</Label>
-        <div className="mt-3 space-y-1.5">
-          {tenants.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => handleSelectTenant(t.id)}
-              className="flex w-full items-center justify-between rounded-[10px] px-3 py-2.5 text-[12.5px] transition-colors"
-              style={{
-                background:
-                  t.id === selectedTenantId
-                    ? "rgba(50, 215, 195, 0.10)"
-                    : "rgba(255,255,255,0.03)",
-                border:
-                  t.id === selectedTenantId
-                    ? "1px solid rgba(50, 215, 195, 0.30)"
-                    : "1px solid rgba(255,255,255,0.06)",
-                color: "var(--spike-text)",
-              }}
-            >
-              <span className="flex flex-col items-start gap-0.5">
-                <span className="font-medium">{tenantLabel(t)}</span>
-                <span
-                  className="text-[10px]"
-                  style={{
-                    color: "var(--spike-text-mute)",
-                    direction: "ltr",
-                  }}
-                >
-                  {t.id}
-                </span>
-              </span>
-              <span
-                className="text-[11px] font-medium uppercase tracking-wide"
-                style={{
-                  color:
-                    t.whatsapp?.status === "connected"
-                      ? "var(--spike-teal)"
-                      : "var(--spike-text-mute)",
-                }}
-              >
-                {t.whatsapp?.status === "connected" ? "✓ מחובר" : "ללא חיבור"}
-              </span>
-            </button>
-          ))}
-        </div>
-      </AdminCard>
+        return (
+          <TenantCard
+            key={tenant.id}
+            tenant={tenant}
+            isExpanded={isExpanded}
+            isConnected={isConnected}
+            onToggle={() => handleToggleExpand(tenant.id)}
+            // form state
+            phoneNumberId={phoneNumberId}
+            displayPhoneNumber={displayPhoneNumber}
+            whatsappBusinessAccountId={whatsappBusinessAccountId}
+            setPhoneNumberId={setPhoneNumberId}
+            setDisplayPhoneNumber={setDisplayPhoneNumber}
+            setWhatsappBusinessAccountId={setWhatsappBusinessAccountId}
+            fieldErrors={fieldErrors}
+            generalError={generalError}
+            isConnecting={isConnecting}
+            disconnectingId={disconnectingId}
+            onConnect={() => handleConnect(tenant)}
+            onDisconnect={(integrationId) =>
+              handleDisconnect(tenant, integrationId)
+            }
+          />
+        );
+      })}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Sub-components
+// TenantCard — clickable header + collapsible body
 // ─────────────────────────────────────────────────────────────────
 
-function AdminCard({ children }: { children: React.ReactNode }) {
+function TenantCard({
+  tenant,
+  isExpanded,
+  isConnected,
+  onToggle,
+  phoneNumberId,
+  displayPhoneNumber,
+  whatsappBusinessAccountId,
+  setPhoneNumberId,
+  setDisplayPhoneNumber,
+  setWhatsappBusinessAccountId,
+  fieldErrors,
+  generalError,
+  isConnecting,
+  disconnectingId,
+  onConnect,
+  onDisconnect,
+}: {
+  tenant: TenantWithIntegrations;
+  isExpanded: boolean;
+  isConnected: boolean;
+  onToggle: () => void;
+  phoneNumberId: string;
+  displayPhoneNumber: string;
+  whatsappBusinessAccountId: string;
+  setPhoneNumberId: (v: string) => void;
+  setDisplayPhoneNumber: (v: string) => void;
+  setWhatsappBusinessAccountId: (v: string) => void;
+  fieldErrors: FieldErrors;
+  generalError: string | null;
+  isConnecting: boolean;
+  disconnectingId: string | null;
+  onConnect: () => void;
+  onDisconnect: (integrationId: string) => void;
+}) {
   return (
     <div
-      className="rounded-[14px] p-5"
+      className="overflow-hidden rounded-[14px] transition-colors"
       style={{
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.08)",
+        background: isExpanded
+          ? "rgba(255,255,255,0.06)"
+          : "rgba(255,255,255,0.03)",
+        border: isExpanded
+          ? "1px solid rgba(50, 215, 195, 0.25)"
+          : "1px solid rgba(255,255,255,0.06)",
       }}
     >
-      {children}
+      {/* Header — always visible, clickable */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-4 px-5 py-4 transition-colors hover:bg-white/5"
+      >
+        {/* Avatar */}
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[14px] font-semibold"
+          style={{
+            background: isConnected
+              ? "rgba(50, 215, 195, 0.15)"
+              : "rgba(255, 159, 10, 0.15)",
+            color: isConnected ? "var(--spike-teal)" : "#ff9f0a",
+          }}
+        >
+          {tenantInitials(tenant)}
+        </div>
+
+        {/* Name + sub */}
+        <div className="flex-1 min-w-0 text-right">
+          <div
+            className="text-[15px] font-semibold leading-[1.2]"
+            style={{ color: "var(--spike-text)" }}
+          >
+            {tenantLabel(tenant)}
+          </div>
+          <div
+            className="mt-0.5 flex items-center gap-2 text-[12px]"
+            style={{ color: "var(--spike-text-dim)" }}
+          >
+            <MessageCircle size={12} strokeWidth={1.75} />
+            {isConnected && tenant.whatsapp?.displayPhoneNumber ? (
+              <span style={{ direction: "ltr" }}>
+                {tenant.whatsapp.displayPhoneNumber}
+              </span>
+            ) : (
+              <span>WhatsApp לא מחובר</span>
+            )}
+          </div>
+        </div>
+
+        {/* Status badge */}
+        <div className="shrink-0">
+          {isConnected ? (
+            <StatusBadge accent="var(--spike-teal)" Icon={CheckCircle2}>
+              מחובר
+            </StatusBadge>
+          ) : (
+            <StatusBadge accent="#ff9f0a" Icon={AlertCircle}>
+              ממתין
+            </StatusBadge>
+          )}
+        </div>
+
+        {/* Chevron */}
+        <div className="shrink-0" style={{ color: "var(--spike-text-mute)" }}>
+          {isExpanded ? (
+            <ChevronUp size={16} strokeWidth={1.75} />
+          ) : (
+            <ChevronDown size={16} strokeWidth={1.75} />
+          )}
+        </div>
+      </button>
+
+      {/* Body — only when expanded */}
+      {isExpanded && (
+        <div
+          className="border-t px-5 py-5"
+          style={{ borderColor: "rgba(255,255,255,0.06)" }}
+        >
+          {isConnected && tenant.whatsapp ? (
+            <ConnectedBody
+              whatsapp={tenant.whatsapp}
+              isDisconnecting={disconnectingId === tenant.whatsapp.id}
+              onDisconnect={() => onDisconnect(tenant.whatsapp!.id)}
+            />
+          ) : (
+            <SetupBody
+              tenantLabel={tenantLabel(tenant)}
+              phoneNumberId={phoneNumberId}
+              displayPhoneNumber={displayPhoneNumber}
+              whatsappBusinessAccountId={whatsappBusinessAccountId}
+              setPhoneNumberId={setPhoneNumberId}
+              setDisplayPhoneNumber={setDisplayPhoneNumber}
+              setWhatsappBusinessAccountId={setWhatsappBusinessAccountId}
+              fieldErrors={fieldErrors}
+              generalError={generalError}
+              isConnecting={isConnecting}
+              onConnect={onConnect}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function Label({ children }: { children: React.ReactNode }) {
+// ─────────────────────────────────────────────────────────────────
+// SetupBody — form for connecting WhatsApp
+// ─────────────────────────────────────────────────────────────────
+
+function SetupBody({
+  tenantLabel,
+  phoneNumberId,
+  displayPhoneNumber,
+  whatsappBusinessAccountId,
+  setPhoneNumberId,
+  setDisplayPhoneNumber,
+  setWhatsappBusinessAccountId,
+  fieldErrors,
+  generalError,
+  isConnecting,
+  onConnect,
+}: {
+  tenantLabel: string;
+  phoneNumberId: string;
+  displayPhoneNumber: string;
+  whatsappBusinessAccountId: string;
+  setPhoneNumberId: (v: string) => void;
+  setDisplayPhoneNumber: (v: string) => void;
+  setWhatsappBusinessAccountId: (v: string) => void;
+  fieldErrors: FieldErrors;
+  generalError: string | null;
+  isConnecting: boolean;
+  onConnect: () => void;
+}) {
+  const canSubmit =
+    phoneNumberId.trim().length > 0 &&
+    displayPhoneNumber.trim().length > 0 &&
+    whatsappBusinessAccountId.trim().length > 0 &&
+    !isConnecting;
+
   return (
-    <div
-      className="text-[12.5px] font-semibold uppercase tracking-wide"
-      style={{ color: "var(--spike-text-mute)" }}
-    >
-      {children}
+    <div className="space-y-3">
+      <p
+        className="text-[12px] leading-[1.55]"
+        style={{ color: "var(--spike-text-dim)" }}
+      >
+        העתק מ-Meta Business Manager → WhatsApp Manager → Phone Numbers,
+        ובחר את המספר של {tenantLabel}.
+      </p>
+
+      <Field
+        label="phone_number_id"
+        value={phoneNumberId}
+        onChange={setPhoneNumberId}
+        placeholder="123456789012345"
+        error={fieldErrors.phoneNumberId}
+        disabled={isConnecting}
+      />
+      <Field
+        label="display_phone_number"
+        value={displayPhoneNumber}
+        onChange={setDisplayPhoneNumber}
+        placeholder="+972-50-1234567"
+        error={fieldErrors.displayPhoneNumber}
+        disabled={isConnecting}
+      />
+      <Field
+        label="WABA ID"
+        value={whatsappBusinessAccountId}
+        onChange={setWhatsappBusinessAccountId}
+        placeholder="987654321098765"
+        error={fieldErrors.whatsappBusinessAccountId}
+        disabled={isConnecting}
+      />
+
+      {generalError && (
+        <p className="text-[12px]" style={{ color: "#ff453a" }}>
+          {generalError}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={onConnect}
+        disabled={!canSubmit}
+        className="flex w-full items-center justify-center gap-2 rounded-[10px] px-4 py-3 text-[13.5px] font-semibold transition-all disabled:opacity-50"
+        style={{
+          background: canSubmit ? "var(--spike-teal)" : "rgba(255,255,255,0.08)",
+          color: canSubmit ? "#0b0c0e" : "var(--spike-text-mute)",
+        }}
+      >
+        {isConnecting ? (
+          <>
+            <Loader2 size={14} strokeWidth={2.5} className="animate-spin" />
+            מחבר...
+          </>
+        ) : (
+          "חבר WhatsApp"
+        )}
+      </button>
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────
+// ConnectedBody — read-only details + disconnect
+// ─────────────────────────────────────────────────────────────────
+
+function ConnectedBody({
+  whatsapp,
+  isDisconnecting,
+  onDisconnect,
+}: {
+  whatsapp: NonNullable<TenantWithIntegrations["whatsapp"]>;
+  isDisconnecting: boolean;
+  onDisconnect: () => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        <KV label="display" value={whatsapp.displayPhoneNumber} />
+        <KV label="phone_number_id" value={whatsapp.phoneNumberId} />
+        <KV label="WABA" value={whatsapp.wabaId} />
+        <KV
+          label="connected_at"
+          value={new Date(whatsapp.connectedAt).toLocaleString("he-IL")}
+          ltr={false}
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={onDisconnect}
+        disabled={isDisconnecting}
+        className="flex items-center gap-2 rounded-[8px] px-3 py-2 text-[12px] font-medium transition-colors disabled:opacity-60"
+        style={{
+          background: "rgba(255, 69, 58, 0.10)",
+          border: "1px solid rgba(255, 69, 58, 0.30)",
+          color: "#ff453a",
+        }}
+      >
+        {isDisconnecting ? (
+          <Loader2 size={12} strokeWidth={2.5} className="animate-spin" />
+        ) : (
+          <Trash2 size={12} strokeWidth={2} />
+        )}
+        {isDisconnecting ? "מנתק..." : "נתק"}
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Atoms
+// ─────────────────────────────────────────────────────────────────
 
 function StatusBadge({
   Icon,
@@ -401,7 +527,7 @@ function Field({
   return (
     <div>
       <label
-        className="mb-1 block text-[11.5px] font-medium uppercase tracking-wide"
+        className="mb-1 block text-[11px] font-medium uppercase tracking-wide"
         style={{ color: "var(--spike-text-mute)" }}
       >
         {label}
@@ -424,7 +550,7 @@ function Field({
         }}
       />
       {error && (
-        <p className="mt-1 text-[11.5px]" style={{ color: "#ff453a" }}>
+        <p className="mt-1 text-[11px]" style={{ color: "#ff453a" }}>
           {error}
         </p>
       )}
@@ -445,7 +571,7 @@ function KV({
   return (
     <div className="flex items-baseline gap-2 text-[12px]">
       <span
-        style={{ color: "var(--spike-text-mute)", minWidth: "140px" }}
+        style={{ color: "var(--spike-text-mute)", minWidth: "120px" }}
       >
         {label}:
       </span>
@@ -465,6 +591,19 @@ function KV({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────
+
 function tenantLabel(t: TenantWithIntegrations): string {
   return t.name || t.ownerName || t.id.slice(0, 8);
+}
+
+function tenantInitials(t: TenantWithIntegrations): string {
+  const label = tenantLabel(t);
+  // For Hebrew/Latin: take the first 2 visible chars
+  const trimmed = label.trim();
+  if (trimmed.length === 0) return "?";
+  if (trimmed.length === 1) return trimmed[0].toUpperCase();
+  return (trimmed[0] + trimmed[1]).toUpperCase();
 }
