@@ -2,17 +2,17 @@
 
 // src/components/dashboard/integrations-form.tsx
 //
-// Sub-stage 2.0 — Integrations management UI.
+// Sub-stage 2.0 (revision 2026-05-07) — Integrations management UI.
 //
-// Lists existing integrations (WhatsApp for now) and provides a manual
-// connect form. The form is the pre-Embedded-Signup path: tenant manually
-// pastes phone_number_id + display_phone_number + WABA id from Meta
-// Business Manager. Once Embedded Signup ships, this same component will
-// host the Meta SDK button instead — the integrations list view stays
-// identical.
+// Visual polish pass:
+//   - Hero status banner when WhatsApp is connected (gives the page a
+//     "this is alive" feel instead of just listing rows).
+//   - ConnectedCard reworked with bigger phone display, nicer hierarchy,
+//     formatted "connected since" date, technical IDs collapsed by default.
+//   - Coming Soon cards (Stripe, Google Calendar) below WhatsApp so the
+//     page hints at the roadmap and feels less empty for connected tenants.
 //
-// Style: Calm Frosted — matches settings-form.tsx (Glass cards, CSS vars,
-// sonner toast pattern).
+// Style: Calm Frosted — Glass primitive cards, CSS variables.
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -23,6 +23,11 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  CheckCircle2,
+  CreditCard,
+  Calendar,
+  Clock,
+  Activity,
 } from "lucide-react";
 import { Glass } from "@/components/ui/glass";
 import {
@@ -45,10 +50,6 @@ type FieldErrors = Partial<
 export function IntegrationsForm({
   initialIntegrations,
 }: IntegrationsFormProps) {
-  // Server passes integrations on every render (revalidatePath after mutations);
-  // we don't need local copy management beyond optimistic UX, which is handled
-  // via isPending + toasts.
-
   const [isFormOpen, setIsFormOpen] = useState(initialIntegrations.length === 0);
   const [phoneNumberId, setPhoneNumberId] = useState("");
   const [displayPhoneNumber, setDisplayPhoneNumber] = useState("");
@@ -58,6 +59,7 @@ export function IntegrationsForm({
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [isConnecting, startConnectingTransition] = useTransition();
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
 
   const whatsappConnected = initialIntegrations.find(
     (it) => it.provider === "whatsapp" && it.status === "connected"
@@ -126,32 +128,33 @@ export function IntegrationsForm({
     })();
   }
 
-  // ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {/* ─── WhatsApp section ─────────────────────────────────────── */}
+      {whatsappConnected && <ActiveStatusHero />}
+
       <Glass>
-        <div className="flex items-center gap-3 border-b pb-3.5"
+        <div
+          className="flex items-center gap-3 border-b pb-3.5"
           style={{ borderColor: "var(--color-hairline)" }}
         >
           <div
-            className="flex h-9 w-9 items-center justify-center rounded-[10px]"
+            className="flex h-10 w-10 items-center justify-center rounded-[12px]"
             style={{
               background: "rgba(37, 211, 102, 0.12)",
               color: "#25d366",
             }}
           >
-            <MessageCircle size={18} strokeWidth={1.75} />
+            <MessageCircle size={20} strokeWidth={1.75} />
           </div>
           <div className="flex-1">
             <div
-              className="text-[14.5px] font-semibold leading-[1.2]"
+              className="text-[15px] font-semibold leading-[1.2]"
               style={{ color: "var(--color-ink)" }}
             >
               WhatsApp Business
             </div>
             <div
-              className="text-[11.5px] leading-[1.4]"
+              className="text-[12px] leading-[1.4]"
               style={{ color: "var(--color-ink-3)" }}
             >
               Meta Cloud API · ערוץ ההודעות הראשי של Spike Engine
@@ -159,24 +162,25 @@ export function IntegrationsForm({
           </div>
         </div>
 
-        <div className="pt-4">
+        <div className="pt-5">
           {whatsappConnected ? (
             <ConnectedCard
               integration={whatsappConnected}
               isDisconnecting={disconnectingId === whatsappConnected.id}
               onDisconnect={() => handleDisconnect(whatsappConnected.id)}
+              showDetails={showTechnicalDetails}
+              onToggleDetails={() => setShowTechnicalDetails((v) => !v)}
             />
           ) : (
-            <EmptyState onConnect={() => setIsFormOpen(true)} />
+            <EmptyState />
           )}
 
-          {/* Connect form (collapsible) */}
           {!whatsappConnected && (
-            <div className="mt-3">
+            <div className="mt-4">
               <button
                 type="button"
                 onClick={() => setIsFormOpen((v) => !v)}
-                className="flex w-full items-center justify-between rounded-[10px] px-3 py-2.5 text-[13px] font-medium transition-colors"
+                className="flex w-full items-center justify-between rounded-[10px] px-3.5 py-3 text-[13px] font-medium transition-colors"
                 style={{
                   background: "rgba(255,255,255,0.5)",
                   border: "1px solid var(--color-hairline)",
@@ -197,7 +201,7 @@ export function IntegrationsForm({
               {isFormOpen && (
                 <div className="mt-3 space-y-3">
                   <p
-                    className="text-[11.5px] leading-[1.5]"
+                    className="text-[11.5px] leading-[1.55]"
                     style={{ color: "var(--color-ink-3)" }}
                   >
                     העתק את הערכים מ-Meta Business Manager → WhatsApp Manager →
@@ -215,7 +219,6 @@ export function IntegrationsForm({
                     disabled={isConnecting}
                     monospace
                   />
-
                   <FormField
                     label="מספר טלפון לתצוגה"
                     sub="המספר כפי שיוצג בלקוחות (פורמט E.164)"
@@ -226,7 +229,6 @@ export function IntegrationsForm({
                     disabled={isConnecting}
                     monospace
                   />
-
                   <FormField
                     label="WABA ID"
                     sub="WhatsApp Business Account ID — מאותו דף ב-Meta"
@@ -251,7 +253,7 @@ export function IntegrationsForm({
                     type="button"
                     onClick={handleConnect}
                     disabled={!canSubmit}
-                    className="flex w-full items-center justify-center gap-2 rounded-[10px] px-4 py-2.5 text-[13.5px] font-semibold transition-all disabled:opacity-50"
+                    className="flex w-full items-center justify-center gap-2 rounded-[10px] px-4 py-3 text-[13.5px] font-semibold transition-all disabled:opacity-50"
                     style={{
                       background: canSubmit
                         ? "var(--color-sys-blue)"
@@ -279,7 +281,19 @@ export function IntegrationsForm({
         </div>
       </Glass>
 
-      {/* ─── History (disconnected integrations) ──────────────────── */}
+      <ComingSoonCard
+        Icon={CreditCard}
+        title="Stripe"
+        subtitle="גביית תשלומים מלקוחות · סוכן Sales יציע קישור תשלום בטיוטות"
+        accent="#635bff"
+      />
+      <ComingSoonCard
+        Icon={Calendar}
+        title="Google Calendar"
+        subtitle="קביעת פגישות אוטומטית · הסוכן יציע סלוטים פנויים מהיומן שלך"
+        accent="#4285f4"
+      />
+
       {whatsappHistory.length > 0 && (
         <Glass>
           <div
@@ -302,6 +316,271 @@ export function IntegrationsForm({
 // ─────────────────────────────────────────────────────────────────
 // Sub-components
 // ─────────────────────────────────────────────────────────────────
+
+function ActiveStatusHero() {
+  return (
+    <div
+      className="rounded-[14px] px-4 py-3.5"
+      style={{
+        background:
+          "linear-gradient(135deg, rgba(52, 199, 89, 0.08) 0%, rgba(52, 199, 89, 0.04) 100%)",
+        border: "1px solid rgba(52, 199, 89, 0.20)",
+      }}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-9 w-9 items-center justify-center rounded-full"
+          style={{
+            background: "rgba(52, 199, 89, 0.15)",
+            color: "var(--color-sys-green)",
+          }}
+        >
+          <Activity size={16} strokeWidth={2} />
+        </div>
+        <div className="flex-1">
+          <div
+            className="text-[13.5px] font-semibold leading-[1.25]"
+            style={{ color: "var(--color-ink)" }}
+          >
+            WhatsApp פעיל ומחובר
+          </div>
+          <div
+            className="text-[11.5px] leading-[1.4]"
+            style={{ color: "var(--color-ink-3)" }}
+          >
+            הסוכנים מקבלים כל הודעה נכנסת ומכינים טיוטה לאישורך תוך שניות
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConnectedCard({
+  integration,
+  isDisconnecting,
+  onDisconnect,
+  showDetails,
+  onToggleDetails,
+}: {
+  integration: IntegrationRow;
+  isDisconnecting: boolean;
+  onDisconnect: () => void;
+  showDetails: boolean;
+  onToggleDetails: () => void;
+}) {
+  const md = integration.metadata ?? {};
+  const connectedAtRaw =
+    (typeof md.connected_at === "string" && md.connected_at) ||
+    integration.created_at;
+  const connectedAt = formatHebrewDate(connectedAtRaw);
+
+  return (
+    <div
+      className="rounded-[14px] p-5"
+      style={{
+        background: "rgba(52, 199, 89, 0.05)",
+        border: "1px solid rgba(52, 199, 89, 0.20)",
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <CheckCircle2
+            size={16}
+            strokeWidth={2.25}
+            style={{ color: "var(--color-sys-green)" }}
+          />
+          <span
+            className="text-[12.5px] font-semibold uppercase tracking-wide"
+            style={{ color: "var(--color-sys-green)" }}
+          >
+            מחובר
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onDisconnect}
+          disabled={isDisconnecting}
+          className="flex items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[11.5px] font-medium transition-colors disabled:opacity-60"
+          style={{
+            background: "transparent",
+            border: "1px solid var(--color-hairline)",
+            color: "var(--color-ink-3)",
+          }}
+          aria-label="נתק את האינטגרציה"
+        >
+          {isDisconnecting ? (
+            <Loader2 size={11} strokeWidth={2.5} className="animate-spin" />
+          ) : (
+            <Trash2 size={11} strokeWidth={2} />
+          )}
+          {isDisconnecting ? "מנתק" : "נתק"}
+        </button>
+      </div>
+
+      <div className="mt-4">
+        <div
+          className="text-[24px] font-semibold leading-[1.1] tracking-tight"
+          style={{
+            color: "var(--color-ink)",
+            direction: "ltr",
+            fontFeatureSettings: '"tnum"',
+          }}
+        >
+          {(typeof md.display_phone_number === "string" &&
+            md.display_phone_number) ||
+            "—"}
+        </div>
+        {connectedAt && (
+          <div
+            className="mt-1 flex items-center gap-1.5 text-[11.5px]"
+            style={{ color: "var(--color-ink-3)" }}
+          >
+            <Clock size={11} strokeWidth={1.75} />
+            מחובר מאז {connectedAt}
+          </div>
+        )}
+      </div>
+
+      <div
+        className="mt-4 border-t pt-3"
+        style={{ borderColor: "rgba(52, 199, 89, 0.20)" }}
+      >
+        <button
+          type="button"
+          onClick={onToggleDetails}
+          className="flex w-full items-center justify-between text-[11.5px] font-medium"
+          style={{ color: "var(--color-ink-3)" }}
+        >
+          <span>פרטים טכניים</span>
+          {showDetails ? (
+            <ChevronUp size={12} strokeWidth={2} />
+          ) : (
+            <ChevronDown size={12} strokeWidth={2} />
+          )}
+        </button>
+
+        {showDetails && (
+          <div className="mt-3 space-y-1.5">
+            <KV label="phone_number_id" value={md.phone_number_id} />
+            <KV
+              label="WABA"
+              value={md.whatsapp_business_account_id}
+            />
+            {typeof md.connected_via === "string" && (
+              <KV label="חובר דרך" value={md.connected_via} ltr={false} />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ComingSoonCard({
+  Icon,
+  title,
+  subtitle,
+  accent,
+}: {
+  Icon: typeof CreditCard;
+  title: string;
+  subtitle: string;
+  accent: string;
+}) {
+  return (
+    <Glass>
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-10 w-10 items-center justify-center rounded-[12px] opacity-60"
+          style={{
+            background: `${accent}1F`,
+            color: accent,
+          }}
+        >
+          <Icon size={20} strokeWidth={1.75} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div
+            className="flex items-center gap-2 text-[15px] font-semibold leading-[1.2]"
+            style={{ color: "var(--color-ink-2)" }}
+          >
+            {title}
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+              style={{
+                background: "rgba(0,0,0,0.04)",
+                color: "var(--color-ink-3)",
+                letterSpacing: "0.05em",
+              }}
+            >
+              בקרוב
+            </span>
+          </div>
+          <div
+            className="mt-0.5 text-[12px] leading-[1.4]"
+            style={{ color: "var(--color-ink-3)" }}
+          >
+            {subtitle}
+          </div>
+        </div>
+      </div>
+    </Glass>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div
+      className="rounded-[14px] p-5 text-center"
+      style={{
+        background: "rgba(255,255,255,0.4)",
+        border: "1px dashed var(--color-hairline)",
+      }}
+    >
+      <div
+        className="text-[14px] font-semibold leading-[1.3]"
+        style={{ color: "var(--color-ink-2)" }}
+      >
+        עוד לא חיברת WhatsApp
+      </div>
+      <p
+        className="mt-1.5 text-[12px] leading-[1.55]"
+        style={{ color: "var(--color-ink-3)" }}
+      >
+        בלי החיבור הזה אין דרך לסוכנים שלך לראות הודעות נכנסות.
+        <br />
+        הוסף phone_number_id ידנית בטופס למטה, או המתן ל-Embedded Signup
+        (השיק בקרוב).
+      </p>
+    </div>
+  );
+}
+
+function HistoryRow({ integration }: { integration: IntegrationRow }) {
+  const md = integration.metadata ?? {};
+  return (
+    <div
+      className="flex items-center justify-between rounded-[10px] px-3 py-2 text-[12px]"
+      style={{
+        background: "rgba(255,255,255,0.4)",
+        border: "1px solid var(--color-hairline)",
+        color: "var(--color-ink-3)",
+      }}
+    >
+      <span style={{ direction: "ltr" }}>
+        {(typeof md.display_phone_number === "string" &&
+          md.display_phone_number) ||
+          (typeof md.phone_number_id === "string" && md.phone_number_id) ||
+          integration.id}
+      </span>
+      <span>
+        {integration.status} ·{" "}
+        {new Date(integration.updated_at).toLocaleDateString("he-IL")}
+      </span>
+    </div>
+  );
+}
 
 function FormField({
   label,
@@ -369,121 +648,6 @@ function FormField({
   );
 }
 
-function ConnectedCard({
-  integration,
-  isDisconnecting,
-  onDisconnect,
-}: {
-  integration: IntegrationRow;
-  isDisconnecting: boolean;
-  onDisconnect: () => void;
-}) {
-  const md = integration.metadata ?? {};
-  return (
-    <div
-      className="rounded-[12px] p-4"
-      style={{
-        background: "rgba(52, 199, 89, 0.08)",
-        border: "1px solid rgba(52, 199, 89, 0.25)",
-      }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span
-              className="inline-flex h-1.5 w-1.5 rounded-full"
-              style={{ background: "var(--color-sys-green)" }}
-            />
-            <span
-              className="text-[12.5px] font-semibold"
-              style={{ color: "var(--color-sys-green)" }}
-            >
-              מחובר
-            </span>
-          </div>
-          <div
-            className="text-[16px] font-semibold"
-            style={{ color: "var(--color-ink)", direction: "ltr" }}
-          >
-            {md.display_phone_number ?? "—"}
-          </div>
-          <div className="space-y-0.5">
-            <KV label="phone_number_id" value={md.phone_number_id} />
-            <KV
-              label="WABA"
-              value={md.whatsapp_business_account_id}
-            />
-            {md.connected_at && (
-              <KV
-                label="חובר"
-                value={new Date(md.connected_at).toLocaleString("he-IL")}
-                ltr={false}
-              />
-            )}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={onDisconnect}
-          disabled={isDisconnecting}
-          className="flex items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-60"
-          style={{
-            background: "transparent",
-            border: "1px solid var(--color-hairline)",
-            color: "var(--color-sys-pink)",
-          }}
-        >
-          {isDisconnecting ? (
-            <Loader2 size={12} strokeWidth={2.5} className="animate-spin" />
-          ) : (
-            <Trash2 size={12} strokeWidth={2} />
-          )}
-          {isDisconnecting ? "מנתק..." : "נתק"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ onConnect: _ }: { onConnect: () => void }) {
-  return (
-    <div
-      className="rounded-[12px] p-4 text-[12.5px] leading-[1.55]"
-      style={{
-        background: "rgba(255,255,255,0.4)",
-        border: "1px dashed var(--color-hairline)",
-        color: "var(--color-ink-3)",
-      }}
-    >
-      עוד לא חיברת WhatsApp. בלי החיבור הזה אין דרך לסוכנים שלך לראות הודעות
-      נכנסות מלקוחות. השתמש בטופס למטה כדי להוסיף את ה-Meta phone_number_id
-      ידנית, או המתן ל-Embedded Signup (השיק בקרוב).
-    </div>
-  );
-}
-
-function HistoryRow({ integration }: { integration: IntegrationRow }) {
-  const md = integration.metadata ?? {};
-  return (
-    <div
-      className="flex items-center justify-between rounded-[10px] px-3 py-2 text-[12px]"
-      style={{
-        background: "rgba(255,255,255,0.4)",
-        border: "1px solid var(--color-hairline)",
-        color: "var(--color-ink-3)",
-      }}
-    >
-      <span style={{ direction: "ltr" }}>
-        {md.display_phone_number ?? md.phone_number_id ?? integration.id}
-      </span>
-      <span>
-        {integration.status} ·{" "}
-        {new Date(integration.updated_at).toLocaleDateString("he-IL")}
-      </span>
-    </div>
-  );
-}
-
 function KV({
   label,
   value,
@@ -499,9 +663,7 @@ function KV({
       className="flex items-baseline gap-2 text-[11.5px]"
       style={{ color: "var(--color-ink-3)" }}
     >
-      <span style={{ minWidth: "110px", color: "var(--color-ink-3)" }}>
-        {label}:
-      </span>
+      <span style={{ minWidth: "100px" }}>{label}:</span>
       <span
         className="font-medium"
         style={{
@@ -510,10 +672,24 @@ function KV({
           fontFamily: ltr
             ? "ui-monospace, SFMono-Regular, Menlo, monospace"
             : undefined,
+          fontSize: ltr ? "11px" : undefined,
         }}
       >
         {value}
       </span>
     </div>
   );
+}
+
+function formatHebrewDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleDateString("he-IL", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return null;
+  }
 }
