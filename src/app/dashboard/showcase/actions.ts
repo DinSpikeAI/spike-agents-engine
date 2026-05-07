@@ -8,7 +8,7 @@
 //
 // What we do instead: replicate the webhook's core logic ΓÇö insert events
 // row + fire waitUntil(Watcher) + waitUntil(Hot Leads). The Hot Leads
-// cascade to Sales QuickResponse (when bucket=hot/burning) is automatic
+// cascade to Sales QuickResponse (when bucket=hot/blazing) is automatic
 // because runHotLeadsOnEvent fires it itself. End result is functionally
 // identical to a real Meta webhook delivery.
 //
@@ -93,7 +93,7 @@ export async function runDemoTemplate(
 
   // ΓöÇΓöÇΓöÇ Fire Watcher + Hot Leads in parallel (same as webhook) ΓöÇΓöÇΓöÇΓöÇ
   // Hot Leads will internally fire Sales QuickResponse cascade if
-  // bucket Γêê {hot, burning}. We don't need to coordinate that here.
+  // bucket Γêê {hot, blazing}. We don't need to coordinate that here.
   waitUntil(
     runWatcherAgent(tenantId, "webhook").catch((err) => {
       console.error(`[demo] Watcher failed for event ${eventId}:`, err);

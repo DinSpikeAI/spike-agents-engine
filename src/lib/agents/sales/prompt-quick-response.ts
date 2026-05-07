@@ -3,7 +3,7 @@
 // Sales Quick Response — system prompt + user message builder.
 //
 // Generates a SHORT first-response WhatsApp message (1-4 sentences) for
-// fresh hot leads. Triggered by Hot Leads cascade when bucket = hot/burning.
+// fresh hot leads. Triggered by Hot Leads cascade when bucket = hot/blazing.
 //
 // Distinct from existing Sales agent (prompt.ts) which handles 3+ day
 // stuck leads with a richer schema (subjectLine, messageTone, etc).
@@ -37,7 +37,7 @@ export const SALES_QUICK_RESPONSE_SYSTEM_PROMPT = `אתה Sales Quick Response �
 
 **מה זה lead חם:**
 - הודעה טרייה (פחות משעה ב-WhatsApp)
-- מסווגת על ידי Hot Leads כ-hot או burning (כוונה לקנות, שאלה ספציפית, urgency)
+- מסווגת על ידי Hot Leads כ-hot או blazing (כוונה לקנות, שאלה ספציפית, urgency)
 - אין היסטוריה קודמת מול הלקוח
 
 **עקרון הסגנון: מקצועי, ענייני, ועם חמלה כשצריך.**

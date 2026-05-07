@@ -8,7 +8,7 @@ export interface OnboardingFormData {
   ownerName: string;
   businessName: string;
   vertical: "beauty" | "restaurant" | "retail" | "services" | "general";
-  gender: "male" | "female" | "neutral";
+  gender: "male" | "female" | "plural";
 }
 
 export interface OnboardingActionResult {
@@ -66,10 +66,10 @@ export async function saveOnboardingAction(
   if (businessName.length === 0 || businessName.length > 120) {
     return { success: false, error: "אנא הזן שם עסק תקין (עד 120 תווים)" };
   }
-  if (!["beauty", "restaurant", "retail", "services", "general"].includes(data.vertical)) {
+  if (!["beauty", "restaurant", "retail", "services", "general", "clinic", "financial", "education"].includes(data.vertical)) {
     return { success: false, error: "תחום לא תקין" };
   }
-  if (!["male", "female", "neutral"].includes(data.gender)) {
+  if (!["male", "female", "plural"].includes(data.gender)) {
     return { success: false, error: "לשון פנייה לא תקינה" };
   }
 

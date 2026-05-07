@@ -6,7 +6,7 @@
 //
 // Hot Leads are populated by the Hot Leads agent (real-time webhook +
 // daily recovery cron). The board shows leads classified as
-// cold/warm/hot/burning, ordered by received_at desc.
+// cold/warm/hot/blazing, ordered by received_at desc.
 //
 // Status flow:
 //   classified  → just classified by the agent (default state)

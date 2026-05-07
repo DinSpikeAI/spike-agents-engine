@@ -2,7 +2,7 @@
 
 How to add a real event source so the Watcher agent (and the Hot Leads + Sales QR cascade) picks it up automatically.
 
-**Updated 2026-05-03 (end of Stage 1)** — reflects the full pipeline now in production: webhook → events → Watcher + Hot Leads (parallel) → Sales QR cascade on hot/burning leads.
+**Updated 2026-05-03 (end of Stage 1)** — reflects the full pipeline now in production: webhook → events → Watcher + Hot Leads (parallel) → Sales QR cascade on hot/blazing leads.
 
 ---
 
@@ -10,7 +10,7 @@ How to add a real event source so the Watcher agent (and the Hot Leads + Sales Q
 
 The Watcher reads from `public.events`. Anything you insert into that table — from any source — gets picked up by the next Watcher run, classified by the LLM, and shown to the owner in the dashboard.
 
-But `events` is also what **Hot Leads** and **Sales QR** read. Hot Leads runs in parallel with Watcher on every WhatsApp event. If Hot Leads classifies the event as `hot` or `burning`, it cascades to Sales QR which drafts a first-response WhatsApp message.
+But `events` is also what **Hot Leads** and **Sales QR** read. Hot Leads runs in parallel with Watcher on every WhatsApp event. If Hot Leads classifies the event as `hot` or `blazing`, it cascades to Sales QR which drafts a first-response WhatsApp message.
 
 So inserting one row into `events` triggers up to 3 agents.
 
@@ -56,7 +56,7 @@ Different agents read different fields. Inserting all of them is forward-compati
 - **PII Note:** the LLM never sees `display_name` or `contact_phone`. It sees only the scrubbed message + extracted features.
 
 ### Sales QR (cascade trigger)
-Activates only when Hot Leads classifies the event as `bucket='hot'` or `'burning'`. Reads the same fields Hot Leads does, but generates a quick-response WhatsApp draft that lands in `/dashboard/approvals`.
+Activates only when Hot Leads classifies the event as `bucket='hot'` or `'blazing'`. Reads the same fields Hot Leads does, but generates a quick-response WhatsApp draft that lands in `/dashboard/approvals`.
 
 ---
 
@@ -195,7 +195,7 @@ Old `events` rows stay forever for now (the table is small and indexed). When te
 The recovery cron at `/api/cron/hot-leads-sales-recovery` runs daily at `0 2 * * *` UTC. It scans the last 48 hours for:
 
 - Events without a matching `hot_leads` row → triggers `runHotLeadsOnEvent`
-- Hot/burning leads without a `sales_quick_response` draft → triggers `runSalesQuickResponseOnEvent`
+- Hot/blazing leads without a `sales_quick_response` draft → triggers `runSalesQuickResponseOnEvent`
 
 Cap: 50 events per stage per run. Always returns HTTP 200 (avoids Vercel cron retry).
 
