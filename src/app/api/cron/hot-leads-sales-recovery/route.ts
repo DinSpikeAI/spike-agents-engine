@@ -177,7 +177,7 @@ export async function GET(req: NextRequest) {
             result.runResult.status === "succeeded"
           ) {
             stats.hotLeadsRecovered += 1;
-            // If the recovery itself fired the Sales cascade (bucket=hot/burning),
+            // If the recovery itself fired the Sales cascade (bucket=hot/blazing),
             // log that too — Stage 2 below would skip these as duplicates.
             if (result.salesCascadeFired) {
               console.log(
@@ -221,11 +221,11 @@ export async function GET(req: NextRequest) {
   // ───────────────────────────────────────────────────────────
   // STAGE 2: Sales QR recovery
   // ───────────────────────────────────────────────────────────
-  // Find hot_leads with bucket in {hot, burning} from last 48h that have
+  // Find hot_leads with bucket in {hot, blazing} from last 48h that have
   // no matching sales_quick_response draft. These are leads where Hot
   // Leads classified successfully but the Sales QR cascade failed.
   //
-  // Note: events recovered in Stage 1 above with bucket=hot/burning will
+  // Note: events recovered in Stage 1 above with bucket=hot/blazing will
   // have already fired Sales QR via the cascade, so they'll be filtered
   // out here naturally.
 
@@ -233,7 +233,7 @@ export async function GET(req: NextRequest) {
     const { data: candidateLeads, error: leadsError } = await db
       .from("hot_leads")
       .select("id, tenant_id, event_id, bucket, received_at")
-      .in("bucket", ["hot", "burning"])
+      .in("bucket", ["hot", "blazing"])
       .not("event_id", "is", null)
       .gte("received_at", windowStart)
       .order("received_at", { ascending: false })
@@ -275,7 +275,7 @@ export async function GET(req: NextRequest) {
       const toProcess = orphanedLeads.slice(0, MAX_EVENTS_PER_RUN);
 
       console.log(
-        `[hot-leads-sales-recovery] Stage 2 (Sales QR): ${orphanedLeads.length} orphaned hot/burning leads found, processing ${toProcess.length}`
+        `[hot-leads-sales-recovery] Stage 2 (Sales QR): ${orphanedLeads.length} orphaned hot/blazing leads found, processing ${toProcess.length}`
       );
 
       for (const lead of toProcess) {

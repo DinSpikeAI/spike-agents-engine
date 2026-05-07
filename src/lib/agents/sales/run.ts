@@ -9,7 +9,7 @@
  *    Schema: SALES_AGENT_OUTPUT_SCHEMA (rich: subjectLine, messageTone, etc).
  *
  * 2. `runSalesQuickResponseOnEvent(tenantId, eventId)` — FRESH HOT LEADS workflow.
- *    Generates a short first-response message for a freshly classified hot/burning
+ *    Generates a short first-response message for a freshly classified hot/blazing
  *    lead. Webhook-triggered via Hot Leads cascade.
  *    Schema: SALES_QUICK_RESPONSE_OUTPUT_SCHEMA (minimal: message_text only).
  *
@@ -19,7 +19,7 @@
  * STUCK pipeline (existing, unchanged from Sub-stage 1.3):
  *   1. Load tenant context (name, vertical, sales config)
  *   2. Query stuck leads:
- *        bucket IN ('warm','hot','burning')
+ *        bucket IN ('warm','hot','blazing')
  *        AND status = 'classified'
  *        AND received_at < NOW() - INTERVAL '3 days'
  *   3. Skip leads with already-pending sales drafts (don't dup)
@@ -189,7 +189,7 @@ async function loadStuckLeads(tenantId: string): Promise<StuckLead[]> {
       "id, source, source_handle, display_name, raw_message, bucket, reason, received_at"
     )
     .eq("tenant_id", tenantId)
-    .in("bucket", ["warm", "hot", "burning"])
+    .in("bucket", ["warm", "hot", "blazing"])
     .eq("status", "classified")
     .lte("received_at", threeDaysAgo)
     .order("received_at", { ascending: true })
@@ -602,7 +602,7 @@ export interface SalesQuickResponseResult {
 
 /**
  * Generate a single short Hebrew first-response WhatsApp draft for a freshly
- * classified hot/burning lead. Triggered by Hot Leads cascade after webhook.
+ * classified hot/blazing lead. Triggered by Hot Leads cascade after webhook.
  *
  * Idempotency: a sales_quick_response draft already keyed to this event_id
  * causes early-return (skipped_duplicate) without an LLM call.

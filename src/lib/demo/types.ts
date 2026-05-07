@@ -26,7 +26,7 @@ export interface DemoTemplateConfig {
   contactName: string;
   contactPhone: string;
   text: string;
-  expectedBucket: "hot" | "warm" | "cold" | "burning" | "spam_or_unclear";
+  expectedBucket: "hot" | "warm" | "cold" | "blazing" | "spam_or_unclear";
   expectedCascade: boolean;
   description: string;
 }
@@ -34,7 +34,7 @@ export interface DemoTemplateConfig {
 /**
  * Four prebuilt templates that exercise different pipeline paths.
  *
- * - hot_lead    → bucket=hot/burning  → Sales QuickResponse cascades
+ * - hot_lead    → bucket=hot/blazing  → Sales QuickResponse cascades
  * - question    → bucket=warm         → no cascade (owner replies manually)
  * - complaint   → bucket=cold/spam    → no cascade (Watcher categorizes as complaint)
  * - review      → bucket=cold/spam    → no cascade (Watcher categorizes as positive_review)
@@ -114,7 +114,7 @@ export interface DemoStatusResponse {
     status:
       | "pending_classification"  // hot_leads not yet done
       | "skipped_cold_bucket"     // hot_leads done, bucket cold/warm/spam — no cascade
-      | "drafting"                // bucket=hot/burning, draft not yet ready
+      | "drafting"                // bucket=hot/blazing, draft not yet ready
       | "draft_ready"             // draft inserted
       | null;
     draft_id: string | null;

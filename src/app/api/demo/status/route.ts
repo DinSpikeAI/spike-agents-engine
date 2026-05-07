@@ -100,12 +100,12 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
 
   // ─── Derive Sales QR status ──────────────────────────────
-  // Logic mirrors what runHotLeadsOnEvent does (cascade only on hot/burning):
+  // Logic mirrors what runHotLeadsOnEvent does (cascade only on hot/blazing):
   //   - hot_leads not classified yet         → "pending_classification"
   //   - hot_leads classified, bucket cold/warm/spam → "skipped_cold_bucket"
-  //   - hot_leads bucket=hot/burning, no draft yet → "drafting"
+  //   - hot_leads bucket=hot/blazing, no draft yet → "drafting"
   //   - draft exists                         → "draft_ready"
-  const CASCADE_BUCKETS = ["hot", "burning"];
+  const CASCADE_BUCKETS = ["hot", "blazing"];
 
   let salesQrStatus: DemoStatusResponse["sales_qr"]["status"] = null;
   if (!hotLeadRow) {
