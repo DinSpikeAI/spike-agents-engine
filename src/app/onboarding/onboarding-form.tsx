@@ -10,25 +10,39 @@ import {
   ShoppingBag,
   Briefcase,
   MoreHorizontal,
+  Stethoscope,
+  Landmark,
+  GraduationCap,
   AlertTriangle,
   ArrowLeft,
 } from "lucide-react";
 
-type Vertical = "beauty" | "restaurant" | "retail" | "services" | "general";
-type Gender = "male" | "female" | "neutral";
+type Vertical =
+  | "beauty"
+  | "restaurant"
+  | "retail"
+  | "services"
+  | "general"
+  | "clinic"
+  | "financial"
+  | "education";
+type Gender = "male" | "female" | "plural";
 
 const VERTICALS: Array<{ id: Vertical; label: string; Icon: typeof Sparkles }> = [
   { id: "beauty", label: "מספרה / יופי", Icon: Scissors },
   { id: "restaurant", label: "מסעדה / בית קפה", Icon: UtensilsCrossed },
   { id: "retail", label: "חנות / מסחר", Icon: ShoppingBag },
   { id: "services", label: "שירותים מקצועיים", Icon: Briefcase },
+  { id: "clinic", label: "מרפאה / קליניקה", Icon: Stethoscope },
+  { id: "financial", label: "פיננסי / חשבונאות", Icon: Landmark },
+  { id: "education", label: "חינוך / הוראה", Icon: GraduationCap },
   { id: "general", label: "אחר", Icon: MoreHorizontal },
 ];
 
 const GENDERS: Array<{ id: Gender; label: string; sub: string }> = [
   { id: "male", label: "זכר", sub: "ברוך הבא, יוסי" },
   { id: "female", label: "נקבה", sub: "ברוכה הבאה, שרה" },
-  { id: "neutral", label: "כללי", sub: "ברוכים הבאים" },
+  { id: "plural", label: "כללי", sub: "ברוכים הבאים" },
 ];
 
 export function OnboardingForm() {

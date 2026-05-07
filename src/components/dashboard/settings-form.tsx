@@ -197,7 +197,7 @@ export function SettingsForm({
             className="text-[11.5px] leading-[1.5]"
             style={{ color: "var(--color-ink-3)" }}
           >
-            הסוכנים ינסחו בעברית מותאמת לזכר או נקבה ("שלך"/"שלך", "תוכל"/"תוכלי")
+            הסוכנים ינסחו בעברית מותאמת לזכר, נקבה או רבים ("שלך"/"שלך"/"שלכם", "תוכל"/"תוכלי"/"תוכלו")
           </p>
           <div className="flex gap-2 pt-1">
             <button
@@ -259,6 +259,36 @@ export function SettingsForm({
                 />
               )}
               נקבה
+            </button>
+            <button
+              type="button"
+              onClick={() => setGender("plural")}
+              disabled={isPending}
+              className="flex-1 rounded-[10px] px-4 py-2.5 text-[13.5px] font-medium transition-all disabled:opacity-60"
+              style={{
+                background:
+                  gender === "plural"
+                    ? "rgba(10, 132, 255, 0.1)"
+                    : "rgba(255,255,255,0.5)",
+                border:
+                  gender === "plural"
+                    ? "1.5px solid var(--color-sys-blue)"
+                    : "1px solid var(--color-hairline)",
+                color:
+                  gender === "plural"
+                    ? "var(--color-sys-blue)"
+                    : "var(--color-ink-2)",
+              }}
+            >
+              {gender === "plural" && (
+                <Check
+                  size={14}
+                  strokeWidth={2.5}
+                  className="ml-1 inline-block"
+                  aria-hidden
+                />
+              )}
+              כללי
             </button>
           </div>
           {fieldErrors.businessOwnerGender && (

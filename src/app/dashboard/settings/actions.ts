@@ -21,6 +21,12 @@
 import { revalidatePath } from "next/cache";
 import { requireOnboarded } from "@/lib/auth/require-onboarded";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { BusinessOwnerGender } from "@/lib/safety/gender-lock";
+
+// Re-export the canonical type so settings-form (and other consumers)
+// keep their existing import path while we eliminate the duplicate
+// definition. Single source of truth: gender-lock.ts.
+export type { BusinessOwnerGender };
 
 // ─────────────────────────────────────────────────────────────
 // Input validation
@@ -37,10 +43,11 @@ const VALID_VERTICALS = [
   "education",
 ] as const;
 
-const VALID_GENDERS = ["male", "female"] as const;
+// `satisfies` ensures every value here is a valid BusinessOwnerGender — so
+// if someone ever drifts the canonical type or this array, tsc catches it.
+const VALID_GENDERS = ["male", "female", "plural"] as const satisfies readonly BusinessOwnerGender[];
 
 export type Vertical = (typeof VALID_VERTICALS)[number];
-export type BusinessOwnerGender = (typeof VALID_GENDERS)[number];
 
 export interface TenantSettingsInput {
   ownerName: string;
@@ -77,9 +84,9 @@ function validate(
     errors.businessName = "שם ארוך מדי (עד 120 תווים)";
   }
 
-  // gender: must be male or female
+  // gender: must be male, female, or plural
   if (!VALID_GENDERS.includes(input.businessOwnerGender)) {
-    errors.businessOwnerGender = "בחר זכר או נקבה";
+    errors.businessOwnerGender = "בחר זכר, נקבה או רבים";
   }
 
   // vertical: must be one of the 8 known verticals
