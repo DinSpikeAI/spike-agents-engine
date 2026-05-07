@@ -6,19 +6,15 @@
 //   1. <html lang="he" dir="rtl"> — base RTL for the document tree
 //   2. <DirectionProvider> (client wrapper) — Radix portal components
 //      (Dialog, Popover, DropdownMenu, Select, Tooltip) inherit RTL.
-//      Without it, portals render in document.body OUTSIDE our dir="rtl"
-//      tree and behave as LTR.
-//
-// We use a thin client wrapper for DirectionProvider because Radix uses
-// React Context, which requires "use client". Layout itself stays on the
-// server so we can load Heebo and compute metadata server-side.
+//   3. <LegalFooter /> + <CookieBanner /> at the end of <body>.
 
 import type { Metadata } from "next";
 import { Heebo } from "next/font/google";
-
 import { DirectionProvider } from "@/components/providers/direction-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import CookieBanner from "@/components/legal/CookieBanner";
+import LegalFooter from "@/components/legal/LegalFooter";
 import "./globals.css";
 
 const heebo = Heebo({
@@ -51,6 +47,8 @@ export default function RootLayout({
           <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
         </DirectionProvider>
         <Toaster richColors position="top-center" dir="rtl" />
+        <LegalFooter />
+        <CookieBanner />
       </body>
     </html>
   );

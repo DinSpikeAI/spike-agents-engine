@@ -13,6 +13,7 @@ import {
   Settings,
   Sparkles,
 } from "lucide-react";
+import { reopenCookieBanner } from "@/components/legal/CookieBanner";
 
 interface SidebarProps {
   userEmail: string;
@@ -22,8 +23,10 @@ interface SidebarProps {
   pendingCount?: number;
 }
 
-// Sub-stage 1.6 — Showcase added to NAV_ITEMS (was admin-only "demo").
-// Now visible to all onboarded users as part of the standard nav.
+// CHANGED (legal package v0.1):
+// "אמון ופרטיות" was a Stage 3 placeholder pointing to /dashboard/trust which 404'd.
+// Now points to /privacy (the public legal page) so the link works immediately.
+// Future: replace with a proper in-product Trust Center page.
 const NAV_ITEMS = [
   { id: "dash", label: "סקירה", href: "/dashboard", icon: Home },
   { id: "agents", label: "הסוכנים שלי", href: "/dashboard/agents", icon: LayoutGrid },
@@ -32,8 +35,19 @@ const NAV_ITEMS = [
   { id: "reports", label: "דוחות", href: "/dashboard/reports", icon: BarChart3 },
   { id: "alerts", label: "התראות", href: "/dashboard/alerts", icon: Bell },
   { id: "control", label: "מרכז בקרה", href: "/dashboard/control", icon: SlidersHorizontal },
-  { id: "trust", label: "אמון ופרטיות", href: "/dashboard/trust", icon: ShieldCheck },
+  { id: "trust", label: "אמון ופרטיות", href: "/privacy", icon: ShieldCheck },
   { id: "settings", label: "הגדרות", href: "/dashboard/settings", icon: Settings },
+];
+
+// Quick-access legal links shown at the bottom of the sidebar.
+// Supplement the main "אמון ופרטיות" item above so every legal doc is
+// discoverable in 1 click from anywhere in the dashboard. This is the
+// accessibility expectation under תיקון 13.
+const LEGAL_LINKS = [
+  { label: "תנאי שימוש", href: "/terms" },
+  { label: "מדיניות עוגיות", href: "/cookies" },
+  { label: "מעבדי משנה", href: "/sub-processors" },
+  { label: "בקשת גישה לנתונים", href: "/dsar" },
 ];
 
 export function Sidebar({
@@ -142,8 +156,32 @@ export function Sidebar({
         )}
       </nav>
 
-      {/* Profile */}
-      <div className="mt-auto pt-3.5">
+      {/* Bottom area: legal links + profile */}
+      <div className="mt-auto pt-3.5 flex flex-col gap-3">
+        {/* Legal mini-footer — quiet, secondary, always accessible */}
+        <div
+          className="px-2 flex flex-col gap-1.5 text-[11px]"
+          style={{ color: "var(--color-ink-3)" }}
+        >
+          {LEGAL_LINKS.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="hover:underline transition-colors"
+            >
+              {link.label}
+            </Link>
+          ))}
+          <button
+            type="button"
+            onClick={reopenCookieBanner}
+            className="text-start hover:underline transition-colors cursor-pointer"
+          >
+            הגדרות עוגיות
+          </button>
+        </div>
+
+        {/* Profile */}
         <div
           className="flex items-center gap-2.5 rounded-[10px] p-2.5"
           style={{ background: "rgba(255,255,255,0.5)" }}
