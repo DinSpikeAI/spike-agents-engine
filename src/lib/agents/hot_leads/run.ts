@@ -34,7 +34,7 @@
  *   skips the LLM call entirely if the event was already classified.
  *
  * Sub-stage 1.3.5 — Sales QuickResponse cascade:
- *   When runHotLeadsOnEvent classifies an event as bucket='hot' or 'burning',
+ *   When runHotLeadsOnEvent classifies an event as bucket='hot' or 'blazing',
  *   it fires Sales QuickResponse via waitUntil() to draft a first-response
  *   WhatsApp message for the owner to approve. Dynamic import is used to
  *   avoid any potential circular dep risk between sales/run and hot_leads/run.
@@ -52,6 +52,7 @@ import { scrubPii } from "@/lib/safety/pii-scrubber";
 import { wrapUntrustedInput } from "@/lib/safety/prompt-injection-guard";
 import type {
   HotLeadsAgentOutput,
+  LeadBucket,
   MockLead,
   LeadFeatures,
   RunResult,
@@ -64,7 +65,7 @@ const MODEL = "claude-haiku-4-5" as const;
  * 'cold' / 'warm' / 'spam_or_unclear' do not trigger cascade — owner sees the
  * Hot Leads classification in the dashboard but doesn't get an auto-draft.
  */
-const SALES_CASCADE_BUCKETS = ["hot", "burning"] as const;
+const SALES_CASCADE_BUCKETS: LeadBucket[] = ["hot", "blazing"];
 
 export interface HotLeadsRunResult extends RunResult<HotLeadsAgentOutput> {
   leadIds: string[];
@@ -372,7 +373,7 @@ ${wrappedMessage}
  * checks idempotency (skip if a hot_leads row with this event_id already
  * exists for this tenant), and delegates to runHotLeadsAgent.
  *
- * If the resulting bucket is 'hot' or 'burning', fires Sales QuickResponse
+ * If the resulting bucket is 'hot' or 'blazing', fires Sales QuickResponse
  * via waitUntil() to draft a first-response WhatsApp message. Sales
  * QuickResponse has its own idempotency on (tenant_id, event_id), so
  * duplicate cascade fires are safe.
@@ -494,7 +495,7 @@ export async function runHotLeadsOnEvent(
   );
 
   // ─── Sub-stage 1.3.5 — Sales QuickResponse cascade ───────
-  // If Hot Leads classified this event as bucket='hot' or 'burning', fire
+  // If Hot Leads classified this event as bucket='hot' or 'blazing', fire
   // Sales QuickResponse via waitUntil. Sales QuickResponse has its own
   // idempotency check on (tenant_id, agent_id='sales', type='sales_quick_response',
   // context.event_id), so duplicate cascade fires are safe.
@@ -512,7 +513,7 @@ export async function runHotLeadsOnEvent(
       (c) => c.leadId === event.id
     );
 
-    if (classification && (SALES_CASCADE_BUCKETS as readonly string[]).includes(classification.bucket)) {
+    if (classification && SALES_CASCADE_BUCKETS.includes(classification.bucket)) {
       try {
         const { runSalesQuickResponseOnEvent } = await import("../sales/run");
         waitUntil(
