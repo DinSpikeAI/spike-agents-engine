@@ -1,12 +1,12 @@
 // src/app/dashboard/demo/actions.ts
 //
-// Sub-stage 1.4 ΓÇö Demo action that simulates an incoming WhatsApp webhook.
+// Sub-stage 1.4 — Demo action that simulates an incoming WhatsApp webhook.
 //
 // Why not call the real webhook over HTTP? Two reasons:
 //   1. Avoids needing a NEXT_PUBLIC_BASE_URL env var.
 //   2. Avoids HTTP roundtrip overhead and signature-verification setup.
 //
-// What we do instead: replicate the webhook's core logic ΓÇö insert events
+// What we do instead: replicate the webhook's core logic — insert events
 // row + fire waitUntil(Watcher) + waitUntil(Hot Leads). The Hot Leads
 // cascade to Sales QuickResponse (when bucket=hot/blazing) is automatic
 // because runHotLeadsOnEvent fires it itself. End result is functionally
@@ -14,7 +14,7 @@
 //
 // IMPORTANT: This file uses "use server" directive. It can ONLY export
 // async functions. Constants like DEMO_TEMPLATES are imported from
-// @/lib/demo/types (a neutral module) ΓÇö defining them here would result
+// @/lib/demo/types (a neutral module) — defining them here would result
 // in `undefined` when imported by client components.
 
 "use server";
@@ -35,12 +35,12 @@ const DEMO_ALLOWED_EMAILS = new Set(["din6915@gmail.com"]);
 
 /**
  * Simulate an incoming WhatsApp webhook with the chosen template.
- * Returns { ok, eventId } on success ΓÇö the UI uses eventId to poll status.
+ * Returns { ok, eventId } on success — the UI uses eventId to poll status.
  */
 export async function runDemoTemplate(
   template: DemoTemplate
 ): Promise<RunDemoTemplateResult> {
-  // Auth check ΓÇö same allowlist as the page.
+  // Auth check — same allowlist as the page.
   const { userEmail, tenantId } = await requireOnboarded();
   if (!DEMO_ALLOWED_EMAILS.has(userEmail)) {
     redirect("/dashboard");
@@ -51,7 +51,7 @@ export async function runDemoTemplate(
     return { ok: false, error: `Unknown template: ${template}` };
   }
 
-  // Generate a fresh event id for each click ΓÇö prevents idempotency-skip.
+  // Generate a fresh event id for each click — prevents idempotency-skip.
   const eventId = `wamid.DEMO_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const receivedAtSec = Math.floor(Date.now() / 1000);
 
@@ -72,7 +72,7 @@ export async function runDemoTemplate(
     is_demo: true, // mark for filtering / debugging later
   };
 
-  // ΓöÇΓöÇΓöÇ Insert event ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ─── Insert event ────────────────────────────────────────
   const db = createAdminClient();
   const { error: insertError } = await db.from("events").insert({
     id: eventId,
@@ -91,9 +91,9 @@ export async function runDemoTemplate(
     };
   }
 
-  // ΓöÇΓöÇΓöÇ Fire Watcher + Hot Leads in parallel (same as webhook) ΓöÇΓöÇΓöÇΓöÇ
+  // ─── Fire Watcher + Hot Leads in parallel (same as webhook) ────
   // Hot Leads will internally fire Sales QuickResponse cascade if
-  // bucket Γêê {hot, blazing}. We don't need to coordinate that here.
+  // bucket ∈ {hot, blazing}. We don't need to coordinate that here.
   waitUntil(
     runWatcherAgent(tenantId, "webhook").catch((err) => {
       console.error(`[demo] Watcher failed for event ${eventId}:`, err);
