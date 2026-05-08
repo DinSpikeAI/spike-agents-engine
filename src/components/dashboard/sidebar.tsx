@@ -13,6 +13,7 @@ import {
   Settings,
   Sparkles,
   Plug,
+  Sprout,
 } from "lucide-react";
 import { reopenCookieBanner } from "@/components/legal/CookieBanner";
 
@@ -24,6 +25,12 @@ interface SidebarProps {
   pendingCount?: number;
 }
 
+// Sub-stage 1.15.1 — Sprint 2 Batch 2B-2b
+// Added Growth nav item ("הזדמנויות") between approvals and showcase.
+// The optional `iconBg` field gives this single item a lime gradient
+// container around its icon so it stands out as the new flagship
+// feature; all other items render the icon flush as before.
+//
 // CHANGED (legal package v0.1):
 // "אמון ופרטיות" was a Stage 3 placeholder pointing to /dashboard/trust which 404'd.
 // Now points to /privacy (the public legal page) so the link works immediately.
@@ -32,6 +39,13 @@ const NAV_ITEMS = [
   { id: "dash", label: "סקירה", href: "/dashboard", icon: Home },
   { id: "agents", label: "הסוכנים שלי", href: "/dashboard/agents", icon: LayoutGrid },
   { id: "inbox", label: "דורש אישור", href: "/dashboard/approvals", icon: Inbox, hasBadge: true },
+  {
+    id: "growth",
+    label: "הזדמנויות",
+    href: "/dashboard/growth",
+    icon: Sprout,
+    iconBg: "linear-gradient(135deg, #84CC16, #65A30D)",
+  },
   { id: "showcase", label: "Showcase", href: "/dashboard/showcase", icon: Sparkles },
   { id: "reports", label: "דוחות", href: "/dashboard/reports", icon: BarChart3 },
   { id: "alerts", label: "התראות", href: "/dashboard/alerts", icon: Bell },
@@ -111,6 +125,7 @@ export function Sidebar({
             pathname === item.href ||
             (item.href === "/dashboard" && pathname === "/dashboard");
           const showBadge = item.hasBadge && pendingCount > 0;
+          const iconBg = "iconBg" in item ? item.iconBg : undefined;
 
           return (
             <Link
@@ -125,13 +140,35 @@ export function Sidebar({
               }}
             >
               <span className="flex items-center gap-2.5">
-                <Icon
-                  size={14}
-                  strokeWidth={1.5}
-                  style={{
-                    color: isActive ? "var(--color-sys-blue)" : "var(--color-ink-2)",
-                  }}
-                />
+                {iconBg ? (
+                  // Single-item visual lift — gradient container around the icon.
+                  // Sized to roughly match the visual footprint of a bare 14px
+                  // icon so row alignment stays calm.
+                  <div
+                    className="flex h-[18px] w-[18px] items-center justify-center rounded-[5px]"
+                    style={{
+                      background: iconBg,
+                      boxShadow:
+                        "0 1px 3px rgba(132,204,22,0.28), inset 0 1px 0 rgba(255,255,255,0.4)",
+                    }}
+                  >
+                    <Icon
+                      size={11}
+                      strokeWidth={2.2}
+                      style={{ color: "white" }}
+                    />
+                  </div>
+                ) : (
+                  <Icon
+                    size={14}
+                    strokeWidth={1.5}
+                    style={{
+                      color: isActive
+                        ? "var(--color-sys-blue)"
+                        : "var(--color-ink-2)",
+                    }}
+                  />
+                )}
                 {item.label}
               </span>
               {showBadge && (

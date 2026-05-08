@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Settings,
   Sparkles,
+  Sprout,
   X,
 } from "lucide-react";
 
@@ -27,11 +28,26 @@ interface MobileDrawerProps {
 }
 
 // Sub-stage 1.6 — Showcase added to NAV_ITEMS (was admin-only "demo").
-// Now visible to all onboarded users as part of the standard nav.
+// Sub-stage 1.15.1 — Sprint 2 Batch 2B-2b — Growth ("הזדמנויות") added
+// between approvals and showcase, with a lime-gradient icon container
+// matching the sidebar treatment so the visual identity is consistent
+// across desktop and mobile.
+//
+// NB: this drawer's NAV_ITEMS is currently slightly out of sync with
+// sidebar.tsx — drawer is missing "integrations" and "trust" still
+// points at /dashboard/trust (404'd post legal-package). Reconciling
+// these is OUT of scope for 2B-2b — we are only adding the Growth row.
 const NAV_ITEMS = [
   { id: "dash", label: "סקירה", href: "/dashboard", icon: Home },
   { id: "agents", label: "הסוכנים שלי", href: "/dashboard/agents", icon: LayoutGrid },
   { id: "inbox", label: "דורש אישור", href: "/dashboard/approvals", icon: Inbox, hasBadge: true },
+  {
+    id: "growth",
+    label: "הזדמנויות",
+    href: "/dashboard/growth",
+    icon: Sprout,
+    iconBg: "linear-gradient(135deg, #84CC16, #65A30D)",
+  },
   { id: "showcase", label: "Showcase", href: "/dashboard/showcase", icon: Sparkles },
   { id: "reports", label: "דוחות", href: "/dashboard/reports", icon: BarChart3 },
   { id: "alerts", label: "התראות", href: "/dashboard/alerts", icon: Bell },
@@ -160,6 +176,7 @@ export function MobileDrawer({
               pathname === item.href ||
               (item.href === "/dashboard" && pathname === "/dashboard");
             const showBadge = item.hasBadge && pendingCount > 0;
+            const iconBg = "iconBg" in item ? item.iconBg : undefined;
 
             return (
               <Link
@@ -174,15 +191,36 @@ export function MobileDrawer({
                 }}
               >
                 <span className="flex items-center gap-3">
-                  <Icon
-                    size={17}
-                    strokeWidth={isActive ? 2 : 1.6}
-                    style={{
-                      color: isActive
-                        ? "var(--color-sys-blue)"
-                        : "var(--color-ink-2)",
-                    }}
-                  />
+                  {iconBg ? (
+                    // Lime gradient marker — matches sidebar treatment.
+                    // Drawer icons are 17px, so we scale the container up
+                    // to ~22px to keep the visual mass consistent with
+                    // its row neighbours.
+                    <div
+                      className="flex h-[22px] w-[22px] items-center justify-center rounded-[6px]"
+                      style={{
+                        background: iconBg,
+                        boxShadow:
+                          "0 1px 4px rgba(132,204,22,0.32), inset 0 1px 0 rgba(255,255,255,0.45)",
+                      }}
+                    >
+                      <Icon
+                        size={13}
+                        strokeWidth={2.2}
+                        style={{ color: "white" }}
+                      />
+                    </div>
+                  ) : (
+                    <Icon
+                      size={17}
+                      strokeWidth={isActive ? 2 : 1.6}
+                      style={{
+                        color: isActive
+                          ? "var(--color-sys-blue)"
+                          : "var(--color-ink-2)",
+                      }}
+                    />
+                  )}
                   {item.label}
                 </span>
                 {showBadge && (
