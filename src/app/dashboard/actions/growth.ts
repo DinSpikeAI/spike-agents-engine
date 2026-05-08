@@ -32,11 +32,18 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireOnboarded } from "@/lib/auth/require-onboarded";
 import { inngest, INNGEST_EVENTS } from "@/lib/inngest/client";
+import { sendWhatsAppMessage } from "@/lib/whatsapp/send";
+import type { SendWhatsAppMessageResult } from "@/lib/whatsapp/types";
 import type {
   GrowthCandidateStatus,
   GrowthOutcomeType,
   GrowthRunTrigger,
 } from "@/lib/agents/growth/types";
+
+// User-scoped server Supabase client type — for our private helpers below.
+// Resolved from createClient()'s return type so we don't add a new import
+// path; if Spike's server client shape changes, this picks it up.
+type ServerDb = Awaited<ReturnType<typeof createClient>>;
 
 // ─────────────────────────────────────────────────────────────
 // Types — for client-side consumption
@@ -200,6 +207,122 @@ export async function getGrowthRoi(): Promise<GrowthRoiSnapshot> {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Private helpers for Sprint 2 Batch 2C send wiring
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Look up the tenant's connected WhatsApp integration and pull the
+ * credentials needed for an outbound send. Returns a discriminated
+ * result so the caller can produce a precise Hebrew message per
+ * failure mode (not connected vs. configured-but-broken).
+ *
+ * Note: `metadata` is jsonb on the integrations table — we cast it to
+ * the partial shape we need. If the row exists but a field is missing,
+ * we treat it as `missing_credentials` rather than `not_connected`,
+ * because the tenant's intent IS to use WhatsApp; the setup is just
+ * incomplete.
+ */
+async function lookupTenantWhatsAppIntegration(
+  db: ServerDb,
+  tenantId: string
+): Promise<
+  | { ok: true; phoneNumberId: string; accessToken: string }
+  | { ok: false; reason: "not_connected" | "missing_credentials" | "db_error" }
+> {
+  const { data: integration, error } = await db
+    .from("integrations")
+    .select("metadata, status")
+    .eq("tenant_id", tenantId)
+    .eq("provider", "whatsapp")
+    .eq("status", "connected")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[growth/actions] integration lookup failed:", error);
+    return { ok: false, reason: "db_error" };
+  }
+  if (!integration) {
+    return { ok: false, reason: "not_connected" };
+  }
+
+  const metadata = integration.metadata as
+    | { phone_number_id?: string; access_token?: string }
+    | null;
+  const phoneNumberId = metadata?.phone_number_id;
+  const accessToken = metadata?.access_token;
+  if (!phoneNumberId || !accessToken) {
+    return { ok: false, reason: "missing_credentials" };
+  }
+
+  return { ok: true, phoneNumberId, accessToken };
+}
+
+/**
+ * Has this customer messaged this tenant in the last 24 hours?
+ *
+ * WhatsApp Cloud API hard rule: outbound free-text is only allowed when
+ * the recipient initiated a conversation within the trailing 24h window.
+ * For Reactivation candidates (45+ days dormant by definition) this will
+ * almost always be false — and we surface a "copy and send manually"
+ * message instead of attempting the send. For Lead Discovery candidates
+ * (when Sprint 3 wires the Meta inbox) this is typically true.
+ *
+ * Conservative on DB error: returns false (assume outside window).
+ * Better to tell the user "copy manually" than to attempt a send that
+ * Meta will reject anyway.
+ */
+async function wasContactedInLast24h(
+  db: ServerDb,
+  tenantId: string,
+  customerPhone: string
+): Promise<boolean> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await db
+    .from("events")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("provider", "whatsapp")
+    .eq("event_type", "whatsapp_message_received")
+    .filter("payload->>contact_phone", "eq", customerPhone)
+    .gte("received_at", cutoff)
+    .limit(1);
+
+  if (error) {
+    console.error("[growth/actions] 24h window check failed:", error);
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Translate a failed send result to a user-facing Hebrew message.
+ * One central place to keep the wording consistent and the categories
+ * exhaustive — TypeScript flags missing branches via the `satisfies` on
+ * the discriminant.
+ */
+function mapSendErrorToHebrew(
+  result: Extract<SendWhatsAppMessageResult, { ok: false }>
+): string {
+  switch (result.errorCategory) {
+    case "auth":
+      return "בעיית גישה ל-WhatsApp. פנה לתמיכה.";
+    case "template_required":
+      // 24h check should have caught this earlier; landing here means
+      // either clock skew or a Meta-side state we don't model.
+      return "מחוץ לחלון 24 שעות. העתק את הטקסט ושלח ידנית.";
+    case "invalid_number":
+      return "המספר לא רשום ב-WhatsApp.";
+    case "rate_limit":
+      return "WhatsApp מבקש להאט. נסה שוב בעוד דקה.";
+    case "transient":
+      return "שגיאה זמנית בשליחה. נסה שוב בעוד דקה.";
+    case "unknown":
+      return `WhatsApp דחה את ההודעה: ${result.errorMessage}`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // Mutate — approve a candidate
 // ─────────────────────────────────────────────────────────────
 
@@ -209,20 +332,37 @@ export interface ApproveGrowthResult {
 }
 
 /**
- * Mark a pending candidate as approved. Optionally accepts an edited
- * version of the draft message (one-step "edit and approve").
+ * Mark a pending candidate as approved AND fire the WhatsApp send
+ * (Sprint 2 Batch 2C). Optionally accepts an edited version of the
+ * draft message (one-step "edit and approve").
  *
- * Sprint 2 Batch 2A scope:
- *   - Validate ownership (RLS + explicit tenant filter)
- *   - Optionally save edited message
- *   - Update status='approved', decided_at/by populated
+ * Iron Rule preservation: this function only sends when called. The
+ * caller is the user clicking [אשר] in the OpportunityCard — that
+ * click IS the human approval. The send happens AS A RESULT, never
+ * autonomously.
  *
- * Sprint 2 Batch 2C scope (NOT in this batch):
- *   - Fire WhatsApp Cloud API send
- *   - On success: insert growth_outcomes(outcome_type='sent')
- *   - On failure: keep status='approved' so user can retry
- *   - Status stays 'approved' regardless — 'sent' is an outcome,
- *     not a candidate status (see types.ts)
+ * Flow:
+ *   1. Validate ownership (RLS + explicit tenant filter)
+ *   2. Validate state (still pending, not expired)
+ *   3. Optionally save edited message
+ *   4. Update status='approved' (with race guard on status='pending')
+ *   5. Determine if we can send via WhatsApp:
+ *      a. Source must be "interactions" — Meta inbox (instagram/facebook)
+ *         needs Sprint 3 wiring
+ *      b. customer_phone must be present
+ *      c. Tenant must have a connected WhatsApp integration with
+ *         phone_number_id + access_token
+ *      d. Customer must have messaged us in the trailing 24h window
+ *         (WhatsApp's hard rule for freeform text)
+ *   6. If all 5a-d pass, call sendWhatsAppMessage
+ *   7. On send success: insert growth_outcomes(outcome_type='sent')
+ *   8. On send failure: status STAYS 'approved' so the owner's decision
+ *      is preserved; UI just gets a precise error message
+ *
+ * Status semantics: 'approved' means the owner decided. There is no
+ * 'sent' status — that's an outcome, not a state. A candidate can be
+ * approved-but-not-sent (e.g. outside 24h window) and the owner can
+ * always copy the text and send manually from their phone.
  */
 export async function approveGrowthCandidate(
   candidateId: string,
@@ -231,9 +371,12 @@ export async function approveGrowthCandidate(
   const { user, tenantId } = await requireOnboarded();
   const db = await createClient();
 
+  // Fetch the candidate. We need source/customer_phone/draft_message in
+  // addition to the validation fields, because steps 5-8 below act on
+  // them after the status flip.
   const { data: existing, error: fetchErr } = await db
     .from("growth_candidates")
-    .select("id, status, expires_at")
+    .select("id, status, expires_at, source, customer_phone, draft_message")
     .eq("id", candidateId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -254,12 +397,17 @@ export async function approveGrowthCandidate(
     decided_by: user.id,
   };
 
+  // Resolve the message body that will actually be sent. If the owner
+  // edited it in the draft editor and clicked "אשר" from there, prefer
+  // the edited version; otherwise fall back to the stored draft.
+  let messageToSend = existing.draft_message as string;
   if (editedMessage && editedMessage.trim().length > 0) {
     const trimmed = editedMessage.trim();
     if (trimmed.length > 2000) {
       return { ok: false, message: "ההודעה ארוכה מדי (עד 2,000 תווים)." };
     }
     updates.draft_message = trimmed;
+    messageToSend = trimmed;
   }
 
   const { error: updateErr } = await db
@@ -274,8 +422,89 @@ export async function approveGrowthCandidate(
     return { ok: false, message: "שגיאה בעדכון. נסה שוב." };
   }
 
+  // ─── Send wiring (Sprint 2 Batch 2C) ──────────────────────────
+  // Status is now 'approved'. The card disappears from /dashboard/growth's
+  // pending list regardless of what happens below — that's the owner's
+  // decision crystallized. Each early return below first calls
+  // revalidatePath so the UI catches up; we use ok=true with informative
+  // messages for "approved but couldn't auto-send" cases (no integration,
+  // outside 24h window, Meta-only source) since the approval itself
+  // succeeded — the user just needs the context. We use ok=false only
+  // for genuine transmission failures (Meta API errors).
+
+  const source = existing.source as string;
+  if (source !== "interactions") {
+    revalidatePath("/dashboard/growth");
+    return {
+      ok: true,
+      message: "אושר. שליחה במקור הזה עדיין לא נתמכת (Sprint 3).",
+    };
+  }
+
+  const customerPhone = existing.customer_phone as string | null;
+  if (!customerPhone) {
+    revalidatePath("/dashboard/growth");
+    return {
+      ok: true,
+      message: "אושר. אך לא נמצא טלפון ליצירת קשר.",
+    };
+  }
+
+  const integration = await lookupTenantWhatsAppIntegration(db, tenantId);
+  if (!integration.ok) {
+    revalidatePath("/dashboard/growth");
+    let msg = "אושר. WhatsApp לא מחובר — פנה לתמיכה.";
+    if (integration.reason === "missing_credentials") {
+      msg = "אושר. הגדרות WhatsApp לא מלאות — פנה לתמיכה.";
+    } else if (integration.reason === "db_error") {
+      msg = "אושר. שגיאה זמנית בבדיקת WhatsApp.";
+    }
+    return { ok: true, message: msg };
+  }
+
+  const within24h = await wasContactedInLast24h(db, tenantId, customerPhone);
+  if (!within24h) {
+    revalidatePath("/dashboard/growth");
+    return {
+      ok: true,
+      message:
+        "אושר. הלקוח לא פנה ב-24 השעות האחרונות — WhatsApp לא מאפשר שליחה ישירה. העתק את הטקסט ושלח ידנית.",
+    };
+  }
+
+  const sendResult = await sendWhatsAppMessage({
+    toPhone: customerPhone,
+    messageBody: messageToSend,
+    phoneNumberId: integration.phoneNumberId,
+    accessToken: integration.accessToken,
+  });
+
+  if (!sendResult.ok) {
+    // Genuine transmission failure (auth, invalid number, Meta 5xx after
+    // retries, etc.). Status stays 'approved' — the owner's decision
+    // stands; only transmission failed. Surface ok=false so the UI
+    // toast shows in error styling.
+    console.warn(
+      `[growth/actions] send failed for candidate ${candidateId}: ${sendResult.errorCategory} / ${sendResult.metaCode ?? "no-code"} / ${sendResult.errorMessage}`
+    );
+    revalidatePath("/dashboard/growth");
+    return { ok: false, message: mapSendErrorToHebrew(sendResult) };
+  }
+
+  // Send succeeded — record outcome for ROI tracking. Non-fatal if the
+  // insert fails; the message is already out and cannot be unsent.
+  const { error: outcomeErr } = await db.from("growth_outcomes").insert({
+    tenant_id: tenantId,
+    candidate_id: candidateId,
+    outcome_type: "sent" satisfies GrowthOutcomeType,
+    reported_value_ils: null,
+  });
+  if (outcomeErr) {
+    console.warn("[growth/actions] sent outcome insert failed:", outcomeErr);
+  }
+
   revalidatePath("/dashboard/growth");
-  return { ok: true, message: "אושר. (Sprint 2C יוסיף שליחה אוטומטית)" };
+  return { ok: true, message: "ההודעה נשלחה." };
 }
 
 // ─────────────────────────────────────────────────────────────
