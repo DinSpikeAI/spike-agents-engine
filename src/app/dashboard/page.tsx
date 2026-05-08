@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { requireOnboarded } from "@/lib/auth/require-onboarded";
 import { isAdminEmail } from "@/lib/admin/auth";
@@ -166,12 +167,87 @@ const CATEGORY_META: Record<
   },
 };
 
+// Default lock state — used as the Suspense fallback for the manager
+// button so the agent grid stays clickable even before the real state
+// streams in. canRun=true means the button looks "live" rather than
+// disabled during the brief load window. The streamed real state will
+// hot-swap in once getManagerLockState() resolves.
+const DEFAULT_MANAGER_LOCK_STATE = {
+  canRun: true,
+  reason: null,
+  nextEligibleAt: null,
+  daysUntilNext: 0,
+  hoursUntilNext: 0,
+  unreadReportId: null,
+  lastReadAt: null,
+} as const;
+
+// Default KPIs — used as the Suspense fallback for the KPI strip while
+// real numbers stream in. We pass through the already-known
+// pendingApprovals (we have it from listPendingDrafts which blocks the
+// shell render) so that one tile is correct from frame 1; the other 3
+// show 0 briefly and update when getDashboardKpis() resolves.
+const DEFAULT_KPIS = {
+  todaysActions: 0,
+  monthlySpend: 0,
+  monthlyCap: 0,
+} as const;
+
+// ─────────────────────────────────────────────────────────────
+// Streamed sections — each is its own async server component that
+// awaits ONE data source. Wrapped in Suspense by the page below so
+// they don't block the shell render. Cold-start latency hits the
+// shell once; these sections fill in the response stream as their
+// data resolves, in parallel.
+// ─────────────────────────────────────────────────────────────
+
+async function KpiStripStream({
+  pendingApprovals,
+}: {
+  pendingApprovals: number;
+}) {
+  const kpiResult = await getDashboardKpis();
+  const kpis =
+    kpiResult.success && kpiResult.kpis
+      ? kpiResult.kpis
+      : {
+          pendingApprovals,
+          todaysActions: 0,
+          monthlySpend: 0,
+          monthlyCap: 0,
+        };
+  return (
+    <KpiStrip
+      pendingApprovals={kpis.pendingApprovals}
+      todaysActions={kpis.todaysActions}
+      monthlySpend={kpis.monthlySpend}
+      monthlyCap={kpis.monthlyCap}
+    />
+  );
+}
+
+async function OnboardingBannerStream({ tenantId }: { tenantId: string }) {
+  const onboardingStatus = await getOnboardingStatus(tenantId);
+  if (!onboardingStatus.hasNoRealRuns) return null;
+  return <OnboardingBanner tenantId={tenantId} />;
+}
+
+async function RunManagerButtonStream() {
+  const managerLockResult = await getManagerLockState();
+  const state =
+    managerLockResult.success && managerLockResult.state
+      ? managerLockResult.state
+      : DEFAULT_MANAGER_LOCK_STATE;
+  return <RunManagerButton lockState={state} />;
+}
+
 export default async function DashboardPage() {
   // Block access if user hasn't completed onboarding yet.
   // requireOnboarded() also handles the not-logged-in case (redirects to /login).
   // Sub-stage 1.14.3: requireOnboarded now returns user + tenantConfig +
-  // tenantName already-fetched, so we don't re-query auth.getUser() or
-  // the tenants table here. Saves ~200ms (2 round-trips to Frankfurt).
+  // tenantName already-fetched, AND is wrapped in React cache() so any
+  // server actions invoked further down dedupe back to this single call.
+  // Saves ~100-150ms per page (we used to do 5 round-trips to Frankfurt).
   const { userEmail, tenantId, tenantConfig, tenantName } =
     await requireOnboarded();
 
@@ -189,27 +265,18 @@ export default async function DashboardPage() {
   // Display name for greeting: owner_name from onboarding > email username
   const userName = ownerName || userEmail.split("@")[0] || "משתמש";
 
-  const [draftsResult, managerLockResult, kpiResult, onboardingStatus] =
-    await Promise.all([
-      listPendingDrafts(),
-      getManagerLockState(),
-      getDashboardKpis(),
-      getOnboardingStatus(tenantId),
-    ]);
+  // Sub-stage 1.16 perf refactor: only block on listPendingDrafts (single
+  // small query) because pendingCount is needed by 4+ places in the
+  // shell — Sidebar, MobileHeader, Topbar, BottomNav, KpiStrip badge,
+  // ApprovalBanner gate. The OTHER three data sources (KPIs, manager
+  // lock, onboarding status) stream in via Suspense boundaries below,
+  // so the shell + agent grid are visible the moment listPendingDrafts
+  // resolves — no longer waiting on the slowest of 4 parallel queries.
+  const draftsResult = await listPendingDrafts();
 
   const pendingCount = draftsResult.success
     ? draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0
     : 0;
-
-  // KPIs — real numbers from DB. Falls back to safe zeros if query failed.
-  const kpis = kpiResult.success && kpiResult.kpis
-    ? kpiResult.kpis
-    : {
-        pendingApprovals: pendingCount,
-        todaysActions: 0,
-        monthlySpend: 0,
-        monthlyCap: 0,
-      };
 
   // Build pending summary string
   const pendingSummary = (() => {
@@ -237,24 +304,23 @@ export default async function DashboardPage() {
     return parts.join(" · ");
   })();
 
-  const managerLockState =
-    managerLockResult.success && managerLockResult.state
-      ? managerLockResult.state
-      : {
-          canRun: true,
-          reason: null,
-          nextEligibleAt: null,
-          daysUntilNext: 0,
-          hoursUntilNext: 0,
-          unreadReportId: null,
-          lastReadAt: null,
-        };
-
-  // Render the right button per agent
+  // Render the right button per agent. The manager case uses a Suspense
+  // boundary so the rest of the agent grid stays interactive while the
+  // lock-state query completes; fallback is the same button rendered
+  // with a permissive default state so the user doesn't see a flicker
+  // or "disabled" placeholder.
   const renderButton = (buttonType: string) => {
     switch (buttonType) {
       case "manager":
-        return <RunManagerButton lockState={managerLockState} />;
+        return (
+          <Suspense
+            fallback={
+              <RunManagerButton lockState={DEFAULT_MANAGER_LOCK_STATE} />
+            }
+          >
+            <RunManagerButtonStream />
+          </Suspense>
+        );
       case "morning":
         return <RunMorningButton />;
       case "watcher":
@@ -326,19 +392,32 @@ export default async function DashboardPage() {
             lastUpdate="לפני 12 דק׳"
           />
 
-          <KpiStrip
-            pendingApprovals={kpis.pendingApprovals}
-            todaysActions={kpis.todaysActions}
-            monthlySpend={kpis.monthlySpend}
-            monthlyCap={kpis.monthlyCap}
-          />
+          {/* KPI strip streams in — fallback is the strip rendered with
+              default zeros + the real pendingApprovals count we already
+              have. The other 3 numbers (todaysActions, monthlySpend,
+              monthlyCap) will hot-swap when getDashboardKpis() resolves. */}
+          <Suspense
+            fallback={
+              <KpiStrip
+                pendingApprovals={pendingCount}
+                todaysActions={DEFAULT_KPIS.todaysActions}
+                monthlySpend={DEFAULT_KPIS.monthlySpend}
+                monthlyCap={DEFAULT_KPIS.monthlyCap}
+              />
+            }
+          >
+            <KpiStripStream pendingApprovals={pendingCount} />
+          </Suspense>
 
           {/* Sub-stage 1.6 — Onboarding banner shown to tenants with 0 non-mock runs.
-              Auto-hides when getOnboardingStatus reports realRunCount > 0.
-              The Banner component itself handles manual X dismissal via localStorage. */}
-          {onboardingStatus.hasNoRealRuns && (
-            <OnboardingBanner tenantId={tenantId} />
-          )}
+              Now streamed: the page renders without it, then the banner appears
+              if needed once getOnboardingStatus() resolves. Rendering "no banner"
+              first and then showing it briefly is fine — the alternative was
+              blocking the entire shell on this query. The Banner component itself
+              handles manual X dismissal via localStorage. */}
+          <Suspense fallback={null}>
+            <OnboardingBannerStream tenantId={tenantId} />
+          </Suspense>
 
           {pendingCount > 0 && (
             <Link
