@@ -11,11 +11,18 @@
 --   silently. See §15.20 in CLAUDE.md for the full incident write-up.
 --
 -- AFTER:
---   coalesce(JWT claim, user_settings.active_tenant_id).
---   - Existing users that happen to have the JWT claim continue working
---     unchanged (JWT path wins).
---   - New users without the claim resolve via user_settings, which is
---     already the canonical source of truth used by requireOnboarded().
+--   Single lookup against user_settings.active_tenant_id — the canonical
+--   tenant source per requireOnboarded(). Every onboarded user has this
+--   row populated, so the function will resolve correctly for everyone
+--   who completed onboarding.
+--
+-- Why we dropped the JWT path:
+--   Spike has no code path that sets `auth.users.raw_app_meta_data.tenant_id`
+--   during onboarding. Keeping JWT-as-primary with a user_settings fallback
+--   creates the illusion that JWT-claim onboarding is supported, when it
+--   isn't. Single canonical path is easier to reason about, easier to
+--   audit, and matches how the rest of the application code resolves
+--   tenants (`requireOnboarded()` reads user_settings).
 --
 -- No schema change. No data migration. Single function rewrite.
 -- Zero downtime — function replacement is atomic.
@@ -26,15 +33,7 @@ CREATE OR REPLACE FUNCTION public.current_tenant_id()
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-  select coalesce(
-    -- Primary: explicit JWT app_metadata claim (kept for backwards compat
-    -- with any user who happens to have it set, e.g. via the per-user
-    -- workaround applied during 1.15.2 incident).
-    nullif((select auth.jwt() #>> '{app_metadata,tenant_id}'), '')::uuid,
-    -- Fallback: user_settings.active_tenant_id — the canonical source per
-    -- requireOnboarded(). Every onboarded user has a row here.
-    (select active_tenant_id from user_settings where user_id = auth.uid())
-  )
+  select active_tenant_id from user_settings where user_id = auth.uid()
 $function$;
 
 -- Reload PostgREST schema cache so the new function definition is picked
