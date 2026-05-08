@@ -556,6 +556,8 @@ const response = await withRetry(
 
 Apple-style: layered tints, frosted glass, system colors. Tokens in `src/app/globals.css`. **READ THIS FILE before designing any UI.** §2.12.
 
+**Token prefix is `--color-*`, NOT `--spike-*`.** Common tokens: `--color-ink`, `--color-ink-2`, `--color-ink-3` (text shades), `--color-glass` + `--color-glass-strong` (frosted surfaces), `--color-sys-blue` / `--color-sys-green` / etc. (system colors), `--color-cat-insight` / `--color-cat-action` / etc. (category accent colors). Earlier drafts of this doc occasionally referenced `--spike-*` — that prefix does NOT exist in the codebase. When in doubt, grep `globals.css`.
+
 **Tagline:** "שמונה סוכנים. שקט אחד."
 
 ---
@@ -1125,7 +1127,7 @@ Server actions backing the upcoming `/dashboard/growth` UI. Six new actions in `
   - **DB**: `supabase/migrations/022_integrations_whatsapp_phone_lookup.sql` adds partial UNIQUE index `idx_integrations_whatsapp_phone` on `(provider, metadata->>'phone_number_id') WHERE provider='whatsapp' AND status='connected'`. Enforces uniqueness AND serves the webhook hot path. Provider-specific identifiers (phone_number_id, display_phone_number, whatsapp_business_account_id) live in `metadata` jsonb so the integrations table stays provider-agnostic for future Stripe/GCal additions.
   - **Webhook**: `whatsapp/route.ts` adds `resolveTenant()` helper. Resolution priority: `X-Spike-Tenant-Override` header (preserved for `/dashboard/showcase` demo) → `integrations` table lookup → `DEMO_TENANT_ID` fallback with `console.warn` for visibility. Per-batch `Map<phoneNumberId, tenantId>` cache avoids redundant DB queries on multi-message webhooks.
   - **Customer UI** (`/dashboard/integrations`): read-only display. Hero status banner ("WhatsApp פעיל ומחובר"), `ConnectedDisplay` (status + display_phone_number + Hebrew "מחובר מאז" date), `ManagedByCopy` banner explaining setup is handled by Spike staff. No phone_number_id, no WABA, no manual form, no disconnect button. `PendingSetupState` for tenants without WhatsApp yet (CTA: contact us via chat). `ComingSoonCard` for Stripe (#635bff) and Google Calendar (#4285f4).
-  - **Admin UI** (`/admin/integrations`): full management panel. `requireAdmin()` gate. Lists all tenants with WhatsApp status (3-stat strip: total/connected/pending), tenant picker dropdown + clickable list, per-tenant connect form (when not connected) or status display + disconnect button (when connected). Same `--spike-*` design tokens as `/admin` command center. Sidebar shows 2 admin links when `isAdmin={true}` (`מרכז ניהול` + `אינטגרציות (admin)`).
+  - **Admin UI** (`/admin/integrations`): full management panel. `requireAdmin()` gate. Lists all tenants with WhatsApp status (3-stat strip: total/connected/pending), tenant picker dropdown + clickable list, per-tenant connect form (when not connected) or status display + disconnect button (when connected). Same `--color-*` design tokens as `/admin` command center. Sidebar shows 2 admin links when `isAdmin={true}` (`מרכז ניהול` + `אינטגרציות (admin)`).
   - **Server actions split**: `app/dashboard/integrations/actions.ts` reduced to types only (no `connectWhatsappIntegration` for customers). `app/admin/integrations/actions.ts` exports `connectWhatsappAsAdmin(tenantId, ...)` and `disconnectIntegrationAsAdmin(integrationId)`. Both handle: (1) `UNIQUE(tenant_id, provider)` — INSERT or UPDATE existing row; (2) `UNIQUE partial(provider, metadata->>'phone_number_id')` — friendly Hebrew error before raw 23505; (3) race conditions with generic "try again" fallback. `disconnectIntegration` is SOFT (status='disconnected', no DELETE) so re-connection works and audit trail is preserved.
   - **Smoke tested end-to-end** in production Supabase: INSERT row with phone_number_id='TEST_PHONE_999' → SELECT lookup returns DEMO_TENANT → `EXPLAIN ANALYZE` shows `Index Scan using idx_integrations_whatsapp_phone` (0.098ms execution, sub-ms) → duplicate INSERT correctly rejected with 23505 on `integrations_tenant_id_provider_key`. Test row deleted post-verification.
   - **Architectural lesson**: original `/dashboard/integrations` exposed phone_number_id + WABA + a manual connect form to end customers. That violated the product principle "customers should not handle technical setup". The customer/admin split fixes this — Spike sales staff handles all OAuth/credential bits during onboarding calls, customers just see ✓ green status. Lesson documented in §15.14 (PowerShell escape gotcha discovered during this work).
@@ -1661,6 +1663,33 @@ The change was motivated by avoiding the "empty array for triggerless functions"
 **Going forward:** when adding new Inngest functions, always use `triggers: [...]` (plural, array, inside the first config object). Reference: [Inngest v3→v4 Migration Guide](https://www.inngest.com/docs/reference/typescript/v4/migrations/v3-to-v4).
 
 **Also discovered during 1.15:** the Vercel Marketplace Inngest integration occasionally hangs at the "Save configuration" step (loaded for >5 minutes with no progress). Workaround: skip the marketplace flow, generate event + signing keys manually in the Inngest dashboard (Manage → Event Keys / Signing Keys), add them as Vercel env vars manually, then sync the app via Inngest's "Apps → Sync new app" with the production URL `https://app.spikeai.co.il/api/inngest`. Manual GET requests to that URL return `{"message":"Unauthorized"}` because Inngest v4 defaults to cloud mode and requires signed introspection requests — that response is normal, not a deploy failure.
+
+---
+
+### 15.19 `server-only` Types Cannot Be Imported by Client Components — Use the Actions File as the Public API (1.15.1 lesson)
+
+**The pattern:** when an agent has its own `types.ts` (e.g. `src/lib/agents/growth/types.ts`), that file may transitively import from server-only modules (`@anthropic-ai/sdk`, `next/cache`, `"server-only"`). Importing such types from a Client Component (`"use client"`) breaks the build:
+
+```
+Module not found: Can't resolve 'server-only' in client-side bundle
+```
+
+**The rule:** Client Components must NEVER import from `src/lib/agents/<agent>/types.ts` directly. The public type API for Client Components is the **action file's exports**.
+
+For Growth specifically, the action file `src/app/dashboard/actions/growth.ts` deliberately re-exports the types Client Components need:
+
+```typescript
+export interface PendingGrowthCandidate { ... }
+export interface GrowthRoiSnapshot { ... }
+export interface ApproveGrowthResult { ok: boolean; message: string }
+// etc.
+```
+
+These are the types `OpportunityCard.tsx` etc. import. They mirror DB row shapes but are flatter / camelCased / nullable-aware — designed for UI consumption, not internal pipeline plumbing.
+
+**Going forward:** every new agent's `types.ts` should declare `import "server-only";` at the top. The action file should re-export the subset of types Client Components need, with UI-friendly camelCase names. Treat the action file as the agent's "public API surface" — types.ts is internal to the server pipeline.
+
+**Why we got this right by accident in 1.15.1:** the Growth actions file was written to define its own client-friendly types up front (separate from `GrowthCandidateRow` and `CandidateInput` in types.ts). When the new Claude session reading `growth/types.ts` reported "this is server-only, I'll import from actions instead", the architecture already supported that path. Future agents should follow the same separation deliberately.
 
 ---
 
