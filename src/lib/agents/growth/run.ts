@@ -17,7 +17,7 @@
 //   8. (Sprint 1C) Send WhatsApp digest to owner
 //
 // Status semantics:
-//   succeeded — all top-scored candidates produced drafts
+//   succeeded — all top-scored candidates produced drafts (or no candidates found)
 //   partial   — some drafts failed, but >=1 drafted candidate was persisted
 //   failed    — fatal error before/during/after drafting
 //
@@ -41,7 +41,6 @@ import type { TenantContextForGrowth } from "./prompts";
 import type {
   CandidateInput,
   GrowthCandidateStatus,
-  GrowthGoal,
   GrowthRunStatus,
   GrowthRunTrigger,
   GrowthDraftChannel,
@@ -417,8 +416,6 @@ async function loadTenantContextForGrowth(
     );
   }
 
-  // tenant.config is jsonb. We pull the fields we need defensively —
-  // missing config fields are not a fatal error; we fall back to defaults.
   const config = (tenant.config ?? {}) as {
     vertical?: string;
     tone_notes?: string;
@@ -473,44 +470,42 @@ async function buildInternalContext(
 ): Promise<DraftContextResult> {
   const phone = candidate.id; // for internal source, id IS the phone
 
-  // Pull last 5 events for this customer.
+  // Pull last 5 inbound messages for this phone from the events table.
+  // The phone lives inside payload (jsonb), filtered via PostgREST's
+  // arrow syntax: filter('payload->>contact_phone', 'eq', phone).
+  // Note: `direction` is implicit from event_type ('whatsapp_message_received'
+  // = inbound). We don't currently surface outbound owner replies in
+  // recentMessages; the Sonnet prompt is robust to one-sided context.
   const { data: events } = await db
     .from("events")
-    .select("direction, message_text, created_at, metadata")
+    .select("payload, received_at")
     .eq("tenant_id", tenantId)
-    .eq("phone", phone)
-    .not("message_text", "is", null)
-    .order("created_at", { ascending: false })
+    .eq("provider", "whatsapp")
+    .eq("event_type", "whatsapp_message_received")
+    .filter("payload->>contact_phone", "eq", phone)
+    .order("received_at", { ascending: false })
     .limit(5);
 
   type EventRow = {
-    direction: "inbound" | "outbound";
-    message_text: string | null;
-    created_at: string;
-    metadata: Record<string, unknown> | null;
+    payload: { raw_message?: string; summary?: string } | null;
+    received_at: string;
   };
 
   const rows = (events ?? []) as EventRow[];
 
-  const recentMessages = rows.slice(0, 5).map((e) => ({
-    direction: e.direction,
-    text: (e.message_text ?? "").slice(0, 280),
-    timestamp: e.created_at.slice(0, 10),
+  const recentMessages = rows.map((e) => ({
+    direction: "inbound" as const,
+    text: (e.payload?.raw_message ?? e.payload?.summary ?? "").slice(0, 280),
+    timestamp: e.received_at.slice(0, 10),
   }));
 
   const lastEvent = rows[0] ?? null;
-  const lastInteractionDate = lastEvent?.created_at.slice(0, 10) ?? null;
+  const lastInteractionDate = lastEvent?.received_at.slice(0, 10) ?? null;
+  // Topic enrichment lives in the Watcher upgrade roadmap; for now, null.
+  const lastInteractionTopic: string | null = null;
 
-  // Topic extraction is intentionally minimal — we let Sonnet infer
-  // topic from recentMessages. metadata.topic is only used if the
-  // Watcher upgrade has populated it.
-  const lastInteractionTopic =
-    (lastEvent?.metadata as { topic?: string } | null)?.topic ?? null;
-
-  // Build a simple historical summary from candidate metadata. We don't
-  // want to hit the DB again for full appointment counts here — that
-  // adds N+1 latency to the cron path. The metadata Haiku already saw
-  // is good enough for Sonnet.
+  // Build a simple historical summary from candidate metadata (already
+  // populated by gatherInternalCandidates). Stays cheap — no extra round trip.
   const m = candidate.metadata;
   const summaryParts: string[] = [];
   if (m.totalPriorInteractions) {
@@ -544,7 +539,6 @@ async function buildMetaContext(
   candidate: CandidateInput,
   draftChannel: GrowthDraftChannel
 ): Promise<DraftContextResult> {
-  // For Meta candidates, fetch the message + a bit of context from same conversation
   const { data: focal } = await db
     .from("meta_inbox_messages")
     .select("conversation_id, message_text, received_at, sender_username")

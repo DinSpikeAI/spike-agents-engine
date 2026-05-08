@@ -11,20 +11,28 @@
 //   - REACTIVATION_MIN_INTERACTIONS: minimum priors to be a viable target
 //   - SCORE_THRESHOLD:              minimum Haiku score to surface
 //   - MAX_CANDIDATES_PER_RUN:       hard cap on drafts per run (cost control)
-//   - gatherInternalCandidates():   query events/drafts/hot_leads → CandidateInput[]
+//   - gatherInternalCandidates():   query events → CandidateInput[]
 //   - gatherMetaCandidates():       query meta_inbox_messages → CandidateInput[]
-//   - buildCandidateContext():      build rich context block for Sonnet
+//   - chooseDraftChannel():         decide WhatsApp vs IG vs FB based on source
 //   - normalizeSentiment():         coerce Watcher's signals into 3-bucket sentiment
+//   - cost calculators              for Haiku and Sonnet usage
+//
+// SCHEMA NOTE — events table:
+//   events is the universal event log. The relevant columns:
+//     - tenant_id (uuid)
+//     - provider (text)         e.g. 'whatsapp'
+//     - event_type (text)       e.g. 'whatsapp_message_received' (inbound)
+//     - payload (jsonb)         contains contact_phone, contact_name, raw_message
+//     - received_at (timestamptz)
+//   There is NO direct phone column. Phone is at payload->>'contact_phone'.
 
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   CandidateInput,
-  CandidateContext,
   CandidateMetadata,
   GrowthDraftChannel,
   GrowthSource,
-  ScoredCandidate,
 } from "./types";
 
 // ─────────────────────────────────────────────────────────────
@@ -72,6 +80,14 @@ export const MIN_CANDIDATES_FOR_DIGEST = 3;
  */
 export const META_INBOX_LOOKBACK_DAYS = 60;
 
+/**
+ * How many recent inbound events to fetch per scan. We aggregate in JS
+ * by phone (PostgREST does not support GROUP BY on jsonb keys), so
+ * this is the bounded raw input. 2000 events covers ~6-12 months of
+ * a busy SMB.
+ */
+const EVENTS_FETCH_LIMIT = 2000;
+
 // ─────────────────────────────────────────────────────────────
 // Sentiment normalization
 // ─────────────────────────────────────────────────────────────
@@ -105,87 +121,116 @@ export function normalizeSentiment(
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Pull dormant customers from the tenant's interaction history.
+ * Pull dormant customers from the tenant's WhatsApp interaction history.
  *
- * This intentionally uses a single aggregating query (not N+1) — for a
- * tenant with 500 customers, we don't want 500 round-trips. We let the
- * DB do the heavy lifting and get back a compact rollup.
+ * Approach:
+ *   1. Query the `events` table for inbound WhatsApp messages, ordered
+ *      by received_at DESC, capped at EVENTS_FETCH_LIMIT.
+ *   2. Aggregate in JS — group by contact_phone, count interactions,
+ *      keep the most-recent received_at as last interaction.
+ *   3. Filter:
+ *        - last interaction at least DORMANCY_THRESHOLD_DAYS old
+ *        - at least REACTIVATION_MIN_INTERACTIONS prior interactions
+ *   4. Sort by recency (most-recently-dormant first — they're most
+ *      reachable, least likely to have moved on permanently).
  *
- * Returns up to ~200 candidates (bounded by SQL LIMIT for memory safety).
+ * Why JS aggregation instead of SQL: PostgREST doesn't expose Postgres
+ * GROUP BY on jsonb keys cleanly. A Postgres function would be cleaner
+ * eventually, but for now JS aggregation on 2000 rows is well under
+ * 50ms and avoids a migration.
  */
 export async function gatherInternalCandidates(
   db: SupabaseClient,
   tenantId: string
 ): Promise<CandidateInput[]> {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - DORMANCY_THRESHOLD_DAYS);
-  const cutoffIso = cutoffDate.toISOString();
-
-  // Fetch dormant customers via aggregation. The exact query depends on
-  // Spike's `events` schema — this is the canonical shape:
-  //   - phone identity
-  //   - last interaction date (we want it BEFORE cutoffIso)
-  //   - total prior interactions (must be >= REACTIVATION_MIN_INTERACTIONS)
-  //
-  // We use a Postgres function for clarity (defined in a follow-up
-  // migration if desired); for now the inline form is fine.
-
-  const { data: rollup, error } = await db
+  const { data: events, error } = await db
     .from("events")
-    .select("phone, max(created_at), count(*)")
+    .select("payload, received_at")
     .eq("tenant_id", tenantId)
-    .eq("direction", "inbound")
-    .not("phone", "is", null);
+    .eq("provider", "whatsapp")
+    .eq("event_type", "whatsapp_message_received")
+    .order("received_at", { ascending: false })
+    .limit(EVENTS_FETCH_LIMIT);
 
   if (error) {
     console.error("[growth/_shared] gatherInternalCandidates failed:", error);
     return [];
   }
 
-  // The above `select` with aggregations relies on PostgREST aggregate
-  // support. If your project doesn't have that enabled, swap to an RPC
-  // function. The shape below assumes the rollup row format.
-
-  type RollupRow = {
-    phone: string;
-    max: string;        // ISO date of latest interaction
-    count: number;
+  type EventPayload = {
+    contact_phone?: string;
+    contact_name?: string;
+    raw_message?: string;
   };
 
-  const rows = (rollup as unknown as RollupRow[]) ?? [];
+  type EventRow = {
+    payload: EventPayload | null;
+    received_at: string;
+  };
 
-  const candidates: CandidateInput[] = [];
+  // Group by phone. Because rows are ordered DESC by received_at, the
+  // FIRST time we see a phone is its most-recent event.
+  type PhoneAggregate = {
+    name: string | null;
+    count: number;
+    lastReceivedAt: string; // ISO
+    lastMessagePreview: string | null;
+  };
+
+  const byPhone = new Map<string, PhoneAggregate>();
+
+  for (const ev of (events ?? []) as EventRow[]) {
+    const payload = ev.payload ?? {};
+    const phone = (payload.contact_phone ?? "").trim();
+    if (!phone) continue;
+
+    const existing = byPhone.get(phone);
+    if (!existing) {
+      byPhone.set(phone, {
+        name: payload.contact_name ?? null,
+        count: 1,
+        lastReceivedAt: ev.received_at,
+        lastMessagePreview: (payload.raw_message ?? "").slice(0, 200) || null,
+      });
+    } else {
+      existing.count += 1;
+      // received_at is DESC-sorted; first occurrence wins for last-seen.
+      // Just bump the count.
+    }
+  }
+
   const now = Date.now();
+  const candidates: CandidateInput[] = [];
 
-  for (const row of rows) {
-    const lastTs = new Date(row.max).getTime();
+  for (const [phone, agg] of byPhone) {
+    if (agg.count < REACTIVATION_MIN_INTERACTIONS) continue;
+
+    const lastTs = new Date(agg.lastReceivedAt).getTime();
     const daysSince = Math.floor((now - lastTs) / (1000 * 60 * 60 * 24));
 
     if (daysSince < DORMANCY_THRESHOLD_DAYS) continue;
-    if (row.count < REACTIVATION_MIN_INTERACTIONS) continue;
 
     const metadata: CandidateMetadata = {
       daysSinceLastInteraction: daysSince,
-      totalPriorInteractions: row.count,
-      lastInteractionSentiment: null, // filled by enrichment step if needed
+      totalPriorInteractions: agg.count,
+      lastInteractionSentiment: null,
     };
 
     candidates.push({
-      id: row.phone,
+      id: phone,
       source: "interactions",
-      label: row.phone, // resolved to display name in buildCandidateContext
+      label: agg.name || phone,
       metadata,
     });
   }
 
-  // Sort by recency (most recently dormant first — they're most reachable)
+  // Most-recently dormant first — those are the freshest opportunities.
   candidates.sort(
     (a, b) =>
       (a.metadata.daysSinceLastInteraction ?? Infinity) -
       (b.metadata.daysSinceLastInteraction ?? Infinity)
   );
 
-  // Hard cap on candidate pool size for Haiku scan cost control
   return candidates.slice(0, 200);
 }
 
@@ -237,9 +282,7 @@ export async function gatherMetaCandidates(
     const daysSince = Math.floor((now - receivedTs) / (1000 * 60 * 60 * 24));
 
     const label =
-      row.sender_username ||
-      row.sender_display_name ||
-      `(${row.channel})`;
+      row.sender_username || row.sender_display_name || `(${row.channel})`;
 
     const metadata: CandidateMetadata = {
       daysSinceLastInteraction: daysSince,
@@ -285,9 +328,9 @@ export function chooseDraftChannel(source: GrowthSource): GrowthDraftChannel {
 // Cost calculation helpers (used by run.ts to populate growth_runs)
 // ─────────────────────────────────────────────────────────────
 
-const USD_TO_ILS = 3.7; // Aligns with the codebase-wide constant
+const USD_TO_ILS = 3.7;
 
-// Anthropic pricing as of Q2 2026 (verified inngest research notes)
+// Anthropic pricing as of Q2 2026
 const HAIKU_INPUT_USD_PER_MTOK = 1;
 const HAIKU_OUTPUT_USD_PER_MTOK = 5;
 const SONNET_INPUT_USD_PER_MTOK = 3;
@@ -315,37 +358,4 @@ export function calcSonnetCostIls(
     (cacheReadTokens * SONNET_CACHE_READ_USD_PER_MTOK) / 1_000_000 +
     (outputTokens * SONNET_OUTPUT_USD_PER_MTOK) / 1_000_000;
   return Math.round(usd * USD_TO_ILS * 10000) / 10000;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Context building (used by draft.ts in Sprint 1B)
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Build a rich CandidateContext block for Sonnet to draft from.
- * This is invoked PER candidate (not per scan), so we make sure each
- * call is bounded — no fetching the entire conversation history.
- *
- * Implementation note: this function is INTENTIONALLY thin in Batch 1A.
- * The actual recentMessages / historicalSummary / lastInteractionTopic
- * enrichment is implemented in Sprint 1B alongside scan.ts and draft.ts,
- * because the exact event schema joins depend on prompts being finalized.
- */
-export async function buildCandidateContext(
-  db: SupabaseClient,
-  tenantId: string,
-  scored: ScoredCandidate
-): Promise<CandidateContext> {
-  // Sprint 1B will fill this in with the full event-history join.
-  // For now, return a minimal-but-valid context so types are stable.
-  return {
-    label: scored.label,
-    goal: scored.goal,
-    reasonFromHaiku: scored.reason,
-    recentMessages: [],
-    historicalSummary: "",
-    lastInteractionDate: null,
-    lastInteractionTopic: null,
-    draftChannel: chooseDraftChannel(scored.source),
-  };
 }
