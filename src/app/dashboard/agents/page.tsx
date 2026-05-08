@@ -35,7 +35,7 @@ export const runtime = "edge";
 type AgentCategory = "routine" | "content" | "insight";
 
 const AGENTS_BY_CATEGORY: Record<AgentCategory, AgentId[]> = {
-  routine: ["morning", "watcher"],
+  routine: ["morning", "watcher", "growth"],
   content: ["reviews", "social", "sales"],
   insight: ["manager", "hot_leads", "inventory"],
 };
@@ -45,8 +45,8 @@ const CATEGORY_META: Record<
   { label: string; tagline: string }
 > = {
   routine: {
-    label: "שגרה יומית",
-    tagline: "מה שצריך להתחיל איתו את היום",
+    label: "שגרה",
+    tagline: "פעולות שגרתיות, יומיות ושבועיות",
   },
   content: {
     label: "תוכן ושירות לקוח",

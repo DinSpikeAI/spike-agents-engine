@@ -3,6 +3,11 @@
 // src/components/dashboard/agent-overview-card.tsx
 //
 // Sub-stage 1.8 — Single agent card on /dashboard/agents.
+// Sub-stage 1.15.2 — Growth case added to the run-button switch. Growth
+// uniquely NAVIGATES (Link to /dashboard/growth) rather than triggering
+// a server action — the actual on-demand trigger lives in that page's
+// header, where it's tier-gated and cooldown-aware. Same pattern as the
+// dashboard grid card uses.
 //
 // Shows emoji + name + role + description (from agents/config.ts) plus
 // activity stats (last run, monthly count) and the agent's existing Run
@@ -11,6 +16,7 @@
 // Design: Glass card with agent-card hover utility, mirrors the dashboard
 // agent grid pattern from src/app/dashboard/page.tsx.
 
+import Link from "next/link";
 import { Glass } from "@/components/ui/glass";
 import { AGENTS } from "@/lib/agents/config";
 import type { AgentId } from "@/lib/agents/types";
@@ -154,6 +160,23 @@ export function AgentOverviewCard({
         return <RunSalesButton />;
       case "inventory":
         return <RunInventoryButton />;
+      case "growth":
+        // Growth uniquely navigates rather than triggering — the
+        // tier-gated on-demand trigger lives in /dashboard/growth's
+        // header. Mirrors the lime-gradient button on the main dashboard.
+        return (
+          <Link
+            href="/dashboard/growth"
+            className="inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-medium text-white transition-all"
+            style={{
+              background: "linear-gradient(135deg, #84CC16 0%, #65A30D 100%)",
+              boxShadow:
+                "0 4px 14px rgba(132,204,22,0.32), inset 0 1px 0 rgba(255,255,255,0.45)",
+            }}
+          >
+            פתח
+          </Link>
+        );
       default:
         return null;
     }

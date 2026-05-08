@@ -1,9 +1,16 @@
 // src/lib/agents/overview.ts
 //
 // Sub-stage 1.8 — Agents overview helpers.
+// Sub-stage 1.15.2 — Added Growth to the overview. Growth has its OWN
+// runs table (`growth_runs`, migration 023) separate from the shared
+// `agent_runs`, so we issue a small extra query to fetch its activity
+// and merge it into the result. The status enum on growth_runs includes
+// 'partial' which we map to 'succeeded' for the UI status badge — the
+// AgentOverview status type doesn't have a partial state, and partial
+// means "some drafts succeeded" which is a positive outcome.
 //
 // Aggregates per-agent activity metrics for /dashboard/agents:
-//   - lastRunAt: most recent agent_runs.started_at
+//   - lastRunAt: most recent run started_at
 //   - lastStatus: succeeded / failed / running / no_op
 //   - monthlyRunCount: count of non-mock runs this calendar month (IL TZ)
 //
@@ -36,6 +43,7 @@ const ALL_AGENT_IDS: AgentId[] = [
   "manager",
   "sales",
   "inventory",
+  "growth",
   // cleanup is intentionally NOT customer-facing per Iron Rule 1.1
 ];
 
@@ -62,19 +70,20 @@ function getMonthStartIsoIL(): string {
 }
 
 /**
- * Fetch overview for ALL 8 customer-facing agents at once.
+ * Fetch overview for ALL 9 customer-facing agents at once.
  *
  * Implementation notes:
- *   - Uses two queries to keep things simple:
- *     1. Latest run per agent (limited via .order + group via JS)
- *     2. Monthly counts per agent (one query, grouped JS-side)
+ *   - 8 of 9 agents (morning/watcher/reviews/hot_leads/social/manager/
+ *     sales/inventory) write to the shared `agent_runs` table.
+ *   - Growth (1.15) writes to its OWN `growth_runs` table — we issue
+ *     2 extra small queries against it and merge into the same maps.
  *   - For tenants with very few runs this is cheap. For tenants with
  *     thousands of runs per month, the monthly count query becomes the
  *     bottleneck — we'd refactor to a database VIEW or RPC.
  *
  * Returns one entry per agent in ALL_AGENT_IDS, even if the agent has
  * never run (lastRunAt=null, monthlyRunCount=0). This guarantees the UI
- * always shows all 8 cards.
+ * always shows all 9 cards.
  */
 export async function getAgentsOverview(
   tenantId: string
@@ -132,7 +141,54 @@ export async function getAgentsOverview(
     );
   }
 
-  // ─── Build result for all 8 customer-facing agents ─────────
+  // ─── Query 3+4: Growth lives in its OWN table (growth_runs) ───
+  // Stage 1.15 introduced `growth_runs` separate from `agent_runs`. We
+  // query it once for the latest run + once for monthly count, then merge
+  // into the same maps so the rest of the function stays uniform.
+  const { data: latestGrowthRun, error: growthLatestErr } = await db
+    .from("growth_runs")
+    .select("started_at, status")
+    .eq("tenant_id", tenantId)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (growthLatestErr) {
+    console.error("[overview] latest growth_runs query failed:", growthLatestErr);
+  }
+
+  if (latestGrowthRun) {
+    // growth_runs.status union: 'running' | 'succeeded' | 'failed' | 'partial'
+    // AgentOverview lastStatus has no 'partial' — map it to 'succeeded' since
+    // partial means "some drafts landed", which is a positive outcome.
+    const rawStatus = latestGrowthRun.status as string;
+    const mappedStatus: AgentOverview["lastStatus"] =
+      rawStatus === "partial"
+        ? "succeeded"
+        : (rawStatus as AgentOverview["lastStatus"]);
+    latestByAgent.set("growth", {
+      startedAt: latestGrowthRun.started_at as string,
+      status: mappedStatus,
+    });
+  }
+
+  const { data: monthlyGrowthRuns, error: growthMonthlyErr } = await db
+    .from("growth_runs")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .gte("started_at", monthStart);
+
+  if (growthMonthlyErr) {
+    console.error(
+      "[overview] monthly growth_runs query failed:",
+      growthMonthlyErr
+    );
+  }
+
+  // growth_runs has no `is_mocked` column — every run is real.
+  monthlyCountByAgent.set("growth", monthlyGrowthRuns?.length ?? 0);
+
+  // ─── Build result for all 9 customer-facing agents ─────────
   return ALL_AGENT_IDS.map<AgentOverview>((agentId) => {
     const latest = latestByAgent.get(agentId);
     return {
