@@ -28,7 +28,7 @@ interface MobileDrawerProps {
 }
 
 // Sub-stage 1.6 — Showcase added to NAV_ITEMS (was admin-only "demo").
-// Sub-stage 1.15.1 — Sprint 2 Batch 2B-2b — Growth ("הזדמנויות") added
+// Sub-stage 1.15.1 — Sprint 2 Batch 2B-2b — Growth ("צמיחה") added
 // between approvals and showcase, with a lime-gradient icon container
 // matching the sidebar treatment so the visual identity is consistent
 // across desktop and mobile.
@@ -43,7 +43,7 @@ const NAV_ITEMS = [
   { id: "inbox", label: "דורש אישור", href: "/dashboard/approvals", icon: Inbox, hasBadge: true },
   {
     id: "growth",
-    label: "הזדמנויות",
+    label: "צמיחה",
     href: "/dashboard/growth",
     icon: Sprout,
     iconBg: "linear-gradient(135deg, #84CC16, #65A30D)",

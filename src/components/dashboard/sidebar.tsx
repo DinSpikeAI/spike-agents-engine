@@ -26,7 +26,7 @@ interface SidebarProps {
 }
 
 // Sub-stage 1.15.1 — Sprint 2 Batch 2B-2b
-// Added Growth nav item ("הזדמנויות") between approvals and showcase.
+// Added Growth nav item ("צמיחה") between approvals and showcase.
 // The optional `iconBg` field gives this single item a lime gradient
 // container around its icon so it stands out as the new flagship
 // feature; all other items render the icon flush as before.
@@ -41,7 +41,7 @@ const NAV_ITEMS = [
   { id: "inbox", label: "דורש אישור", href: "/dashboard/approvals", icon: Inbox, hasBadge: true },
   {
     id: "growth",
-    label: "הזדמנויות",
+    label: "צמיחה",
     href: "/dashboard/growth",
     icon: Sprout,
     iconBg: "linear-gradient(135deg, #84CC16, #65A30D)",

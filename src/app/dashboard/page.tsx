@@ -124,6 +124,15 @@ const AGENTS: AgentMeta[] = [
     button: "inventory",
     category: "insight",
   },
+  {
+    id: "growth",
+    emoji: "🌱",
+    name: "סוכן צמיחה",
+    role: "סריקה שבועית",
+    desc: "סורק לקוחות רדומים ופניות שלא נענו, מציע טיוטות אישיות בעברית להחזיר את הקשר. רץ אוטומטית ביום ראשון בבוקר; אפשר להפעיל ידנית מתוך הכרטיס.",
+    button: "growth",
+    category: "routine",
+  },
 ];
 
 // Category visual metadata — drives section headers and tile accents.
@@ -132,8 +141,8 @@ const CATEGORY_META: Record<
   { label: string; tagline: string; bg: string; fg: string; tileBg: string }
 > = {
   routine: {
-    label: "שגרה יומית",
-    tagline: "מה שצריך להתחיל איתו את היום",
+    label: "שגרה",
+    tagline: "פעולות שגרתיות, יומיות ושבועיות",
     bg: "var(--color-cat-routine)",
     fg: "var(--color-cat-routine-fg)",
     tileBg:
@@ -260,6 +269,24 @@ export default async function DashboardPage() {
         return <RunSalesButton />;
       case "inventory":
         return <RunInventoryButton />;
+      case "growth":
+        // Growth is the only agent whose card-button NAVIGATES instead of triggering.
+        // The actual on-demand trigger lives in /dashboard/growth's header (tier-gated,
+        // 60-min cooldown). The pipeline takes a few minutes, so it's better UX for the
+        // owner to see the existing list before deciding to fire another run.
+        return (
+          <Link
+            href="/dashboard/growth"
+            className="inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[12.5px] font-medium text-white transition-all"
+            style={{
+              background: "linear-gradient(135deg, #84CC16 0%, #65A30D 100%)",
+              boxShadow:
+                "0 4px 14px rgba(132,204,22,0.32), inset 0 1px 0 rgba(255,255,255,0.45)",
+            }}
+          >
+            פתח
+          </Link>
+        );
       default:
         return null;
     }

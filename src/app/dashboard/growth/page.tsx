@@ -71,8 +71,8 @@ export default async function GrowthPage() {
     candidates.length === 0
       ? "הסוכן רץ אוטומטית בכל יום ראשון"
       : candidates.length === 1
-        ? "הזדמנות אחת ממתינה לאישור"
-        : `${candidates.length} הזדמנויות ממתינות לאישור`;
+        ? "טיוטה אחת ממתינה לאישור"
+        : `${candidates.length} טיוטות ממתינות לאישור`;
 
   return (
     <div
@@ -125,7 +125,7 @@ export default async function GrowthPage() {
                   className="text-[24px] font-semibold tracking-[-0.02em]"
                   style={{ color: "var(--color-ink)" }}
                 >
-                  הזדמנויות
+                  צמיחה
                 </h1>
                 <p
                   className="mt-0.5 text-[13px]"
