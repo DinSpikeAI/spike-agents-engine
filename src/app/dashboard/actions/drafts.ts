@@ -22,7 +22,18 @@
 // Sprint 2D — WhatsApp send wiring (1.15.4)
 // ────────────────────────────────────────────────────────────────
 // `approveDraft` now does:
-//   1. Status flip to 'approved' (existing)
+//   1. Status flip to 'approved' (existing) — now hardened against
+//      the React 19 / Next.js 16 server-action double-execute pattern
+//      (§15.23 mitigation #1): the UPDATE returns the affected row id
+//      via .select("id") so we can detect the case where TWO concurrent
+//      invocations both saw status='pending' on the initial fetch — the
+//      first wins the race and updates the row; the second's UPDATE
+//      affects 0 rows but supabase-js does NOT return an error on 0
+//      rows affected, so without this check both would proceed to
+//      sendWhatsAppMessage and double-send to the customer. With the
+//      check, the second invocation returns early with the same
+//      "הטיוטה כבר טופלה." message the initial-fetch path returns,
+//      and the UI suppresses that specific error per mitigation #2.
 //   2. If draft is WhatsApp-bound (external_target.platform === 'whatsapp')
 //      AND has a recipient phone we can extract from content.whatsappUrl,
 //      attempt to send via Meta Cloud API (same path as Growth's 2C).
@@ -40,7 +51,7 @@
 // Exported:
 //   - PendingDraft (interface)
 //   - listPendingDrafts()
-//   - approveDraft(draftId)        ← extended in 2D
+//   - approveDraft(draftId)        ← extended in 2D, hardened in 3A
 //   - rejectDraft(draftId, reason?)
 
 import { createClient } from "@/lib/supabase/server";
@@ -291,12 +302,28 @@ export async function listPendingDrafts(): Promise<{
  *
  * Tenant scope is enforced via the WHERE clause — no cross-tenant escape.
  *
+ * Race / double-execute hardening (§15.23 mitigation #1):
+ * The UPDATE statement now uses `.select("id")` so we can read back
+ * the affected rows. If 0 rows were affected, that means another
+ * invocation of this same action (typically a Next.js 16 / React 19
+ * server-action double-fire on a single click — see §15.23) already
+ * flipped the status. We return the same "הטיוטה כבר טופלה." error
+ * the initial-fetch path returns; the UI suppresses that specific
+ * error and refreshes silently per mitigation #2 (see approvals-list.tsx
+ * handleApprove). Without this check, supabase-js's UPDATE returns
+ * `error: null` on 0-rows-affected, both invocations would proceed to
+ * sendWhatsAppMessage, and the customer would receive two WhatsApp
+ * messages for one click. THIS HAS NOT BEEN OBSERVED IN PROD because
+ * the timing window is small (single user, sub-millisecond) but the
+ * possibility is real and uncomfortable for a drafts-only product.
+ *
  * Return shape (extended in 2D):
  *   - { success: true }                            — non-WhatsApp draft, status flipped only
  *   - { success: true, message: "ההודעה נשלחה." } — WhatsApp draft, sent successfully
  *   - { success: true, message: "אושר. ..." }      — WhatsApp draft, approved but couldn't auto-send
  *                                                    (no integration / outside 24h / missing data)
  *   - { success: false, error: "..." }            — DB error or send error (auth/invalid/etc.)
+ *   - { success: false, error: "הטיוטה כבר טופלה." } — initial-fetch saw non-pending OR race-loss on UPDATE
  */
 export async function approveDraft(
   draftId: string
@@ -333,8 +360,10 @@ export async function approveDraft(
       return { success: false, error: "הטיוטה כבר טופלה." };
     }
 
-    // Status flip — existing behavior.
-    const { error: updateErr } = await db
+    // Status flip — existing behavior, hardened with .select("id") to
+    // detect the race-lost case where another concurrent invocation
+    // already flipped the status between our fetch and our update.
+    const { data: updatedRows, error: updateErr } = await db
       .from("drafts")
       .update({
         status: "approved",
@@ -343,11 +372,21 @@ export async function approveDraft(
       })
       .eq("id", draftId)
       .eq("tenant_id", tenant.tenantId)
-      .eq("status", "pending"); // race guard
+      .eq("status", "pending") // race guard
+      .select("id");
 
     if (updateErr) {
       console.error("[approveDraft] update failed:", updateErr);
       return { success: false, error: updateErr.message };
+    }
+
+    // §15.23 mitigation #1: 0 rows affected = race lost. Another
+    // invocation already flipped the status. Return the same error
+    // the initial-fetch path returns so the UI's suppression branch
+    // catches both shapes uniformly. Critically, do NOT proceed to
+    // sendWhatsAppMessage — the winning invocation will handle that.
+    if (!updatedRows || updatedRows.length === 0) {
+      return { success: false, error: "הטיוטה כבר טופלה." };
     }
 
     // ── Send wiring (Sprint 2D) ───────────────────────────────────
