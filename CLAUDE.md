@@ -2,7 +2,7 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-10 (end of Sprint 3A — UI fix for `/dashboard/approvals` rendering `messageHebrew` for `sales_quick_response` drafts + render of the optional `message` field returned by approveDraft + hardening against the React 19 / Next.js 16 server-action double-execute pattern via `.select("id")` on the status-flip UPDATE in `approveDraft`. Follows Sub-stage 1.15.4 / Sprint 2 Batch 2D which wired `sendWhatsAppMessage` into `actions/drafts.ts` for the 9 customer-facing agents that produce `drafts` rows, validated end-to-end with Spike's second real WhatsApp delivery via Sales' `sales_quick_response` draft for synthetic customer מוחמד אבו ראס on 2026-05-09). Stage 1 COMPLETE + Stage 2 MVP + Perf overhaul ×2 + Growth Agent + Growth dashboard + WhatsApp outbound infra + WhatsApp send wired through ALL 10 agents + 2 latent RLS bugs caught and migrated (memberships recursion + events SELECT) + first two real WhatsApp deliveries from Spike to a real phone (Growth Reactivation 2026-05-08, Sales quick_response 2026-05-09) + UI rendering + double-send race hardened (3A). **The product is functionally complete for design partner #1.** External blockers only: עוסק מורשה / Meta Business verification / business phone number (paperwork, not code). **Strategic decisions locked — see §19:** pricing ₪249/449/749 + מע"מ; BSP 360dialog primary, Meta Cloud direct fallback; wedges = [אשר] button (TM-pending) → voice notes → no-shows ROI; channel = periphery cities + bookkeepers + Achiya rev-share. **Latest commit:** `b1bb36f` (this CLAUDE.md update); preceded by `1ab5a08` (3A — UI fix + double-send hardening) and `f3b04bd` (Sprint 2D — drafts.ts WhatsApp send wiring).
+> **Last updated:** 2026-05-10 (end of Sprint 3M — daily auto-send of the Morning agent's Hebrew summary to the **business owner's** WhatsApp at 07:00 IL, validated end-to-end with **Spike's third real WhatsApp delivery** on 2026-05-10 ~22:55 IL: the owner's own daily briefing landing on +972509918196. This is the first Iron-Rule carve-out in the product — the rule "AI מסמן, בעלים מחליט" applies to **customer-facing** messages, and the owner reading their own self-summary doesn't qualify. Architecturally consistent with Watcher writing to `alerts` and Manager writing to `manager_reports` — owner-facing, skip drafts. 3M also extracted `lookupWhatsAppIntegration` / `wasContactedInLast24h` / `mapSendErrorToHebrew` to `src/lib/whatsapp/helpers.ts` shared across `actions/drafts.ts`, `actions/growth.ts`, and the new `api/cron/morning/route.ts` — effectively absorbing Sprint 3B. Follows Sprint 3A — UI fix for `/dashboard/approvals` rendering `messageHebrew` for `sales_quick_response` drafts + render of the optional `message` field returned by approveDraft + hardening against the React 19 / Next.js 16 server-action double-execute pattern via `.select("id")` on the status-flip UPDATE in `approveDraft`. Follows Sub-stage 1.15.4 / Sprint 2 Batch 2D which wired `sendWhatsAppMessage` into `actions/drafts.ts` for the 9 customer-facing agents that produce `drafts` rows, validated end-to-end with the second real WhatsApp delivery via Sales' `sales_quick_response` draft for synthetic customer מוחמד אבו ראס on 2026-05-09). Stage 1 COMPLETE + Stage 2 MVP + Perf overhaul ×2 + Growth Agent + Growth dashboard + WhatsApp outbound infra + WhatsApp send wired through ALL 10 agents + 2 latent RLS bugs caught and migrated (memberships recursion + events SELECT) + **three real WhatsApp deliveries from Spike** to a real phone (Growth Reactivation 2026-05-08, Sales quick_response 2026-05-09, Morning daily_summary auto-send to owner 2026-05-10) + UI rendering + double-send race hardened (3A) + helpers consolidated in `src/lib/whatsapp/helpers.ts` (3M = 3B absorbed) + Morning auto-send cron (3M). **The product is functionally complete for design partner #1.** External blockers only: עוסק מורשה / Meta Business verification / business phone number (paperwork, not code). **Strategic decisions locked — see §19:** pricing ₪249/449/749 + מע"מ; BSP 360dialog primary, Meta Cloud direct fallback; wedges = [אשר] button (TM-pending) → voice notes → no-shows ROI; channel = periphery cities + bookkeepers + Achiya rev-share. **Latest commit:** TBD (this CLAUDE.md update); preceded by `2e72f78` (3M — Morning auto-send + whatsapp/helpers extraction), `2d899a4` (docs backfill), `b1bb36f` (3A docs + §19 lock), `1ab5a08` (3A — UI fix + double-send hardening), `f3b04bd` (Sprint 2D — drafts.ts WhatsApp send wiring).
 
 ---
 
@@ -245,7 +245,7 @@ Resend, Supabase OTP
 
 ### 3.5 Background Tasks
 - `@vercel/functions@3.5.0` for `waitUntil()`
-- **Vercel Cron (7 jobs in `vercel.json`, all daily-or-less for Hobby tier):**
+- **Vercel Cron (8 jobs in `vercel.json`, all daily-or-less for Hobby tier):**
   - `/api/cron/reset-monthly-spend` (1 0 1 * *) — monthly
   - `/api/cron/social` (30 5 * * 0-4)
   - `/api/cron/sales` (30 7 * * 0-4)
@@ -253,6 +253,7 @@ Resend, Supabase OTP
   - `/api/cron/watcher` (0 6 * * *) — daily on Hobby; restore to hourly on Pro
   - `/api/cron/cleanup` (0 0 * * *) — 1.5.4
   - `/api/cron/hot-leads-sales-recovery` (0 2 * * *) — 1.5.2
+  - `/api/cron/morning` (0 4 * * *) — 3M, daily 07:00 IL = 04:00 UTC. Auto-sends Morning daily summary to **owner** via WhatsApp (not customers). See §10.39.
 
 ### 3.6 Hosting
 - Vercel auto-deploys from `main` (when not blocked — see §15.8)
@@ -488,15 +489,17 @@ For deep webhook integration guidance: `src/lib/agents/watcher/INTEGRATION-NOTES
 | # | Agent | Model | Trigger | Output | withRetry? | Anti-AI? |
 |---|---|---|---|---|---|---|
 | 1 | Manager | sonnet-4-6 | Weekly cron (Sun) | `manager_reports` | ✅ | ✅ |
-| 2 | Morning | haiku-4-5 | Daily cron 07:00 IL | drafts | ✅ | ✅ |
-| 3 | Watcher | haiku-4-5 | Real-time webhook + daily cron | dashboard alerts | ✅ | ✅ |
-| 4 | Reviews | sonnet-4-6 | New review event | drafts | ✅ | ✅ + Israeli-tone |
-| 5 | Hot Leads | haiku-4-5 | Real-time webhook | Classify → cascade | ✅ | ✅ |
-| 6 | Social | sonnet-4-6 | Cron 05:30 (no Sat) | drafts | ✅ | ✅ + hashtags removed |
-| 7 | Sales | sonnet-4-6 + thinking | TWO entry points §6.8 | drafts | ✅ | ✅ |
-| 8 | Inventory | sonnet-4-6 | Cron 05:30 Sun/Wed | drafts | ✅ | ✅ |
+| 2 | Morning | haiku-4-5 | Daily cron 07:00 IL (3M) | `agent_runs.output` JSONB + **WhatsApp auto-send to owner** (3M) | ✅ | ✅ |
+| 3 | Watcher | haiku-4-5 | Real-time webhook + daily cron | `alerts` | ✅ | ✅ |
+| 4 | Reviews | sonnet-4-6 | New review event | drafts (review_reply, platform=google_business_profile → copy-paste) | ✅ | ✅ + Israeli-tone |
+| 5 | Hot Leads | haiku-4-5 | Real-time webhook | `hot_leads` + cascade to Sales QR | ✅ | ✅ |
+| 6 | Social | sonnet-4-6 | Cron 05:30 (no Sat) | drafts (social_post, platform=manual_paste → copy-paste) | ✅ | ✅ + hashtags removed |
+| 7 | Sales | sonnet-4-6 + thinking | TWO entry points §6.8 | drafts (sales_followup × email/IG → copy-paste; sales_quick_response → WhatsApp send) | ✅ | ✅ |
+| 8 | Inventory | sonnet-4-6 | Cron 05:30 Sun/Wed | `agent_runs.output` JSONB + `inventory_snapshots.last_analyzed_at` (NOT drafts — see §10.39 for the validation pass that confirmed this) | ✅ | ✅ |
 
 **As of 1.5.3:** ALL 8 agents have anti-AI hygiene at both prompt level AND post-processing level.
+
+**As of Sprint 3M (validation pass on 2026-05-10):** the table above was corrected — pre-3M docs claimed Morning + Inventory write to `drafts`, but the actual code shows Morning writes nowhere except `agent_runs.output` and Inventory writes to `inventory_snapshots`. Sprint 3M added the Morning auto-send pipeline; Inventory remains owner-facing only via the `/dashboard/inventory` UI. The corresponding entry in `SPIKE-DRAFT-EXAMPLES.json` (#7 inventory + #8 morning daily_summary) describes intended-but-unimplemented draft shapes — out-of-sync with prod, low-priority cleanup task.
 
 ### 6.2 Cleanup (Internal) — 1.5.4
 - AgentId: `cleanup`. Not customer-facing. **Excluded from /dashboard/agents (1.8).**
@@ -1444,6 +1447,76 @@ This is **Spike's second real WhatsApp delivery** (the first being Growth's Reac
 
 ---
 
+### 10.39 Sprint 3M — Morning Auto-Send to Owner via WhatsApp + helpers extraction (DONE, commit `2e72f78`)
+
+3M is the first Iron-Rule **carve-out** the product ships: the Morning agent's daily Hebrew briefing now auto-delivers to the **business owner's** WhatsApp at 07:00 IL — without an [אשר] click.
+
+**Why a carve-out is OK here.** "AI מסמן, בעלים מחליט" is a promise about **customer-facing** messages — never let AI talk to a customer without owner approval. Morning's recipient is the OWNER receiving their own daily briefing about their own business. Self-loopback. Forcing the owner to approve their own self-summary every morning would be circular UX with zero risk-mitigation value (no third party can be harmed; no PII leaks externally; no brand reputation at stake). Architecturally consistent with Watcher writing to `alerts` and Manager writing to `manager_reports` — those are also owner-facing and skip the drafts/approval flow. Sprint 3M extends the pattern: Morning generates the briefing AND auto-delivers via WhatsApp. Same carve-out template can extend later to Watcher alerts and Manager weekly reports if desired (Sprint 3X / 3Y candidates).
+
+**The validation pass that surfaced this** (preceded the 3M code work):
+
+Sprint 2D's "all 9 agents wired through `approveDraft`" claim turned out to need refinement. A SQL shape-check on the actual production `drafts` table on 2026-05-10 returned only 5 distinct draft types — `reviews/review_reply`, `sales/sales_followup × email`, `sales/sales_followup × instagram_dm`, `sales/sales_quick_response × whatsapp`, `social/social_post × manual_paste`. The two missing types (`morning/daily_summary`, `inventory/reorder_reminder` — both documented in `SPIKE-DRAFT-EXAMPLES.json` with intended shapes) **were never produced in DB**. The agent_runs table showed Morning + Inventory had run successfully ~10 times via manual triggers, but they wrote no rows to `drafts`. Reading the source confirmed: `runMorningAgent` returns the structured output via `runAgent` and never inserts a draft; `runInventoryAgent` updates `inventory_snapshots.last_analyzed_at` and never inserts a draft. The CLAUDE.md §6.1 column claiming "Output: drafts" for both was wrong and §6.1 has been corrected.
+
+So Sprint 2D / 3A's `approveDraft` code path is correct for the 5 draft types that DO go through it. Morning + Inventory are owner-facing and use a different flow. Sprint 3M built the owner-facing flow for Morning.
+
+**Files (4 new + modified, plus vercel.json + DB seed):**
+
+```
+src/app/api/cron/morning/route.ts         NEW (~190 lines) — Sprint 3M cron
+src/lib/whatsapp/helpers.ts               NEW (~110 lines) — extracted helpers
+src/app/dashboard/actions/drafts.ts       UPDATED — imports from helpers (was 471, now 418)
+src/app/dashboard/actions/growth.ts       UPDATED — imports from helpers (was 789, now 682)
+vercel.json                                UPDATED — 8th cron entry
+```
+
+The cron route's per-tenant flow (executed concurrently, capped at 5 parallel):
+1. **Idempotency**: skip if `agent_runs` already has a `status='succeeded'` row for this tenant + `agent_id='morning'` since UTC-midnight today. Vercel cron retries + manual triggers within the same UTC day land on `already_ran_today` outcome.
+2. **runMorningAgent** → `MorningAgentOutput` (structured: greeting, headline, yesterdayMetrics, thingsCompleted, thingsNeedingApproval, insights, todaysSchedule, callToAction).
+3. **renderMorningSummary** — inline renderer in the cron route, renders the struct into a Hebrew WhatsApp body using `*bold*` + emojis + section headers. Schema-required fields always render; nullable / array fields render only when populated to keep the message compact.
+4. **Resolve owner_phone** from `tenants.config->>'owner_phone'`. Skip with `no_owner_phone` outcome if absent — this is one-time setup per tenant (admin populates via SQL or future onboarding UI).
+5. **lookupWhatsAppIntegration** (from `helpers.ts`). Skip with `no_integration` / `missing_credentials` outcome if not configured.
+6. **wasContactedInLast24h(ownerPhone)**. Same Meta 24h-window rule as customer paths — owner must have sent a WhatsApp to Spike's number within 24h for the session message to fly. Outside the window → skip with `outside_24h` outcome (post-Meta-Business-verification this becomes a template-message path; pre-verification, real-customer founders staying in their inbox daily will satisfy this most days).
+7. **sendWhatsAppMessage**. On Meta failure → `send_failed` outcome with the categorized error. On success → `sent`.
+
+**helpers.ts extraction (effectively Sprint 3B absorbed):**
+
+Pre-3M, `lookupWhatsAppIntegration` (named `lookupTenantWhatsAppIntegration` in growth.ts), `wasContactedInLast24h`, and `mapSendErrorToHebrew` lived inline in BOTH `drafts.ts` and `growth.ts` — explicitly chosen as duplication in §10.37 to keep 2D's blast radius surgical. 3M needed a third caller (the cron route), and that flipped the cost-benefit on extraction. Single source of truth for all three helpers now lives in `src/lib/whatsapp/helpers.ts`. Function name harmonized to `lookupWhatsAppIntegration` (the "Tenant" prefix was redundant since tenant_id is always a parameter). Type signature uses `SupabaseClient<any, any, any>` so both the admin client (drafts.ts, cron route) and the user-scoped client (growth.ts) work without refactor — both work post-migration 025 because the integrations RLS policy allows admins via `user_admin_tenant_ids()`.
+
+**Forward-compat with Vault encryption (deferred per §11.2 / §19.8):** when the `access_token` migrates from plaintext `integrations.metadata` to `vault.secrets` via a SECURITY DEFINER wrapper, only the body of `lookupWhatsAppIntegration` changes — its signature stays. All three callers benefit transparently.
+
+**Pre-flight setup (one-time, manual):**
+
+```sql
+-- Set owner_phone in tenants.config for DEMO_TENANT (and each tenant that wants Morning)
+UPDATE tenants
+SET config = jsonb_set(coalesce(config, '{}'::jsonb), '{owner_phone}', '"+972509918196"'::jsonb)
+WHERE id = '15ef2c6e-a064-49bf-9455-217ba937ccf2';
+```
+
+`CRON_SECRET` was already in env from prior cron routes; no change needed.
+
+**End-to-end validation on 2026-05-10 ~22:55 IL:**
+
+Step 1: Manual `curl -H "Authorization: Bearer $CRON_SECRET" /api/cron/morning` after the deploy of `2e72f78` went green on Vercel.
+
+Step 2: First curl → `{"send_failed":1, detail: "auth: בעיית גישה ל-WhatsApp"}`. Meta dev token had rotated (1-3hr TTL per §10.36). Generated a fresh token at `developers.facebook.com → Spike Engine Dev → WhatsApp → API Setup → Generate access token`, ran `UPDATE integrations SET metadata = jsonb_set(metadata, '{access_token}', to_jsonb('NEW_TOKEN'::text)) WHERE provider='whatsapp';`.
+
+Step 3: Hit a side-issue — re-curling returned `{"already_ran_today":1}` because the failed run created an `agent_runs` row with `status='succeeded'` (the agent step succeeded; only the send-step failed, which is outside the agent_runs status). Tried `DELETE FROM agent_runs WHERE id = ...` — blocked by `cost_ledger_agent_run_id_fkey` foreign-key constraint (cost_ledger has rows referencing the run; FK has no ON DELETE CASCADE). Solved with `UPDATE agent_runs SET status = 'failed' WHERE ...` — sidesteps the FK entirely AND is more accurate (the overall outcome was a failure even though the agent step succeeded). See §15.24 for the lesson.
+
+Step 4: Re-curl → `{"sent":1, results:[{"outcome":"sent"}]}`. **Spike's third real WhatsApp delivery** landed on +972509918196 ~5 seconds later: a fully-rendered Hebrew daily briefing.
+
+**Iron Rule note for future Claude sessions:** the carve-out applies ONLY to messages where the **recipient is the owner of the same tenant** that produced the message. Any message that goes to a customer (third party) MUST go through the [אשר] flow. Don't generalize this carve-out to "Morning is special so it can do whatever" — generalize it to the principle: owner-self loopback is auto-OK; customer-facing is never auto. See §15.25.
+
+**What's NOT done in 3M (deferred):**
+- **Watcher auto-send (3X candidate)** — Watcher writes to `alerts`, same owner-facing pattern. Could auto-deliver via WhatsApp using the same helpers + cron template. Not blocking.
+- **Manager weekly auto-send (3Y candidate)** — Manager writes to `manager_reports` weekly. Could auto-deliver Sunday morning. Same pattern. Not blocking.
+- **owner_phone in onboarding UI** — currently set via SQL. Add to onboarding form as a follow-up so future tenants don't need DBA-level access to opt in. Not blocking for design partner #1.
+- **Template message path** — once Meta Business verification + approved templates land (paperwork), the `outside_24h` branch can fire a pre-approved template instead of skipping. Until then, founder-grade users staying in their inbox daily will satisfy the 24h window most of the time.
+
+**Commits:** `2e72f78` (3M — Morning auto-send + helpers extraction).
+
+---
+
 ## 11. Current Status
 
 ### 11.1 What Works ✅ — STAGE 1 COMPLETE + POST-STAGE-1 POLISH
@@ -2304,6 +2377,62 @@ SELECT id, status, approved_at, approved_by FROM drafts WHERE id = '...';
 
 ---
 
+### 15.24 `agent_runs` FK to `cost_ledger` Blocks DELETE — UPDATE Status to Bypass Idempotency for Re-Test (3M lesson) ⚠️
+
+**Symptom:** trying to delete a recent `agent_runs` row (e.g. to re-test a cron route's idempotency check after fixing whatever made the run fail downstream) returns:
+```
+ERROR: 23503: update or delete on table "agent_runs" violates foreign key constraint "cost_ledger_agent_run_id_fkey" on table "cost_ledger".
+DETAIL: Key (id)=(8089ac3f-...) is still referenced from table "cost_ledger".
+```
+
+**Root cause:** the agent run lifecycle (§6.4) reserves spend BEFORE the executor and settles spend AFTER, both of which write rows to `cost_ledger` referencing `agent_runs.id`. The FK on `cost_ledger.agent_run_id` does NOT have `ON DELETE CASCADE` (intentional — cost telemetry is append-only, deletes shouldn't cascade silently). So the `agent_runs` row can't be deleted while cost_ledger entries reference it.
+
+**Why this hits during testing of cron routes with idempotency checks:** the Sprint 3M Morning cron skips a tenant if `agent_runs` already has a `status='succeeded'` row for today. If the agent succeeded but the SEND step failed (e.g. expired Meta token), the row IS `status='succeeded'` (the agent succeeded; the send step is outside agent_runs scope). To re-test the cron after fixing the token, you naturally reach for `DELETE FROM agent_runs ...` — and hit the FK.
+
+**Fix (the right one):** UPDATE the status instead of deleting:
+```sql
+UPDATE agent_runs
+SET status = 'failed'
+WHERE tenant_id = '...' AND agent_id = 'morning'
+  AND status = 'succeeded'
+  AND started_at >= date_trunc('day', now() at time zone 'UTC')
+RETURNING id, status, started_at;
+```
+
+This sidesteps the FK constraint entirely (UPDATE doesn't violate FK), and the status change is genuinely accurate — the overall outcome WAS a failure even though the agent step succeeded.
+
+**Don't do:** `DELETE FROM cost_ledger WHERE agent_run_id = ...; DELETE FROM agent_runs WHERE id = ...;` — this destroys cost telemetry. The cost_ledger rows are the canonical record of spend; losing them silently breaks `/dashboard/spend` reporting and the monthly `reset-monthly-spend` cron's accounting.
+
+**Don't do:** disabling the idempotency check in production. The check is the one preventing Vercel's exactly-once-not-guaranteed cron retries from double-sending the owner.
+
+**Generalizable pattern:** whenever an agent_runs row needs to "no longer count" for an idempotency / aggregation purpose, prefer UPDATE-status over DELETE. The status field is the source of truth for "did this succeed"; changing it is the right vocabulary. DELETE should be reserved for the cleanup cron's expiration sweep, not testing convenience.
+
+---
+
+### 15.25 Iron Rule Carve-Out — Owner-Self Loopback Is Auto-OK, Customer-Facing Never Is (3M lesson) ⚠️
+
+**The principle:** "AI מסמן, בעלים מחליט" applies to **customer-facing** messages — the AI never speaks to a third party without the owner's [אשר]. Messages where the recipient IS the owner of the same tenant that produced the message (self-loopback) are not bound by the rule.
+
+**Why this distinction matters:** the rule's harm model is: AI hallucinates → hallucination reaches a customer → customer is harmed (wrong info, brand damage, defamation, illegal medical advice, etc.). All risk vectors require a third party (the customer) on the receiving end. A daily briefing the AI generates for the owner about the owner's own business has zero of those failure modes — no third party, no PII leak, no brand exposure, no legal exposure. Forcing approval is friction without risk-reduction.
+
+**What the carve-out covers (Sprint 3M precedent):**
+- Morning agent's daily summary → owner's WhatsApp (auto-send via cron, no [אשר])
+- Watcher alerts → could be auto-pushed to owner via WhatsApp (3X candidate)
+- Manager weekly reports → could be auto-pushed Sunday (3Y candidate)
+
+**What the carve-out absolutely does NOT cover:**
+- ANY message to a customer (review reply, sales follow-up, growth reactivation, hot-lead response, social post). All of these stay drafts-and-[אשר], full stop.
+- Any message where the recipient phone is NOT the owner's `tenants.config->>'owner_phone'`. The technical guard: `lookupOwnerPhone(tenantId)` → if recipient ≠ owner_phone → must go through approveDraft.
+- "Internal notifications to a coworker / team member" — that's still a third party even if employed by the same business. If a tenant has multiple staff phones, only the designated `owner_phone` qualifies for auto-send. (Defensive: if there's any ambiguity about who's an "owner," route through [אשר].)
+
+**How to spot the right carve-out moment in code review:** the question "does this message go to a customer?" is the test. Anything that answers "no, only to the owner" is a candidate for auto-send. Anything that answers "yes" or "we're not sure" must stay in the drafts flow.
+
+**Marketing / TM implication:** the trademark filing for "AI מסמן, בעלים מחליט" should specify "for messages directed at customers" or similar language so this carve-out doesn't become a public-perception crack. The wedge promise is unchanged; the carve-out is an operational nuance about owner-self notifications.
+
+**Don't do:** generalize from 3M to "Morning is autonomous, so other agents can be too if we feel like it." The carve-out is principled, not a precedent for autonomy creep. Each new auto-send proposal needs to pass the customer-facing test.
+
+---
+
 ## 16. Commit Conventions
 
 Conventional commits, English subject, Hebrew body OK.
@@ -2324,7 +2453,7 @@ If you are Claude reading this for the first time:
 6. ✅ Confirm you've read this file in your first reply, in 2-3 lines max.
 
 **Sample first reply:**
-> קראתי את CLAUDE.md. Spike Engine — 9 סוכני AI מול לקוח (Morning, Watcher, Reviews, Hot Leads, Social, Manager, Sales, Inventory, Growth) + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו + Post-Stage-1 polish דרך 1.16 + Sprint 2 Batch 2C/2D + 3A + 2 RLS migrations (025 memberships recursion, 026 events tenant SELECT). **כל 10 הסוכנים מחוברים מקצה לקצה ל-WhatsApp send דרך Meta Cloud API.** שתי deliveries אמיתיות הוכחו: Growth Reactivation (דנה כהן) ב-2026-05-08, Sales quick_response (מוחמד אבו ראס) ב-2026-05-09. /dashboard/approvals מרנדר messageHebrew נכון לאחר 3A; double-execute race בdrafts.ts מוקשח ב-3A דרך .select("id") + UI suppression של "הטיוטה כבר טופלה" (§15.23 mitigations 1+2). הכל בייצור על app.spikeai.co.il. Latest: `b1bb36f` (docs); קודם `1ab5a08` (3A code) ו-`f3b04bd` (Sprint 2D). חוסמים חיצוניים בלבד: עוסק מורשה / Meta Business verification / מספר טלפון עסקי. אופציונלי-לא-חוסם: Vault encryption ל-access_token, helpers extraction ל-`src/lib/whatsapp/helpers.ts`, sonner Toaster migration (alert→toast), Suspense pattern לדפים נוספים, marketing landing alignment ב-`spike-agents` repo (Telegram→WhatsApp, Cleanup→Growth). **החלטות אסטרטגיות נעולות (§19):** pricing ₪249/449/749 + מע"מ; BSP=360dialog; wedge=[אשר] button + voice notes + no-shows ROI; channel=periphery + bookkeepers + Achiya. מה אתה רוצה לעשות?
+> קראתי את CLAUDE.md. Spike Engine — 9 סוכני AI מול לקוח (Morning, Watcher, Reviews, Hot Leads, Social, Manager, Sales, Inventory, Growth) + cleanup פנימי, drafts-only **למעט carve-out של 3M ל-owner-self loopback** (ראה §15.25 + §10.39), עברית RTL, Anthropic only. Stage 1 הושלם במלואו + Post-Stage-1 polish דרך 1.16 + Sprint 2 Batch 2C/2D + 3A + **3M (Morning auto-send + helpers extraction = 3B absorbed)** + 2 RLS migrations (025 memberships recursion, 026 events tenant SELECT). **שלוש WhatsApp deliveries אמיתיות הוכחו end-to-end:** Growth Reactivation (דנה כהן) ב-2026-05-08, Sales quick_response (מוחמד אבו ראס) ב-2026-05-09, Morning daily_summary auto-send לבעל-העסק (+972509918196) ב-2026-05-10. /dashboard/approvals מרנדר messageHebrew נכון לאחר 3A; double-execute race בdrafts.ts מוקשח (§15.23 mitigations 1+2); helpers משותפים ב-`src/lib/whatsapp/helpers.ts` (3M). **Cron:** 8 jobs ב-vercel.json, Morning ב-`0 4 * * *`. הכל בייצור על app.spikeai.co.il. Latest: TBD (זה ה-docs commit הזה); קודם `2e72f78` (3M code), `2d899a4` (docs backfill), `b1bb36f` (3A docs + §19), `1ab5a08` (3A code), `f3b04bd` (Sprint 2D). חוסמים חיצוניים בלבד: עוסק מורשה / Meta Business verification / מספר טלפון עסקי. אופציונלי-לא-חוסם: Vault encryption ל-access_token, sonner Toaster migration (alert→toast), Suspense pattern לדפים נוספים, marketing landing alignment, 3X (Watcher auto-send), 3Y (Manager weekly auto-send). **החלטות אסטרטגיות נעולות (§19):** pricing ₪249/449/749 + מע"מ; BSP=360dialog; wedge=[אשר] button + voice notes + no-shows ROI; channel=periphery + bookkeepers + Achiya. מה אתה רוצה לעשות?
 
 ---
 
@@ -2346,6 +2475,9 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 
 | Hash | What |
 |---|---|
+| TBD | docs(claude): 3M shipped + §10.39 + §6.1 corrected (Morning + Inventory output) + §15.24 + §15.25 + §3.5 (8 crons) + sample reply refresh |
+| `2e72f78` | feat(morning): auto-send daily summary to owner via WhatsApp + extract whatsapp helpers (Sprint 3M = 3B absorbed) |
+| `2d899a4` | docs: backfill 1ab5a08 + b1bb36f hashes in 10.38 + 18.2 + header + 17 sample reply |
 | `b1bb36f` | docs(claude): 3A shipped + Sprint 2D documented + §19 strategic decisions locked + §15.23 mitigations 1+2 implemented + §10.37 + §10.38 + sample reply refresh |
 | `1ab5a08` | fix(approvals): render messageHebrew for sales_quick_response + render success message + harden double-send race (3A + 15.23 mitigations 1+2) |
 | `f3b04bd` | feat(whatsapp): wire send to drafts approve for the 9 other agents (1.15.4 / Sprint 2D) |
@@ -2548,8 +2680,11 @@ Defer until after 50 customers: real estate, restaurants, retail, lawyers/accoun
 
 Each is a separate session / batch. Don't combine.
 
-- **Sprint 3A — UI fix for approvals page** ✅ DONE (this session) — display `messageHebrew` + render `message` field from approveDraft response + double-execute hardening (§15.23 mitigations 1+2). See §10.38.
-- **Sprint 3B — helpers extraction** — `src/lib/whatsapp/helpers.ts` shared between growth.ts and drafts.ts. NOT a 30-min cleanup as originally scoped — there's a real architectural decision (admin-client in drafts.ts vs user-scoped client in growth.ts, plus `getActiveTenant` vs `requireOnboarded`). Recommendation when picking up: standardize on admin-client + `getActiveTenant` for both, since both flows are tenant-scoped via explicit WHERE clauses anyway. ~60-90 min including the decision.
+- **Sprint 3A — UI fix for approvals page** ✅ DONE — display `messageHebrew` + render `message` field from approveDraft response + double-execute hardening (§15.23 mitigations 1+2). See §10.38. Commit `1ab5a08`.
+- **Sprint 3B — helpers extraction** ✅ DONE (absorbed into 3M, see §10.39) — `src/lib/whatsapp/helpers.ts` now houses `lookupWhatsAppIntegration`, `wasContactedInLast24h`, `mapSendErrorToHebrew`. Function name harmonized (was `lookupTenantWhatsAppIntegration` in growth.ts). All three callers (drafts.ts, growth.ts, cron/morning/route.ts) import from one place. Commit `2e72f78`.
+- **Sprint 3M — Morning auto-send to owner via WhatsApp** ✅ DONE — first Iron-Rule carve-out (owner-self loopback, §15.25). Cron at `0 4 * * *` UTC. End-to-end validated 2026-05-10 with the third real WhatsApp delivery from Spike (owner's own daily briefing). See §10.39. Commit `2e72f78`.
+- **Sprint 3X — Watcher auto-send alerts to owner** (candidate, not started) — same template as 3M applied to Watcher's `alerts` table. Eligible for the same owner-self carve-out per §15.25. Estimated ~30-45 min using the established pattern. Pre-flight: decide which alert severities trigger WhatsApp (probably `high` only) vs which stay dashboard-only.
+- **Sprint 3Y — Manager weekly auto-send to owner** (candidate, not started) — same template applied to Manager's weekly `manager_reports`. Sundays. Estimated ~30-45 min. Higher-leverage than 3X for Israeli SMBs because Sunday-morning weekly digest matches the actual week-start there.
 - **Sprint 3C — Voice-note-to-Hebrew-draft pipeline** — ElevenLabs Scribe ingestion + Haiku post-pass for code-switching + draft generation (~3 weeks, the highest-ROI feature on the backlog).
 - **Sprint 3D — Smart Waitlist Agent** — auto-fill from waitlist when cancellation detected (~2 weeks).
 - **Sprint 3E — GreenInvoice integration** — most Israeli עוסק use it (~1 week).
