@@ -19,46 +19,52 @@
 // them when expires_at fires).
 //
 // ────────────────────────────────────────────────────────────────
-// Sprint 2D — WhatsApp send wiring (1.15.4)
+// Sprint 3M — Helpers extracted to src/lib/whatsapp/helpers.ts
 // ────────────────────────────────────────────────────────────────
-// `approveDraft` now does:
-//   1. Status flip to 'approved' (existing) — now hardened against
-//      the React 19 / Next.js 16 server-action double-execute pattern
-//      (§15.23 mitigation #1): the UPDATE returns the affected row id
-//      via .select("id") so we can detect the case where TWO concurrent
-//      invocations both saw status='pending' on the initial fetch — the
-//      first wins the race and updates the row; the second's UPDATE
-//      affects 0 rows but supabase-js does NOT return an error on 0
-//      rows affected, so without this check both would proceed to
-//      sendWhatsAppMessage and double-send to the customer. With the
-//      check, the second invocation returns early with the same
-//      "הטיוטה כבר טופלה." message the initial-fetch path returns,
-//      and the UI suppresses that specific error per mitigation #2.
+// `lookupWhatsAppIntegration` / `wasContactedInLast24h` / `mapSendErrorToHebrew`
+// were inline duplicates between this file and `actions/growth.ts` from
+// Sprint 2C. Sprint 3M added a third caller (api/cron/morning/route.ts)
+// and that flipped the cost-benefit: helpers now live in one place. Local
+// extractor helpers (`extractRecipientPhone`, `extractMessageBody`)
+// stay here — they're drafts-specific and parse `content` JSONB shapes
+// that don't apply to growth_candidates or owner-facing summaries.
+//
+// ────────────────────────────────────────────────────────────────
+// Sprint 3A — UI fix + double-execute hardening (commit 1ab5a08)
+// ────────────────────────────────────────────────────────────────
+// `approveDraft` UPDATE uses `.select("id")` + 0-rows-affected guard
+// (§15.23 mitigation #1) to prevent double-WhatsApp-send when a single
+// click double-fires the server action. The same `"הטיוטה כבר טופלה."`
+// error string is returned in both the initial-fetch race (status was
+// already non-pending when we read it) and the UPDATE race (status was
+// pending when we read it but flipped before our UPDATE landed). The UI
+// (approvals-list.tsx) suppresses that specific error and refreshes
+// silently — see §10.38 + §15.23.
+//
+// ────────────────────────────────────────────────────────────────
+// Sprint 2D — WhatsApp send wiring (1.15.4 / commit f3b04bd)
+// ────────────────────────────────────────────────────────────────
+// `approveDraft` extends from "status flip only" to:
+//   1. Status flip to 'approved' (existing) — hardened in 3A.
 //   2. If draft is WhatsApp-bound (external_target.platform === 'whatsapp')
-//      AND has a recipient phone we can extract from content.whatsappUrl,
+//      AND has a recipient phone we can extract from content shapes,
 //      attempt to send via Meta Cloud API (same path as Growth's 2C).
-//   3. For non-WhatsApp drafts (social_post, review_reply, IG/FB DM)
-//      keep existing copy-paste UX — status flips, no send attempt.
+//   3. For non-WhatsApp drafts (social_post, review_reply, IG/FB DM,
+//      sales_followup × email/IG) keep existing copy-paste UX — status
+//      flips, no send attempt.
 //
 // Iron Rule preserved — the user clicking [אשר] IS the human approval;
 // the send happens AS A RESULT of that click, never autonomously.
-//
-// Helpers (lookup integration, 24h window check, error→Hebrew mapping)
-// are duplicated from growth.ts in this iteration to keep 2D's blast
-// radius minimal — a follow-up refactor can extract them to
-// `src/lib/whatsapp/helpers.ts` once both call sites are stable.
-//
-// Exported:
-//   - PendingDraft (interface)
-//   - listPendingDrafts()
-//   - approveDraft(draftId)        ← extended in 2D, hardened in 3A
-//   - rejectDraft(draftId, reason?)
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getActiveTenant } from "./_shared";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/send";
-import type { SendWhatsAppMessageResult } from "@/lib/whatsapp/types";
+import {
+  lookupWhatsAppIntegration,
+  wasContactedInLast24h,
+  mapSendErrorToHebrew,
+} from "@/lib/whatsapp/helpers";
 
 export interface PendingDraft {
   id: string;
@@ -79,116 +85,24 @@ export interface PendingDraft {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Private helpers — 2D send wiring
+// Private helpers — drafts-specific content extractors
 // ────────────────────────────────────────────────────────────────
 //
-// These mirror the helpers added to growth.ts in 2C. Duplicated
-// rather than extracted to keep the 2D batch surgical; consolidation
-// is tracked as follow-up refactor (no scheduled sub-stage).
+// Different agents store recipient phone + message body in different
+// `content` shapes. These extractors normalize across the documented
+// shapes (per SPIKE-DRAFT-EXAMPLES.json). Validated against actual
+// production shapes during Sprint 3M validation pass:
+//   - sales_quick_response:   whatsappUrl + messageHebrew
+//   - sales_followup × email: whatsappUrl + messageHebrew (early-exit on platform)
+//   - sales_followup × IG:    whatsappUrl + messageHebrew (early-exit on platform)
+//   - review_reply:           draftText + (no phone — early-exit on platform)
+//   - social_post:            captionHebrew + (no phone — early-exit on platform)
 //
-// Note: drafts.ts uses the admin client (createAdminClient) end-to-end
-// because the existing approve/reject flows are admin-scoped. That
-// also means RLS isn't a factor here — the integration lookup and the
-// events 24h-window check will succeed even on tenants whose RLS
-// setup is pristine OR broken. (The migrations 025/026 from 1.15.3
-// already fix RLS on the user-scoped path, so growth.ts works too.)
-
-type DraftAdminClient = ReturnType<typeof createAdminClient>;
-
-/**
- * Look up the tenant's connected WhatsApp integration credentials.
- * Mirrors lookupTenantWhatsAppIntegration in growth.ts.
- */
-async function lookupWhatsAppIntegration(
-  db: DraftAdminClient,
-  tenantId: string
-): Promise<
-  | { ok: true; phoneNumberId: string; accessToken: string }
-  | { ok: false; reason: "not_connected" | "missing_credentials" | "db_error" }
-> {
-  const { data: integration, error } = await db
-    .from("integrations")
-    .select("metadata, status")
-    .eq("tenant_id", tenantId)
-    .eq("provider", "whatsapp")
-    .eq("status", "connected")
-    .maybeSingle();
-
-  if (error) {
-    console.error("[drafts/actions] integration lookup failed:", error);
-    return { ok: false, reason: "db_error" };
-  }
-  if (!integration) {
-    return { ok: false, reason: "not_connected" };
-  }
-
-  const metadata = integration.metadata as
-    | { phone_number_id?: string; access_token?: string }
-    | null;
-  const phoneNumberId = metadata?.phone_number_id;
-  const accessToken = metadata?.access_token;
-  if (!phoneNumberId || !accessToken) {
-    return { ok: false, reason: "missing_credentials" };
-  }
-
-  return { ok: true, phoneNumberId, accessToken };
-}
-
-/**
- * Has this customer messaged the tenant in the last 24 hours?
- * Mirrors wasContactedInLast24h in growth.ts.
- *
- * Conservative on DB error: returns false so the user lands on the
- * "copy manually" message rather than attempting a send Meta will
- * silently drop.
- */
-async function wasContactedInLast24h(
-  db: DraftAdminClient,
-  tenantId: string,
-  customerPhone: string
-): Promise<boolean> {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
-  const { data, error } = await db
-    .from("events")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("provider", "whatsapp")
-    .eq("event_type", "whatsapp_message_received")
-    .filter("payload->>contact_phone", "eq", customerPhone)
-    .gte("received_at", cutoff)
-    .limit(1);
-
-  if (error) {
-    console.error("[drafts/actions] 24h window check failed:", error);
-    return false;
-  }
-  return (data ?? []).length > 0;
-}
-
-/**
- * Translate a failed send result to a user-facing Hebrew message.
- * Mirrors mapSendErrorToHebrew in growth.ts (intentionally identical
- * wording for consistency across approve flows).
- */
-function mapSendErrorToHebrew(
-  result: Extract<SendWhatsAppMessageResult, { ok: false }>
-): string {
-  switch (result.errorCategory) {
-    case "auth":
-      return "בעיית גישה ל-WhatsApp. פנה לתמיכה.";
-    case "template_required":
-      return "מחוץ לחלון 24 שעות. העתק את הטקסט ושלח ידנית.";
-    case "invalid_number":
-      return "המספר לא רשום ב-WhatsApp.";
-    case "rate_limit":
-      return "WhatsApp מבקש להאט. נסה שוב בעוד דקה.";
-    case "transient":
-      return "שגיאה זמנית בשליחה. נסה שוב בעוד דקה.";
-    case "unknown":
-      return `WhatsApp דחה את ההודעה: ${result.errorMessage}`;
-  }
-}
+// Only sales_quick_response actually traverses the WhatsApp send path;
+// the others early-exit at the `external_target.platform !== 'whatsapp'`
+// check and fall back to copy-paste UX. The extractors are still
+// defensive across all four message-body candidates because future
+// agents could route through here.
 
 /**
  * Try to extract a recipient phone (E.164 with leading +) from a draft's
@@ -302,20 +216,18 @@ export async function listPendingDrafts(): Promise<{
  *
  * Tenant scope is enforced via the WHERE clause — no cross-tenant escape.
  *
- * Race / double-execute hardening (§15.23 mitigation #1):
- * The UPDATE statement now uses `.select("id")` so we can read back
- * the affected rows. If 0 rows were affected, that means another
- * invocation of this same action (typically a Next.js 16 / React 19
- * server-action double-fire on a single click — see §15.23) already
- * flipped the status. We return the same "הטיוטה כבר טופלה." error
- * the initial-fetch path returns; the UI suppresses that specific
- * error and refreshes silently per mitigation #2 (see approvals-list.tsx
+ * Race / double-execute hardening (§15.23 mitigation #1, Sprint 3A):
+ * The UPDATE statement uses `.select("id")` so we can read back the
+ * affected rows. If 0 rows were affected, that means another invocation
+ * of this same action (typically a Next.js 16 / React 19 server-action
+ * double-fire on a single click — see §15.23) already flipped the
+ * status. We return the same "הטיוטה כבר טופלה." error the
+ * initial-fetch path returns; the UI suppresses that specific error and
+ * refreshes silently per mitigation #2 (see approvals-list.tsx
  * handleApprove). Without this check, supabase-js's UPDATE returns
  * `error: null` on 0-rows-affected, both invocations would proceed to
- * sendWhatsAppMessage, and the customer would receive two WhatsApp
- * messages for one click. THIS HAS NOT BEEN OBSERVED IN PROD because
- * the timing window is small (single user, sub-millisecond) but the
- * possibility is real and uncomfortable for a drafts-only product.
+ * `sendWhatsAppMessage`, and the customer would receive two WhatsApp
+ * messages for one click.
  *
  * Return shape (extended in 2D):
  *   - { success: true }                            — non-WhatsApp draft, status flipped only
@@ -400,9 +312,10 @@ export async function approveDraft(
       | null;
     const isWhatsApp = externalTarget?.platform === "whatsapp";
 
-    // Non-WhatsApp drafts (social_post, review_reply, IG/FB DM) keep the
-    // existing copy-paste UX — status flips, owner copies the body
-    // and posts manually. No send attempt.
+    // Non-WhatsApp drafts (social_post, review_reply, IG/FB DM,
+    // sales_followup × email/IG) keep the existing copy-paste UX —
+    // status flips, owner copies the body and posts manually.
+    // No send attempt.
     if (!isWhatsApp) {
       return { success: true };
     }
@@ -457,10 +370,6 @@ export async function approveDraft(
     });
 
     if (!sendResult.ok) {
-      // Genuine transmission failure (auth, invalid number, Meta 5xx after
-      // retries, etc.). Status stays 'approved' — the owner's decision
-      // stands; only transmission failed. Surface success=false so the
-      // UI toast renders in error styling.
       console.warn(
         `[approveDraft] send failed for draft ${draftId}: ${sendResult.errorCategory} / ${sendResult.metaCode ?? "no-code"} / ${sendResult.errorMessage}`
       );
@@ -470,7 +379,6 @@ export async function approveDraft(
       };
     }
 
-    // Send succeeded.
     return { success: true, message: "ההודעה נשלחה." };
   } catch (err) {
     const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
