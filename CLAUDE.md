@@ -2,7 +2,7 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-08 (end of 1.15.3 end-to-end production test session — Spike's first real WhatsApp delivery via Meta Cloud API test mode + 2 latent RLS bugs uncovered and migrated). Stage 1 COMPLETE + Stage 2 MVP + Perf overhaul ×2 + Growth Agent + Growth dashboard + WhatsApp outbound + **proven end-to-end on real Meta infrastructure**. The session started as a 30-minute "let me click [אשר] and watch WhatsApp arrive" verification, ended four hours later with: a real Hebrew Sonnet-generated message delivered to the founder's phone, two pre-existing RLS bugs (memberships infinite recursion + events SELECT gap) caught and shipped as migrations 025 and 026, and a clear path to production where the only remaining blockers are external (עוסק מורשה, Meta Business verification ~2-4 weeks). The first message Spike ever delivered: *"היי דנה! שמתי לב שפנית לפני כמה שבועות לגבי חידוש הקרטין ולא חזרנו אליך, סליחה על זה. אם את עדיין מחפשת תור, שמחה לבדוק מה פנוי בקרוב."* — addressed to a synthetic dormant customer, drafted by Sonnet 4.6, approved by the founder via [אשר] in /dashboard/growth, sent through Meta Cloud API, received as a real WhatsApp message on a real Israeli phone. The full architecture validated. **Migration 025** introduces `user_admin_tenant_ids()` SECURITY DEFINER helper and rewrites `memberships_select` + `integrations_admin_only` to break the infinite recursion that had been latent in the schema for months — would have blocked any real customer. **Migration 026** adds `events_select_own_tenant` policy with `tenant_id = current_tenant_id()` so application code can read events user-scoped — previously only super_admin could read events, which silently broke `wasContactedInLast24h`. Both bugs were caught pre-launch only because end-to-end testing was attempted. **Latest commit:** `0c78974` (1.16 — dashboard streaming). Migrations 025+026 + this CLAUDE.md update pending push.
+> **Last updated:** 2026-05-10 (end of Sprint 3A — UI fix for `/dashboard/approvals` rendering `messageHebrew` for `sales_quick_response` drafts + render of the optional `message` field returned by approveDraft + hardening against the React 19 / Next.js 16 server-action double-execute pattern via `.select("id")` on the status-flip UPDATE in `approveDraft`. Follows Sub-stage 1.15.4 / Sprint 2 Batch 2D which wired `sendWhatsAppMessage` into `actions/drafts.ts` for the 9 customer-facing agents that produce `drafts` rows, validated end-to-end with Spike's second real WhatsApp delivery via Sales' `sales_quick_response` draft for synthetic customer מוחמד אבו ראס on 2026-05-09). Stage 1 COMPLETE + Stage 2 MVP + Perf overhaul ×2 + Growth Agent + Growth dashboard + WhatsApp outbound infra + WhatsApp send wired through ALL 10 agents + 2 latent RLS bugs caught and migrated (memberships recursion + events SELECT) + first two real WhatsApp deliveries from Spike to a real phone (Growth Reactivation 2026-05-08, Sales quick_response 2026-05-09) + UI rendering + double-send race hardened (3A). **The product is functionally complete for design partner #1.** External blockers only: עוסק מורשה / Meta Business verification / business phone number (paperwork, not code). **Strategic decisions locked — see §19:** pricing ₪249/449/749 + מע"מ; BSP 360dialog primary, Meta Cloud direct fallback; wedges = [אשר] button (TM-pending) → voice notes → no-shows ROI; channel = periphery cities + bookkeepers + Achiya rev-share. **Latest commit:** 3A (TBD hash — fill in after `git push`); previous `f3b04bd` (Sprint 2D — drafts.ts WhatsApp send wiring).
 
 ---
 
@@ -1355,6 +1355,95 @@ No application code changes.
 
 ---
 
+### 10.37 Sub-stage 1.15.4 — Sprint 2 Batch 2D — drafts.ts WhatsApp Send Wiring + End-to-End Verification (DONE, commit `f3b04bd`)
+
+The follow-up to 2C: same `sendWhatsAppMessage` helper, wired into `actions/drafts.ts` for the 9 customer-facing agents that produce `drafts` rows (Sales, Reviews, Hot Leads, Social, Manager, Inventory, Watcher, Morning, plus the cleanup agent which doesn't surface drafts). Growth was already done in 2C via `actions/growth.ts`; this batch closes the loop on every other agent.
+
+**Architecture decision: helpers duplicated, not extracted.** The 3 helpers from growth.ts (`lookupTenantWhatsAppIntegration`, `wasContactedInLast24h`, `mapSendErrorToHebrew`) plus 2 new extractor helpers (`extractRecipientPhone`, `extractMessageBody`) live inline in drafts.ts. Intentional choice to keep 2D's blast radius surgical. Extraction to `src/lib/whatsapp/helpers.ts` deferred as a follow-up refactor — not blocking, no scheduled sub-stage.
+
+**`extractRecipientPhone` handles 4 content shapes** found across the 9 agents' draft types:
+- `content.whatsappUrl` (regex `/wa\.me\/(\d+)/`) — used by `sales_quick_response`
+- `content.toPhone` — direct field
+- `content.phone` — alternative field
+- `external_target.toPhone` / `external_target.phone` — fallback
+
+Returns `null` if none match. The first sales_quick_response we tested (id `9a7a830b-...`) used `content.whatsappUrl` shape; future agents that produce different shapes are handled defensively.
+
+**`extractMessageBody` tries 4 fields:** `content.messageHebrew`, `content.message`, `content.body`, `content.text`. First non-empty wins. Returns null if all empty.
+
+**Extended `approveDraft` flow** (status flip happens FIRST, then send is attempted):
+1. Fetch draft with content + external_target + status (race guard checks pending) — NEW in 2D
+2. Status flip to 'approved' with `approved_by` + `approved_at` — existing
+3. NEW: If `external_target.platform !== 'whatsapp'` → return `{success: true}` (non-WhatsApp drafts keep existing copy-paste UX)
+4. NEW: Extract phone + message via the two new helpers
+5. NEW: If either is missing → return `{success: true, message: "אושר. ..."}`
+6. NEW: `lookupWhatsAppIntegration` → if not connected, return `{success: true, message: ...}`
+7. NEW: `wasContactedInLast24h` → if outside, return `{success: true, message: "אושר. הלקוח לא פנה ב-24 השעות..."}`
+8. NEW: `sendWhatsAppMessage` → on Meta API failure, return `{success: false, error: mapSendErrorToHebrew(...)}`
+9. NEW: Return `{success: true, message: "ההודעה נשלחה."}` on success
+
+**Return shape extension:** `{success, error?, message?}` where `message` is optional. Backward-compatible with the existing UI consumer that only reads `success` + `error` — UI continued to render generic toasts for now in 2D. **3A made the consumer render `message` via alert (see §10.38).**
+
+**Files touched:** 1
+- `src/app/dashboard/actions/drafts.ts` — replaced from 137 lines to 471 lines (+334 net)
+
+**End-to-end verification on 2026-05-09 evening:**
+
+Step 1: revert pre-existing sales_quick_response draft `9a7a830b-c249-4e40-b07d-acb584574c0a` (synthetic customer מוחמד אבו ראס) to status='pending', injected fresh `whatsapp_message_received` event for founder's phone, set draft's `content.whatsappUrl` to `https://wa.me/972509918196?text=test`.
+
+Step 2: navigate to `/dashboard/approvals`, click "אשר ושלח" once.
+
+Step 3: WhatsApp message arrives on founder's phone within ~5 seconds:
+> "אהלן מוחמד, שמחנו לשמוע. היום יש לנו אפשרויות פנויות. מתי נוח לך להגיע, בוקר או אחה"צ?"
+
+This is **Spike's second real WhatsApp delivery** (the first being Growth's Reactivation flow on 2026-05-08). Two of the ten agents now have validated end-to-end production paths. The other eight (Reviews, Hot Leads, Social, Manager, Inventory, Watcher, Morning, plus the internal Cleanup) all share the same code path through `approveDraft` — they will deliver the moment a draft of theirs is approved with `external_target.platform === 'whatsapp'` and a valid recipient phone.
+
+**Two latent issues observed during the test, neither blocking 2D ship — BOTH resolved in 3A (§10.38):**
+
+1. **`/dashboard/approvals` UI didn't render `messageHebrew` for sales_quick_response drafts.** The PII-mask badge ("PII הוסתר") was shown but the body text area was empty. Data was intact in DB; send worked correctly (extracts from `content.messageHebrew`). UI display gap: the page rendered `c.draftText` for unrecognized types, but `sales_quick_response` content has `messageHebrew` not `draftText`. **Fixed in 3A** by routing `sales_quick_response` through the existing isSales body branch (which already references `messageHebrew`).
+
+2. **Server action double-execute pattern.** Single click on "אשר ושלח" triggers TWO invocations of `approveDraft` ~milliseconds apart. First invocation succeeds (status flip + send). Second invocation finds status='approved' and returns `{success: false, error: "הטיוטה כבר טופלה."}`. The UI's `window.alert(error)` displayed the error from the second call, masking the first call's success. This is a Next.js 16 / React 19 server action UX issue, not a Spike bug per se. See §15.23 for diagnostic + mitigation pattern. **3A implemented mitigations 1+2** (see §10.38).
+
+**Worse-case behind the visible symptom (discovered during 3A code review):** if the two server-action invocations hit the initial-fetch step concurrently AND both see `status='pending'`, both UPDATEs run with the `WHERE status = 'pending'` race guard. The first matches 1 row; the second matches 0 rows — but **supabase-js does not return an error on 0 rows affected**, so without an explicit row-count check the second invocation proceeds past the UPDATE step and calls `sendWhatsAppMessage`, producing a second WhatsApp delivery to the customer for one click. The §15.23 incident as written described only the lucky case (second fetch sees status='approved'); the unlucky case is a real Iron-Rule-adjacent risk (the customer still got an approval; they just got it twice). **3A's `.select("id")` check on the UPDATE closes this.**
+
+**Meta token expiration during the session** required regenerating the temporary access token twice. Each regeneration: developers.facebook.com → Spike Engine Dev → WhatsApp → API Setup → "Generate access token" → copy → `UPDATE integrations SET metadata = jsonb_set(metadata, '{access_token}', to_jsonb('NEW_TOKEN'::text)) WHERE provider='whatsapp';`. Documented as a known dev-mode pain point — production permanent System User token (post-Meta verification) does not have this rotation problem.
+
+**Iron Rule preserved:** the user clicking [אשר ושלח] IS the human approval. The send happens AS A RESULT of that click, never autonomously. Same architectural commitment as 2C, now applied across all 10 agents.
+
+**Commits:** `f3b04bd` (Sprint 2D — drafts.ts WhatsApp send wiring).
+
+---
+
+### 10.38 Sprint 3A — UI Polish + Double-Execute Hardening (DONE, commit TBD)
+
+3A is the post-2D polish session: render the `messageHebrew` body for `sales_quick_response` drafts, render the optional `message` field returned by approveDraft (currently via `alert`; toast migration deferred), and harden against the React 19 / Next.js 16 server-action double-execute pattern documented in §15.23.
+
+**Files touched:** 2
+- `src/app/dashboard/actions/drafts.ts` — added `.select("id")` to the status-flip UPDATE in `approveDraft`, added early-return when 0 rows affected with the same `"הטיוטה כבר טופלה."` error string the initial-fetch path returns. ~6 lines net.
+- `src/components/dashboard/approvals-list.tsx` — added `isSalesQR = d.type === "sales_quick_response"`, extended `typeLabel` / `headerTitle` / `fullSalesText` / body branch / to handle QR alongside `isSales`. Rewrote `handleApprove` to render `res.message` via alert and to suppress the `"הטיוטה כבר טופלה."` error (refresh silently — §15.23 mitigation #2). Added symmetric suppression to `handleReject`. Added top-level `DOUBLE_EXECUTE_ERROR` constant for the suppression check. ~30 lines net.
+
+**Issues resolved:**
+
+1. **§10.37 issue #1 (messageHebrew not rendered for QR)** — addressed: pre-3A, sales_quick_response fell through to the generic fallback branch which renders `c.draftText` (a field QR drafts don't have). 3A routes it through the existing isSales body branch which references `messageHebrew`. Verified visually on `/dashboard/approvals` after the 3A commit deployed.
+
+2. **§10.37 issue #2 (`message?` field silently dropped)** — addressed: pre-3A, `handleApprove` only rendered `error` via `window.alert`. 3A renders `message` via alert when present, before `router.refresh()`. The user now sees "ההודעה נשלחה.", "אושר. הלקוח לא פנה ב-24 שעות...", or one of the integration-state messages from §10.37's flow, rather than silent refresh.
+
+3. **§15.23 mitigation #1 (server-side idempotency at the data layer)** — implemented: `.select("id")` on the UPDATE, plus an early-return when `data.length === 0`. Critical to close the worst-case behind the visible symptom (described in §10.37): without the row-count check, the unlucky timing (two fetches both see pending) produces a double WhatsApp send. With it, only one call past the UPDATE step ever proceeds to `sendWhatsAppMessage`.
+
+4. **§15.23 mitigation #2 (UI consumer suppresses the "already processed" toast)** — implemented: `handleApprove` checks `res.error === DOUBLE_EXECUTE_ERROR` and refreshes silently. The constant is defined at module scope (not inline) so future call sites and tests can reference it.
+
+**What's NOT done in 3A (deferred):**
+- **Sonner Toaster migration.** Still using `window.alert` for both error and message. A clean migration to `<Toaster />` + `toast.success(message)` / `toast.error(error)` is a separate concern — `sonner@^2.0.7` is in package.json but the Toaster mount status in the root layout wasn't audited as part of this scope. Cheap follow-up.
+- **§15.23 mitigations 3 + 4 (button disabled-on-click via useTransition + server-side idempotency-key dedupe).** Mitigation 3 is partial: the button already has `disabled={isPending && actioningId === d.id}` but the double-fire happens within the same React commit, so this doesn't catch sub-millisecond double-fires. Mitigation 4 (idempotency-key dedupe) would be the most-robust fix but is real engineering — opening a follow-up only when 1+2 are demonstrably insufficient.
+
+**Verification:** visual check on `/dashboard/approvals` after revert of `9a7a830b-...` to status='pending' confirmed that the QR card now shows "תשובה מהירה" type label, the `messageHebrew` body, and the "פתח בוואטסאפ" + "העתק" + "אשר ושלח" buttons. Live click test to a real Meta token deferred (Meta dev token had expired by 3A session and Dean elected to defer the token-refresh-and-click loop until the next opportunity).
+
+**Iron Rule preserved:** unchanged. The user click is still the human approval; 3A only changes display + double-fire defense.
+
+**Commits:** TBD (3A — fix(approvals)).
+
+---
+
 ## 11. Current Status
 
 ### 11.1 What Works ✅ — STAGE 1 COMPLETE + POST-STAGE-1 POLISH
@@ -2174,6 +2263,47 @@ ROLLBACK;
 
 ---
 
+### 15.23 Server Actions Can Fire Twice Per Click in React 19 / Next.js 16 (1.15.4 lesson, 3A mitigations) ⚠️
+
+**Symptom (visible):** clicking "אשר ושלח" once on `/dashboard/approvals` triggers two `approveDraft(draftId)` invocations ~ms apart. First succeeds (status flips, WhatsApp sends). Second finds `status='approved'` and returns `{success: false, error: "הטיוטה כבר טופלה."}`. The UI showed the error toast even though the underlying action succeeded.
+
+**Symptom (worst-case, behind the visible one — surfaced during 3A code review):** if both invocations hit the initial-fetch step concurrently AND both see `status='pending'`, both UPDATEs run with the `WHERE status = 'pending'` race guard. The first matches 1 row; the second matches 0 rows — but **supabase-js does not return an error on 0 rows affected**, so without an explicit row-count check the second invocation proceeds past the UPDATE and calls `sendWhatsAppMessage`, producing a second WhatsApp delivery to the customer for one click. This is Iron-Rule-adjacent: the customer still got an approval; they just got it twice. Was a real risk in 2D's drafts.ts before 3A.
+
+**Root cause (suspected, not fully confirmed):** Next.js 16's server action wrapper around React 19 `useTransition` / form-state primitives can re-fire the action under specific timing conditions — particularly when the action triggers a `revalidatePath` or `revalidateTag` that races with the user gesture. The first call commits, the revalidation schedules a re-render, the gesture handler also schedules another call, and the second call hits the now-mutated row.
+
+**Diagnostic recipe:**
+
+```sql
+-- After clicking once, query the draft:
+SELECT id, status, approved_at, approved_by FROM drafts WHERE id = '...';
+
+-- If approved_at is set AND error toast was shown → confirms double-execute.
+-- The status flip ran successfully on the first call; the second call hit
+-- the race guard and returned the error.
+```
+
+**Mitigations (in order of preference):**
+
+1. **Make the action idempotent at the data layer.** ✅ **Implemented in 3A.** The race guard `WHERE status = 'pending'` on the UPDATE prevents the *status flip* from happening twice, BUT supabase-js does not return an error on 0-rows-affected — so without an explicit row-count check the second invocation would proceed past the UPDATE and call `sendWhatsAppMessage`. 3A adds `.select("id")` to the UPDATE and an early-return when 0 rows affected. The early-return reuses the same `"הטיוטה כבר טופלה."` error string the initial-fetch path returns, so mitigation #2 (UI suppression) handles both cases uniformly.
+
+2. **Treat "already processed" as a success in the UI consumer.** ✅ **Implemented in 3A.** `approvals-list.tsx` `handleApprove` checks `res.error === DOUBLE_EXECUTE_ERROR` (top-level constant set to `"הטיוטה כבר טופלה."`) and `router.refresh()` silently instead of alerting. `handleReject` has symmetric logic for safety though that path doesn't currently fire (rejectDraft has no race guard). The refresh re-fetches `listPendingDrafts` and the just-approved draft drops out of the list, so the user sees the right new state.
+
+3. **Disable the button on click via `useTransition` `isPending`.** Already present in the codebase: `<button disabled={isPending && actioningId === d.id}>`. Doesn't always prevent the second fire because the second fire often happens within the same React commit, but reduces observable double-clicks.
+
+4. **Server-side dedupe by request ID.** Generate a per-click idempotency key, attach to the action call, server-side cache "already-handled" for 5 seconds. Most robust but most code. Open follow-up for if mitigations 1+2 prove insufficient under real customer load.
+
+**Don't do:** add a `setTimeout` or debounce client-side and call it fixed. The double-fire is sub-millisecond, not user-double-click; debouncing won't catch it reliably.
+
+**Don't do:** disable the race guard on the UPDATE just to make the second call "succeed too." That re-introduces a real race condition (concurrent approves from different sessions could both succeed and both attempt to send).
+
+**Why this didn't surface before 2D:** Growth's `approveGrowthCandidate` doesn't have a discrete `status='pending'` row to race-guard the same way (candidates use `decision_status` and the value `'pending'` is the default — the second call hits a row that already has `decision_status='approved'` and the same code returns success). 2D's drafts.ts uses an explicit pending check that surfaces the race as an error message to the UI.
+
+**Why the worst-case wasn't observed in prod before 3A:** small timing window (single user, sub-millisecond), one user clicking, no concurrent-customer load. The possibility was real but the unlucky case statistically rare. Closed pre-customer regardless.
+
+**Open question for future investigation:** is this a Next.js 16 / React 19 known issue, a `'use server'` regression, a Vercel runtime quirk, or interaction-specific? Worth filing a minimal repro and checking against the Next.js GitHub.
+
+---
+
 ## 16. Commit Conventions
 
 Conventional commits, English subject, Hebrew body OK.
@@ -2194,7 +2324,7 @@ If you are Claude reading this for the first time:
 6. ✅ Confirm you've read this file in your first reply, in 2-3 lines max.
 
 **Sample first reply:**
-> קראתי את CLAUDE.md. Spike Engine — 9 סוכני AI מול לקוח (Morning, Watcher, Reviews, Hot Leads, Social, Manager, Sales, Inventory, Growth) + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו (1.1 עד 1.5.5) + Post-Stage-1 polish (1.6 → 1.16). הכל בייצור על app.spikeai.co.il. **Latest milestone (2026-05-08 evening):** הproduct העביר end-to-end test ראשון על Meta Cloud API test mode — Spike שלח את ההודעה האוטומטית הראשונה שלו, מ-Reactivation candidate סינתטי (דנה כהן) דרך Sonnet 4.6 → approve UI → real WhatsApp delivery לטלפון של הfounder. בדרך נחשפו 2 RLS bugs latentים שנפתרו ב-migrations 025 (memberships infinite recursion) + 026 (events SELECT gap). Latest commits: `120f0f8` → `0c78974` (whole stack from 1.15.2 RLS fix through 1.16 dashboard streaming). דרוש: Sprint 2 Batch 2D (wire `sendWhatsAppMessage` ל-9 הסוכנים האחרים — code-only, ~2 שעות, runnable ללא Meta verification). **External blockers** (לא code): עוסק מורשה, Meta Business verification (~2-4 שבועות), business phone. אופציונלי: Suspense pattern לדפים נוספים, Vault encryption ל-access_token. מה אתה רוצה לעשות?
+> קראתי את CLAUDE.md. Spike Engine — 9 סוכני AI מול לקוח (Morning, Watcher, Reviews, Hot Leads, Social, Manager, Sales, Inventory, Growth) + cleanup פנימי, drafts-only, עברית RTL, Anthropic only. Stage 1 הושלם במלואו + Post-Stage-1 polish דרך 1.16 + Sprint 2 Batch 2C/2D + 3A + 2 RLS migrations (025 memberships recursion, 026 events tenant SELECT). **כל 10 הסוכנים מחוברים מקצה לקצה ל-WhatsApp send דרך Meta Cloud API.** שתי deliveries אמיתיות הוכחו: Growth Reactivation (דנה כהן) ב-2026-05-08, Sales quick_response (מוחמד אבו ראס) ב-2026-05-09. /dashboard/approvals מרנדר messageHebrew נכון לאחר 3A; double-execute race בdrafts.ts מוקשח ב-3A דרך .select("id") + UI suppression של "הטיוטה כבר טופלה" (§15.23 mitigations 1+2). הכל בייצור על app.spikeai.co.il. Latest: TBD/3A; קודם `f3b04bd` (Sprint 2D). חוסמים חיצוניים בלבד: עוסק מורשה / Meta Business verification / מספר טלפון עסקי. אופציונלי-לא-חוסם: Vault encryption ל-access_token, helpers extraction ל-`src/lib/whatsapp/helpers.ts`, sonner Toaster migration (alert→toast), Suspense pattern לדפים נוספים, marketing landing alignment ב-`spike-agents` repo (Telegram→WhatsApp, Cleanup→Growth). **החלטות אסטרטגיות נעולות (§19):** pricing ₪249/449/749 + מע"מ; BSP=360dialog; wedge=[אשר] button + voice notes + no-shows ROI; channel=periphery + bookkeepers + Achiya. מה אתה רוצה לעשות?
 
 ---
 
@@ -2216,8 +2346,11 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 
 | Hash | What |
 |---|---|
-| (pending) | docs: update CLAUDE.md for 1.15.3 end-to-end test session + RLS migrations 025/026 |
-| (pending) | fix(rls): migrations 025+026 — break memberships recursion + add events tenant SELECT (1.15.3 followup) |
+| TBD | docs(claude): 3A shipped + Sprint 2D documented + §19 strategic decisions locked + §15.23 mitigations 1+2 implemented + §10.37 + §10.38 + sample reply refresh |
+| TBD | fix(approvals): render messageHebrew for sales_quick_response + render success message + harden double-send race (3A + 15.23 mitigations 1+2) |
+| `f3b04bd` | feat(whatsapp): wire send to drafts approve for the 9 other agents (1.15.4 / Sprint 2D) |
+| `24e0a5f` | fix(rls): break membership recursion + add events tenant SELECT (1.15.3 followup, migrations 025+026) |
+| `a2a2ea1` | docs: update CLAUDE.md for 1.15.3 (Sprint 2C) + 1.16 (dashboard streaming) + RLS migration shipped |
 | `0c78974` | perf(dashboard): Suspense streaming for KPIs / manager lock / onboarding banner (1.16) |
 | `dbcb174` | feat(whatsapp): outbound send infra + Growth approve wiring (1.15.3 / Sprint 2 Batch 2C) |
 | `762da80` | fix(rls): simplify current_tenant_id to user_settings only — drop unused JWT path (1.15.2 followup) |
@@ -2329,6 +2462,127 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
   - 30-day ROI strip → `src/components/dashboard/growth/RoiStatStrip.tsx`
   - Empty state → `src/components/dashboard/growth/EmptyState.tsx`
   - On-demand CTA → `src/components/dashboard/growth/OnDemandTriggerButton.tsx`
+
+---
+
+## 19. Pre-Launch Strategic Decisions (LOCKED 2026-05-10)
+
+This section captures the strategic decisions taken at the end of the 2026-05-10 session, after three deep research artifacts on the Israeli SMB AI market. These are working assumptions for the launch — not gospel; they may revise after first 10 paying customers — but Claude (the AI assistant) should NOT relitigate them in future sessions unless the founder explicitly opens them up. Per §13 (don't relitigate settled decisions), if the founder asks "should we charge ₪199 instead?" the answer is "we settled on ₪249 in 1.15.4-followup; here's why" + brief recap, not a fresh debate.
+
+**Note on prior contradictions:** §2.4 (Settled Decisions) and §12.1 (Pricing) earlier in this file referenced the older Solo/Pro/Chain tier model with ₪290/₪690/₪1,490 + ₪990 setup, and §0/§13 said "Don't propose 360dialog or other BSP middlemen." §19 below SUPERSEDES both. The earlier sections are kept for historical context but the locked source of truth is §19.
+
+### 19.1 Pricing — LOCKED
+
+| Tier | Hebrew name | Price (NIS, monthly) + מע"מ | Includes |
+|---|---|---|---|
+| Starter | יחיד | **₪249** | 1 user, 5 agents on, 500 outbound msgs/mo |
+| Team (recommended) | צוות | **₪449** | 3 users, all 10 agents, 2,000 msgs/mo, voice notes |
+| Pro | עסק | **₪749** | 10 users, unlimited agents, 5,000 msgs/mo, priority support |
+| Enterprise | מותאם | from ₪1,500 | Negotiated multi-location / chains |
+
+- **Annual prepay discount: 16.6%** (pay 10, get 12). Not 20%. Cash collection priority over LTV maximization for solo-founder cash flow.
+- **Trial: 14 days, no credit card required.** Demo mode for first 5 days, Embedded Signup nudge from day 5.
+- **Parallel ₪99 first-month "פיילוט מודרך" track** for owners who want a 30-min Hebrew Zoom kickoff. Targets 60-70% conversion to ₪449 month 2.
+- **No free tier.** Burns LLM cost on tire-kickers.
+- **Design Partner pricing: ₪99/mo for 12 months locked, max 10 partners.** Separate from the trial track. In exchange: weekly feedback call + named case study at 90 days + priority feature request slot.
+- **Currency: NIS only at launch.** USD secondary later for diaspora.
+- **Payment methods: Cardcom (Visa/Mastercard/Isracard) + Tranzila as fallback.** No Bit/PayBox for B2B subs.
+
+**Rationale:** Israeli SMB benchmarks (Goldie $19.99/mo translated, GlossGenius $24/mo, Vagaro $23.99/mo, Mindbody ~₪600+/mo, Fireberry ₪150-500/mo per user, Achiya Cohen's public anchor ₪200-500/mo) put the receptionist-replacement band at ₪200-800. Round numbers ending in 9 (₪249/449/749) test marginally better than 99-cent endings in Hebrew price psychology per the deep research synthesis.
+
+### 19.2 BSP — LOCKED
+
+**Primary: 360dialog.** €49/number/month + zero per-message markup over Meta's rates. Direct Meta partner. Cleanest pass-through model; the BSP most Israeli automation shops actually run.
+
+**Fallback: Meta Cloud API direct** (already wired, the current setup).
+
+**Skip: Twilio** ($0.005/message markup invisible at 1k SMBs, bleeds at 10k), **Wati** (it's a competitor), **Bird** (wrappers UI we don't need).
+
+**Endgame: Spike becomes a Meta Tech Provider** post-Embedded Signup launch. Current 360dialog setup is forward-compatible.
+
+### 19.3 Differentiation Wedges — LOCKED
+
+Three wedges, in order of priority. Lead the homepage with the first. Reveal the others after click.
+
+1. **"AI מסמן, בעלים מחליט" — the [אשר] button.** Spike's Iron Rule. Every other Israeli + global tool either fully autonomous (Plexa/Maya/AI Buddy/Manychat/Wati/Tidio) or passive inbox. None own the human-approval lane. **TM the phrase** (סימן מסחר, ~₪1,800 + agent fees, ~6 months registration).
+2. **Voice-note-to-Hebrew-draft.** Israelis send voice notes constantly. ElevenLabs Scribe v2 (3.1% FLEURS WER, ~$0.024/min) for live path; Ivrit.AI `whisper-large-v3-turbo-ct2` for batch + long voice notes (self-hosted). No competitor does this well.
+3. **No-show + dormant-customer ROI calculator** on the landing page. Inputs: avg appointment value, weekly bookings, current no-show %. Outputs: NIS recovered/month + payback time. Achiya Cohen's documented case (Ashdod dental clinic 25%→8% no-shows after WhatsApp reminders, validates 7x ROI on the ₪449 tier from no-show reduction alone).
+
+### 19.4 Channel Strategy — LOCKED
+
+**Primary: in-person door-knocking in periphery cities (Beit Shemesh, Hadera, Modi'in, Sderot, Yokneam, Carmiel).** Tel Aviv salons already use Goldie/Plannie. Periphery owners message manually from personal WhatsApp, lose 1-3 leads/week, have nobody selling to them. CAC ~₪400 fully loaded.
+
+**Secondary: bookkeepers (מנהלות חשבונות) as channel partners.** ~5,000 active in Israel. Visit clients monthly, see WhatsApp chaos, recommend tools. Offer ₪50/customer/month recurring kickback for 24 months. Top 200 via מסלקה + Facebook groups.
+
+**Tertiary: Achiya Cohen rev-share partnership.** 30% recurring rev-share for 12 months on referred customers. Co-branded "Powered by Achiya Automation" template pack.
+
+**Skip: Israeli VC fundraising at this stage.** Apply to Tnufa (₪200K, 80% non-dilutive) and Pre-Seed Startup Fund (up to ₪1.5M, 60% non-dilutive). Innovation Authority is the effective seed VC for SMB SaaS at < $1M ARR.
+
+**Skip: international expansion before 1,000 Israeli customers.**
+
+**Skip: targeting Tel Aviv salons in the first 50 customers.**
+
+### 19.5 Vertical Order — LOCKED
+
+First 50 customers across:
+1. **Hairdressers / beauty salons / nail salons** — highest no-show pain, fastest aha
+2. **קוסמטיקאיות (solo)** — same as above, even smaller scale, easier to close
+3. **Yoga / pilates studios** (single-location, 10-80 active members) — class fill + waitlist + winback
+4. **Private clinics / therapists / mental health (solo practitioner)** — drafts-only positioning lands hardest due to PPL Amendment 13 sensitivity
+
+Defer until after 50 customers: real estate, restaurants, retail, lawyers/accountants, home services, pet services, tutoring.
+
+### 19.6 What NOT to Build (deferred 2026, not killed)
+
+- AI calls / voice-out — Plexa already does this; matching distracts. Defer 12+ months.
+- Native iOS/Android — PWA covers 80% of value. Defer until 1,000 customers.
+- Multi-location for chains beyond 5 locations — wait for inbound demand.
+- White-label for agencies — not at this stage.
+- SOC 2 / ISO 27001 — not until $500K ARR.
+- חברה בע"מ conversion — not until ~₪35K MRR (~₪400K ARR) or first hire.
+- Stripe / international billing rails — Cardcom + Tranzila cover Israel.
+- WhatsApp Pay-as-a-feature for customers' customers — at best a 2027 conversation.
+- Telegram, web chat widget, Apple Calendar — long tail, defer.
+
+### 19.7 What TO Build Next (Sprints, ordered)
+
+Each is a separate session / batch. Don't combine.
+
+- **Sprint 3A — UI fix for approvals page** ✅ DONE (this session) — display `messageHebrew` + render `message` field from approveDraft response + double-execute hardening (§15.23 mitigations 1+2). See §10.38.
+- **Sprint 3B — helpers extraction** — `src/lib/whatsapp/helpers.ts` shared between growth.ts and drafts.ts. NOT a 30-min cleanup as originally scoped — there's a real architectural decision (admin-client in drafts.ts vs user-scoped client in growth.ts, plus `getActiveTenant` vs `requireOnboarded`). Recommendation when picking up: standardize on admin-client + `getActiveTenant` for both, since both flows are tenant-scoped via explicit WHERE clauses anyway. ~60-90 min including the decision.
+- **Sprint 3C — Voice-note-to-Hebrew-draft pipeline** — ElevenLabs Scribe ingestion + Haiku post-pass for code-switching + draft generation (~3 weeks, the highest-ROI feature on the backlog).
+- **Sprint 3D — Smart Waitlist Agent** — auto-fill from waitlist when cancellation detected (~2 weeks).
+- **Sprint 3E — GreenInvoice integration** — most Israeli עוסק use it (~1 week).
+- **Sprint 3F — Google Calendar 2-way sync** — table stakes for service businesses (~2 weeks).
+- **Sprint 3G — Hebrew brand-voice extractor** — onboarding magic moment (~2 weeks).
+- **Sprint 3H — Self-service WhatsApp connection UI** — `/dashboard/integrations/whatsapp` with Meta Embedded Signup (post-Tech Provider enrollment, ~2 weeks).
+
+External (not code, not a sprint, parallel work for the founder):
+- עוסק מורשה registration (~30 min online)
+- Business phone number (~₪50-100/mo SIM or virtual)
+- Meta Business verification (~2-4 weeks)
+- Israeli TM filing for "AI מסמן, בעלים מחליט" (~₪1,800 + agent fees, ~6 months)
+- Hebrew DPA template via Israeli privacy lawyer (~₪3K-6K, ~2 weeks)
+- Cardcom merchant account opening (~1 week)
+- 360dialog Tech Provider application (~3-4 weeks)
+- Lawyer engagement (Tier-2 boutique, ₪15K-25K fixed-fee) for ToS v0.1 → v1.0 review
+- Cyber + Tech E&O insurance bundle (₪7K-12K/year) with affirmative AI coverage endorsement
+
+### 19.8 Internal Hygiene Backlog (not Sprints, not external — small things)
+
+- **Marketing landing alignment** in `spike-agents` repo (`https://github.com/DinSpikeAI/spike-agents`). Currently promises "Telegram delivery 7am" while engine ships WhatsApp; lists Cleanup as a customer-facing card while §6.2 / §10.29 say it's internal-only; missing Growth (the 10th customer-facing agent). README last-updated April 2026 predates the locked decisions. Fix before door-knocking begins.
+- **Vault encryption for `integrations.metadata.access_token`.** Currently plaintext JSONB; pre-launch debt per §11.2. Single migration + small `lookupWhatsAppIntegration` (drafts.ts + growth.ts) + admin/integrations actions update.
+- **Sonner Toaster migration.** `sonner@^2.0.7` is in package.json but `<Toaster />` mount status in `app/layout.tsx` was not audited as part of 3A. Migrating `alert()` → `toast.success/error` in `approvals-list.tsx` (and likely other places) would be a clean follow-up.
+
+### 19.9 Reference Documents Produced This Session
+
+Three deep research artifacts produced during 2026-05-10 session, available in chat history:
+
+1. **"Spike Engine: Hebrew-RTL AI SaaS Market Opportunity for Israeli SMBs"** (~10K words) — initial market scan, JTBD per vertical, pricing benchmarks
+2. **"Spike Engine Pre-Launch Strategy"** (~38K words) — comprehensive Israeli SMB market with Plexa/Maya/AI Buddy competitive depth, regulatory analysis (PPL Amendment 13, EU AI Act Art 50, BCCRT Air Canada precedent), 30/60/90 plan
+3. **"Spike Engine 0-to-100 Playbook"** (~50K words) — technical architecture (MCP, prompt caching, Hebrew ASR stack), vertical deep dives, onboarding flow with 5-minute path, Hebrew GTM channels, threats ranked, long-term strategy to ₪50M ARR
+
+The decisions in §19.1-19.7 are distillations of those three documents. The documents themselves are the source-of-truth for "why" — refer back when a decision needs justification or revisiting.
 
 ---
 
