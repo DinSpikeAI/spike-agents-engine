@@ -2603,7 +2603,22 @@ This section captures the strategic decisions taken at the end of the 2026-05-10
 
 **Note on prior contradictions:** §2.4 (Settled Decisions) and §12.1 (Pricing) earlier in this file referenced the older Solo/Pro/Chain tier model with ₪290/₪690/₪1,490 + ₪990 setup, and §0/§13 said "Don't propose 360dialog or other BSP middlemen." §19 below SUPERSEDES both. The earlier sections are kept for historical context but the locked source of truth is §19.
 
-### 19.1 Pricing — LOCKED
+### 19.1 Pricing — REVISED DIRECTION 2026-05-10 evening (exact number TBD)
+
+**As of 2026-05-10 evening discussion:** the four-tier Solo/Team/Pro/Enterprise structure below is **being replaced with a single-package model**. Exact price TBD — directionally between ₪999 and ₪1,500/mo flat, leaning ₪999 if the channel stays periphery + bookkeepers + Achiya per §19.4. The multi-tier complexity wasn't justifying itself: most differentiators (number of users, message volume) were artificial — Spike's actual product is "all 10 agents, period," and tiers were inventing scarcity that didn't match the value model.
+
+**The single-package direction (not yet a locked number):**
+- One Spike plan: ₪999-1,500/mo (TBD), all agents on, all features
+- Per-additional-location multiplier for chains: +₪500/mo each (avoids the Enterprise-tier overhead while still capturing multi-location revenue)
+- Pilot onramp: ₪199 first month, then standard rate (replaces ₪99 pilot)
+- Annual prepay 16.6% discount kept
+- Design Partner: ₪499/mo locked 12 months, max 10, in exchange for case study + weekly call + named logo on landing
+
+**Why pricing is parked, not locked:** the founder wants to validate with the first 3-5 paying customers what they'll actually pay before pinning a number. The risk of premature optimization is real — what we think is right vs what the market signals are different things. Decision deferred to after first 3-5 conversions.
+
+**The original four-tier table below is preserved as historical context (the 2026-05-10 morning lock) but is NO LONGER the source of truth.** Any future Claude session should treat the single-package direction above as current and the table below as deprecated.
+
+#### Original locked table (DEPRECATED — see direction above):
 
 | Tier | Hebrew name | Price (NIS, monthly) + מע"מ | Includes |
 |---|---|---|---|
@@ -2620,7 +2635,7 @@ This section captures the strategic decisions taken at the end of the 2026-05-10
 - **Currency: NIS only at launch.** USD secondary later for diaspora.
 - **Payment methods: Cardcom (Visa/Mastercard/Isracard) + Tranzila as fallback.** No Bit/PayBox for B2B subs.
 
-**Rationale:** Israeli SMB benchmarks (Goldie $19.99/mo translated, GlossGenius $24/mo, Vagaro $23.99/mo, Mindbody ~₪600+/mo, Fireberry ₪150-500/mo per user, Achiya Cohen's public anchor ₪200-500/mo) put the receptionist-replacement band at ₪200-800. Round numbers ending in 9 (₪249/449/749) test marginally better than 99-cent endings in Hebrew price psychology per the deep research synthesis.
+**Rationale (for the original table, now deprecated):** Israeli SMB benchmarks (Goldie $19.99/mo translated, GlossGenius $24/mo, Vagaro $23.99/mo, Mindbody ~₪600+/mo, Fireberry ₪150-500/mo per user, Achiya Cohen's public anchor ₪200-500/mo) put the receptionist-replacement band at ₪200-800. The 2026-05-10 evening reconsideration concluded that ₪200-800 was the wrong reference class — Spike isn't a booking tool, it's a 10-agent automation suite where Achiya sells single workflows at ₪200-500/each. The ₪999-1,500 single-package band reflects Spike's actual category.
 
 ### 19.2 BSP — LOCKED
 
@@ -2683,13 +2698,14 @@ Each is a separate session / batch. Don't combine.
 - **Sprint 3A — UI fix for approvals page** ✅ DONE — display `messageHebrew` + render `message` field from approveDraft response + double-execute hardening (§15.23 mitigations 1+2). See §10.38. Commit `1ab5a08`.
 - **Sprint 3B — helpers extraction** ✅ DONE (absorbed into 3M, see §10.39) — `src/lib/whatsapp/helpers.ts` now houses `lookupWhatsAppIntegration`, `wasContactedInLast24h`, `mapSendErrorToHebrew`. Function name harmonized (was `lookupTenantWhatsAppIntegration` in growth.ts). All three callers (drafts.ts, growth.ts, cron/morning/route.ts) import from one place. Commit `2e72f78`.
 - **Sprint 3M — Morning auto-send to owner via WhatsApp** ✅ DONE — first Iron-Rule carve-out (owner-self loopback, §15.25). Cron at `0 4 * * *` UTC. End-to-end validated 2026-05-10 with the third real WhatsApp delivery from Spike (owner's own daily briefing). See §10.39. Commit `2e72f78`.
+- **Sprint 3I — Business Context Brief (self-service brand voice)** (candidate, HIGH PRIORITY, not started) — `/dashboard/settings` page where the owner writes a free-form Hebrew description of their business: what they sell, how they work, how they talk to customers, their style, anything that defines their voice. Stored in `tenants.config->>'business_brief'` (or new dedicated column `tenants.brief text`). Injected into the system prompt of every customer-facing agent (Sales QR, Sales Followup, Reviews, Social, Growth, Hot Leads, Morning summary) as a `<business_context>...</business_context>` block. Effect: drafts already match the owner's voice on first generation — no manual editing required. **This is the missing killer-differentiator** the product has been operating without — every Spike draft is currently "generic Hebrew SMB voice" rather than "this owner's voice." 4-8 hours of work: migration (optional — config JSONB works); settings UI (textarea + save action); prompt injection across 7 agents (find-and-replace pattern in `src/lib/agents/*/prompt.ts`). **Relationship to Sprint 3G:** 3G is the AI-driven version of this — auto-extract the brief from the business's website / Google reviews / Instagram during onboarding. 3I ships the manual version first (the foundation); 3G later auto-populates 3I via Sonnet during onboarding (the magic moment). Ship 3I before 3G.
 - **Sprint 3X — Watcher auto-send alerts to owner** (candidate, not started) — same template as 3M applied to Watcher's `alerts` table. Eligible for the same owner-self carve-out per §15.25. Estimated ~30-45 min using the established pattern. Pre-flight: decide which alert severities trigger WhatsApp (probably `high` only) vs which stay dashboard-only.
 - **Sprint 3Y — Manager weekly auto-send to owner** (candidate, not started) — same template applied to Manager's weekly `manager_reports`. Sundays. Estimated ~30-45 min. Higher-leverage than 3X for Israeli SMBs because Sunday-morning weekly digest matches the actual week-start there.
 - **Sprint 3C — Voice-note-to-Hebrew-draft pipeline** — ElevenLabs Scribe ingestion + Haiku post-pass for code-switching + draft generation (~3 weeks, the highest-ROI feature on the backlog).
 - **Sprint 3D — Smart Waitlist Agent** — auto-fill from waitlist when cancellation detected (~2 weeks).
 - **Sprint 3E — GreenInvoice integration** — most Israeli עוסק use it (~1 week).
 - **Sprint 3F — Google Calendar 2-way sync** — table stakes for service businesses (~2 weeks).
-- **Sprint 3G — Hebrew brand-voice extractor** — onboarding magic moment (~2 weeks).
+- **Sprint 3G — Hebrew brand-voice extractor (AUTO version of 3I)** — Sonnet reads the business's website / Google Maps profile / public Instagram → auto-populates the `tenants.brief` field set up by 3I. Pre-fills the settings page with a Hebrew first-draft brief that the owner reviews and edits. Magic moment in onboarding (~2 weeks). Depends on 3I shipping first.
 - **Sprint 3H — Self-service WhatsApp connection UI** — `/dashboard/integrations/whatsapp` with Meta Embedded Signup (post-Tech Provider enrollment, ~2 weeks).
 
 External (not code, not a sprint, parallel work for the founder):
