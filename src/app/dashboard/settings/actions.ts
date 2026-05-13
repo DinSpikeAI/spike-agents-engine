@@ -4,10 +4,11 @@
 //
 // Sub-stage 1.7 — Settings page server action.
 //
-// §15.29 mitigation (attempt 6): this file contains ONLY the async
-// server action `updateTenantSettings` plus a non-exported `validate`
-// helper. ALL types and runtime constants live in ./types.ts (a neutral
-// file with no "use server" or "server-only" directive).
+// §15.29 mitigation (attempt 6 — RESOLVED 2026-05-13, commit c4b6942):
+// this file contains ONLY the async server action `updateTenantSettings`
+// plus a non-exported `validate` helper. ALL types and runtime constants
+// live in ./types.ts (a neutral file with no "use server" or
+// "server-only" directive).
 //
 // DO NOT re-introduce type definitions, interface declarations, or
 // `export type` re-exports into this file. That pattern triggered the
@@ -21,6 +22,7 @@
 //   - tenants.vertical                      (agent prompt context)
 //   - tenants.config.owner_name             (greeting + sidebar)
 //   - tenants.config.business_name          (legacy mirror)
+//   - tenants.config.business_brief         (Sprint 3I — owner voice)
 //
 // Returns a structured result so the client form can show inline errors
 // AND toast notifications (decision (ג) from spec discussion).
@@ -35,7 +37,11 @@ import type {
   TenantSettingsInput,
   UpdateTenantSettingsResult,
 } from "./types";
-import { VALID_GENDERS, VALID_VERTICALS } from "./types";
+import {
+  VALID_GENDERS,
+  VALID_VERTICALS,
+  BUSINESS_BRIEF_MAX_LENGTH,
+} from "./types";
 
 // Non-exported helper — allowed inside "use server" files per §15.26
 // (the rule prohibits non-async EXPORTS, not internal definitions).
@@ -73,6 +79,14 @@ function validate(
     errors.vertical = "ענף לא תקין";
   }
 
+  // business_brief: optional. If provided, must not exceed cap.
+  // Empty / whitespace-only is treated as "not set" (action persists null).
+  if (input.businessBrief !== null && input.businessBrief !== undefined) {
+    if (input.businessBrief.length > BUSINESS_BRIEF_MAX_LENGTH) {
+      errors.businessBrief = `תיאור ארוך מדי (עד ${BUSINESS_BRIEF_MAX_LENGTH} תווים)`;
+    }
+  }
+
   return Object.keys(errors).length > 0 ? errors : null;
 }
 
@@ -96,7 +110,8 @@ export async function updateTenantSettings(
 
   // Read current config so we can preserve all the other keys
   // (onboarding_completed_at, brand_voice_samples, owner_phone from 3M,
-  // etc.). We only update owner_name + business_name inside config.
+  // etc.). We only update owner_name + business_name + business_brief
+  // inside config.
   const { data: current, error: readErr } = await db
     .from("tenants")
     .select("config")
@@ -111,6 +126,13 @@ export async function updateTenantSettings(
     };
   }
 
+  // Normalize business_brief: empty/whitespace → null. Keeps the
+  // JSONB compact and lets the agent injection logic check a simple
+  // truthy/falsy.
+  const briefTrimmed = (input.businessBrief ?? "").trim();
+  const briefForStorage: string | null =
+    briefTrimmed.length > 0 ? briefTrimmed : null;
+
   const currentConfig =
     (current?.config as Record<string, unknown> | null) ?? {};
   const updatedConfig = {
@@ -119,6 +141,7 @@ export async function updateTenantSettings(
     // Keep business_name in config too — some legacy code paths read from
     // there instead of tenants.name. Cheap to keep both in sync.
     business_name: input.businessName.trim(),
+    business_brief: briefForStorage,
   };
 
   // Update tenant row.

@@ -2,18 +2,21 @@
 
 // src/components/dashboard/settings-form.tsx
 //
-// Sub-stage 1.7 — Settings form.
+// Sub-stage 1.7 — Settings form (extended for Sprint 3I — business_brief).
 //
 // Client component that owns the form state, calls updateTenantSettings
 // server action on submit, and displays both inline field errors AND a
 // sonner toast on success/failure (decision (ג) from spec discussion).
 //
-// §15.29 mitigation (attempt 6): types are now imported from
-// @/app/dashboard/settings/types (neutral file), NOT re-exported via
-// the "use server" actions file. The previous pattern
-// (`import { updateTenantSettings, type X, type Y } from "../actions"`)
-// was implicated in the Turbopack bundler crash. Function import stays
-// from actions; type imports moved to types.
+// §15.29 mitigation (attempt 6 — RESOLVED 2026-05-13, commit c4b6942):
+// types are imported from @/app/dashboard/settings/types (neutral file),
+// NOT re-exported via the "use server" actions file. Function import
+// stays from actions; type and constant imports come from types.
+//
+// Sprint 3I additions:
+//   - Card 3 with a 2000-char textarea for the business voice brief
+//   - char counter that turns amber at 90% and pink at the cap
+//   - initialBusinessBrief prop wired through from the page
 //
 // Style: Calm Frosted — Glass primitive cards, CSS variables for colors,
 // inline styles for system colors.
@@ -27,12 +30,14 @@ import type {
   Vertical,
   BusinessOwnerGender,
 } from "@/app/dashboard/settings/types";
+import { BUSINESS_BRIEF_MAX_LENGTH } from "@/app/dashboard/settings/types";
 
 interface SettingsFormProps {
   initialOwnerName: string;
   initialBusinessName: string;
   initialGender: BusinessOwnerGender;
   initialVertical: Vertical;
+  initialBusinessBrief: string | null;
 }
 
 const VERTICAL_LABELS: Record<Vertical, string> = {
@@ -47,31 +52,48 @@ const VERTICAL_LABELS: Record<Vertical, string> = {
 };
 
 type FieldErrors = Partial<
-  Record<"ownerName" | "businessName" | "businessOwnerGender" | "vertical", string>
+  Record<
+    | "ownerName"
+    | "businessName"
+    | "businessOwnerGender"
+    | "vertical"
+    | "businessBrief",
+    string
+  >
 >;
+
+// Char-count color thresholds — amber once 90% used, pink at the cap.
+const BRIEF_AMBER_THRESHOLD = Math.floor(BUSINESS_BRIEF_MAX_LENGTH * 0.9);
 
 export function SettingsForm({
   initialOwnerName,
   initialBusinessName,
   initialGender,
   initialVertical,
+  initialBusinessBrief,
 }: SettingsFormProps) {
   const [ownerName, setOwnerName] = useState(initialOwnerName);
   const [businessName, setBusinessName] = useState(initialBusinessName);
   const [gender, setGender] = useState<BusinessOwnerGender>(initialGender);
   const [vertical, setVertical] = useState<Vertical>(initialVertical);
+  const [businessBrief, setBusinessBrief] = useState(
+    initialBusinessBrief ?? "",
+  );
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   // Track if the form has changed from initial — used to disable button
-  // when nothing to save.
+  // when nothing to save. For brief, null and "" are equivalent for change
+  // detection (both mean "no brief set").
+  const initialBriefNormalized = initialBusinessBrief ?? "";
   const hasChanges =
     ownerName !== initialOwnerName ||
     businessName !== initialBusinessName ||
     gender !== initialGender ||
-    vertical !== initialVertical;
+    vertical !== initialVertical ||
+    businessBrief !== initialBriefNormalized;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,6 +106,9 @@ export function SettingsForm({
         businessName,
         businessOwnerGender: gender,
         vertical,
+        // Trimmed empty → null. Server will also normalize, but this keeps
+        // the wire payload honest and the form state predictable.
+        businessBrief: businessBrief.trim().length > 0 ? businessBrief : null,
       });
 
       if (result.ok) {
@@ -99,6 +124,15 @@ export function SettingsForm({
       toast.error(errMsg);
     });
   };
+
+  // Brief counter color — green by default, amber over threshold, pink at cap.
+  const briefLen = businessBrief.length;
+  const briefCounterColor =
+    briefLen >= BUSINESS_BRIEF_MAX_LENGTH
+      ? "var(--color-sys-pink)"
+      : briefLen >= BRIEF_AMBER_THRESHOLD
+        ? "var(--color-sys-amber)"
+        : "var(--color-ink-3)";
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -365,6 +399,73 @@ export function SettingsForm({
               {fieldErrors.vertical}
             </p>
           )}
+        </div>
+      </Glass>
+
+      {/* ─── Card 3: Business voice brief (Sprint 3I) ─────── */}
+      <Glass className="space-y-4 p-5 sm:p-6">
+        <div>
+          <h2
+            className="text-[15.5px] font-semibold tracking-tight"
+            style={{ color: "var(--color-ink)" }}
+          >
+            סגנון העסק שלך
+          </h2>
+          <p
+            className="mt-1 text-[12px] leading-[1.5]"
+            style={{ color: "var(--color-ink-3)" }}
+          >
+            כתוב כאן בחופשיות על העסק והסגנון שלך. הסוכנים יקראו את זה לפני
+            שהם מנסחים טיוטות בשמך, כדי שהטון, הביטויים והערכים שלך יופיעו
+            בכל הודעה.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label
+            htmlFor="business_brief"
+            className="block text-[12.5px] font-medium"
+            style={{ color: "var(--color-ink-2)" }}
+          >
+            תיאור
+          </label>
+          <textarea
+            id="business_brief"
+            value={businessBrief}
+            onChange={(e) => setBusinessBrief(e.target.value)}
+            disabled={isPending}
+            maxLength={BUSINESS_BRIEF_MAX_LENGTH}
+            rows={7}
+            placeholder="לדוגמה: סלון יופי לנשים בעין השופט. אני מתמחה בקרטין וצביעות. אני אוהבת לקרוא ללקוחות שלי 'יקירה' ולסיים שיחה בברכת שבת שלום ביום שישי. אני לא אוהבת טון פורמלי או מילים נמלצות. הכי חשוב לי שהלקוחה תרגיש שמדברים איתה כמו חברה."
+            className="w-full resize-y rounded-[10px] px-3 py-2 text-[13.5px] leading-[1.6] outline-none transition-colors disabled:opacity-60"
+            style={{
+              background: "rgba(255,255,255,0.7)",
+              border: fieldErrors.businessBrief
+                ? "1px solid var(--color-sys-pink)"
+                : "1px solid var(--color-hairline)",
+              color: "var(--color-ink)",
+              minHeight: "160px",
+            }}
+            dir="rtl"
+          />
+          <div className="flex items-center justify-between">
+            {fieldErrors.businessBrief ? (
+              <p
+                className="text-[11.5px]"
+                style={{ color: "var(--color-sys-pink)" }}
+              >
+                {fieldErrors.businessBrief}
+              </p>
+            ) : (
+              <span />
+            )}
+            <p
+              className="text-[11.5px] tabular-nums"
+              style={{ color: briefCounterColor }}
+            >
+              {briefLen} / {BUSINESS_BRIEF_MAX_LENGTH}
+            </p>
+          </div>
         </div>
       </Glass>
 
