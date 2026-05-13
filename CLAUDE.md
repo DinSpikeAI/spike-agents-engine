@@ -2,7 +2,7 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-13 (post-session covering Sprint 3I attempts 1-5 + dashboard runtime fix + agent_runs cleanup). **Major shipped:** `7539dcd` — changed `/dashboard/page.tsx` from `runtime = "edge"` to `"nodejs"`, which fixed 4 previously-broken heavy Sonnet agents (Manager, Sales, Inventory, Social) that were hitting Vercel Hobby's 25s Edge timeout. All 9 customer-facing agents now run successfully via "הרץ עכשיו" buttons (verified end-to-end). DB cleanup of 12 stuck `status='running'` rows in `agent_runs` (some dating back to May 1) was also completed via SQL UPDATE. **Major blocked:** Sprint 3I (Business Context Brief in settings) attempted 5 times across commits `408b4ed` → `cadde7c` → `7580b4d`/`1aa4877` → `331ebb7` → `59feb7b` → `7539dcd`. Settings page renders the new Card 3 textarea correctly, but clicking "שמור הגדרות" still crashes with `ReferenceError: BusinessOwnerGender is not defined at module evaluation` — a Turbopack/SWC bug under `"use server"` + nodejs runtime, documented in new §15.29. Next attempt should rollback to `f19c0fe`, rebuild on Edge runtime (where type erasure works), and add `npm run build` to pre-push checklist per new §15.27. **Prompt caching investigation:** discovered all 5 LLM call sites (Manager, Inventory, Sales×2, Social) are already optimally cached — Inventory and Manager via direct `cache_control` in their `run.ts`, the other three via `withGenderLock` helper in `src/lib/safety/gender-lock.ts` which adds cache automatically. The 30-50% speedup originally proposed from prompt caching is unachievable because the work is already done — see new §15.32. The remaining UX pain ("the agents feel slow") is Sonnet 4.6 generation latency, addressable only via Inngest fire-and-forget (~45-60 min work, deferred). **7 new lessons added (§15.26-§15.32)** documenting all session findings. **Earlier in this period (Sprint 3M, 2026-05-10):** daily auto-send of the Morning agent's Hebrew summary to the **business owner's** WhatsApp at 07:00 IL, validated end-to-end with **Spike's third real WhatsApp delivery** on 2026-05-10 ~22:55 IL: the owner's own daily briefing landing on +972509918196. First Iron-Rule carve-out — "AI מסמן, בעלים מחליט" applies to **customer-facing** messages, owner-self loopback exempt (§15.25). 3M also extracted `lookupWhatsAppIntegration` / `wasContactedInLast24h` / `mapSendErrorToHebrew` to `src/lib/whatsapp/helpers.ts` shared across `actions/drafts.ts`, `actions/growth.ts`, and the new `api/cron/morning/route.ts` — effectively absorbing Sprint 3B. **Three real WhatsApp deliveries from Spike** to a real phone: Growth Reactivation 2026-05-08, Sales quick_response 2026-05-09, Morning daily_summary auto-send to owner 2026-05-10. **The product is functionally complete for design partner #1** apart from the Sprint 3I settings save bug. External blockers only: עוסק מורשה / Meta Business verification / business phone number (paperwork, not code). **Strategic decisions locked — see §19** (pricing now revised to single-package ₪999-1500 direction, see §19.1): BSP 360dialog primary, Meta Cloud direct fallback; wedges = [אשר] button (TM-pending) → voice notes → no-shows ROI; channel = periphery cities + bookkeepers + Achiya rev-share. **Latest commit:** `7539dcd` (dashboard runtime fix + reapplied Sprint 3I — settings still broken on save).
+> **Last updated:** 2026-05-13 evening (post-session: §15.29 RESOLVED + Sprint 3I Phase 2 Batches 1+2 SHIPPED + Batch 4 DESCOPED + Batch 3 PENDING). **Major resolved:** the Sprint 3I save-crash documented in §15.29 ("ReferenceError: BusinessOwnerGender is not defined at module evaluation") was fixed via the **type extraction pattern** — all types/constants moved from the `"use server"` actions file (`src/app/dashboard/settings/actions.ts`) to a neutral sibling `types.ts`. The action file now contains only `"use server"` + imports + async function + private helper, zero type exports. New lesson §15.33. Commit `c4b6942` (verified production: toast appears, brief saves, 0 Vercel errors over 30-min observation window). **Major shipped:** Sprint 3I Phase 2 Batch 1 (settings UI for `business_brief` — Card 3 textarea with 2000-char limit, save action, page loader, plural gender fix as bonus) + Batch 2 (brief injection into 4 Sonnet agents via `withGenderLock` extended with optional 3rd `brief` param — Reviews, Sales Followup, Sales QR, Social; brief block placed AFTER cache breakpoint preserving §15.32 caching; defensive tag-injection escape on the brief content). **Validated end-to-end on demo tenant 2026-05-13:** brief = *"סלון יופי קטן בעין השופט. אני מתמחה בקרטין. אוהבת לקרוא ללקוחות 'יקירה'"*, vertical = "יופי / מספרה" → Social agent produced 3 salon-themed posts including evening post with *"שתפו בתגובות, יקירים ויקירות"* and afternoon post with *"טיפול קרטין, מסכות משקמות"* — proof the brief reaches Sonnet and shapes content/tone on first generation. **Batch 3 pending:** Growth Agent injection (Sonnet draft path; uses direct `cache_control` per §15.32, not `withGenderLock` — different pattern, requires `growth/run.ts` + `growth/draft.ts` + `growth/prompts.ts` inspection). **Batch 4 DESCOPED:** Morning + Hot Leads do not need brief injection — Morning is owner-facing per §15.25 (no customer voice to imitate), Hot Leads produces classification JSON only (no customer-facing text; downstream Sales QR cascade already has brief via Batch 2). The original §19.7 claim of "7 agents to inject" is corrected: **5 customer-facing agents** receive brief (Reviews + Sales×2 + Social done, Growth pending). **2 new lessons added (§15.33 type extraction pattern, §10.40 Sprint 3I Phase 2 documentation).** **Earlier in this period (Sprint 3M, 2026-05-10):** daily auto-send of the Morning agent's Hebrew summary to the **business owner's** WhatsApp at 07:00 IL — Spike's third real WhatsApp delivery (owner-self loopback per §15.25). **Earlier same day 2026-05-13:** dashboard runtime fix `7539dcd` (edge → nodejs, gave heavy Sonnet agents 60s budget instead of 25s) + `agent_runs` cleanup of 12 stuck `running` rows. **The product is functionally complete for design partner #1** — Sprint 3I no longer blocking. External blockers only: עוסק מורשה / Meta Business verification / business phone number (paperwork, not code). **Strategic decisions locked — see §19** (pricing is OPEN QUESTION — §19.1 thesis "single package, all agents" stands but exact number TBD; §12.1's old Solo/Pro/Chain table is deprecated, see header note in §19.1): BSP 360dialog primary, Meta Cloud direct fallback; wedges = [אשר] button (TM-pending) → voice notes → no-shows ROI; channel = periphery cities + bookkeepers + Achiya rev-share. **Latest commits (newest first):** Batch 2 (TBD hash — Sprint 3I Phase 2 Batch 2, 4 Sonnet agents), Batch 1 (TBD hash — Sprint 3I Phase 2 Batch 1, settings UI), `c4b6942` (§15.29 type extraction fix).
 
 ---
 
@@ -484,20 +484,23 @@ For deep webhook integration guidance: `src/lib/agents/watcher/INTEGRATION-NOTES
 
 ## 6. The Agents
 
-### 6.1 The 8 Customer-Facing Agents
+### 6.1 The 9 Customer-Facing Agents
 
-| # | Agent | Model | Trigger | Output | withRetry? | Anti-AI? |
-|---|---|---|---|---|---|---|
-| 1 | Manager | sonnet-4-6 | Weekly cron (Sun) | `manager_reports` | ✅ | ✅ |
-| 2 | Morning | haiku-4-5 | Daily cron 07:00 IL (3M) | `agent_runs.output` JSONB + **WhatsApp auto-send to owner** (3M) | ✅ | ✅ |
-| 3 | Watcher | haiku-4-5 | Real-time webhook + daily cron | `alerts` | ✅ | ✅ |
-| 4 | Reviews | sonnet-4-6 | New review event | drafts (review_reply, platform=google_business_profile → copy-paste) | ✅ | ✅ + Israeli-tone |
-| 5 | Hot Leads | haiku-4-5 | Real-time webhook | `hot_leads` + cascade to Sales QR | ✅ | ✅ |
-| 6 | Social | sonnet-4-6 | Cron 05:30 (no Sat) | drafts (social_post, platform=manual_paste → copy-paste) | ✅ | ✅ + hashtags removed |
-| 7 | Sales | sonnet-4-6 + thinking | TWO entry points §6.8 | drafts (sales_followup × email/IG → copy-paste; sales_quick_response → WhatsApp send) | ✅ | ✅ |
-| 8 | Inventory | sonnet-4-6 | Cron 05:30 Sun/Wed | `agent_runs.output` JSONB + `inventory_snapshots.last_analyzed_at` (NOT drafts — see §10.39 for the validation pass that confirmed this) | ✅ | ✅ |
+| # | Agent | Model | Trigger | Output | withRetry? | Anti-AI? | brief? |
+|---|---|---|---|---|---|---|---|
+| 1 | Manager | sonnet-4-6 | Weekly cron (Sun) | `manager_reports` | ✅ | ✅ | — (owner-facing) |
+| 2 | Morning | haiku-4-5 | Daily cron 07:00 IL (3M) | `agent_runs.output` JSONB + **WhatsApp auto-send to owner** (3M) | ✅ | ✅ | — (owner-facing, §15.25) |
+| 3 | Watcher | haiku-4-5 | Real-time webhook + daily cron | `alerts` | ✅ | ✅ | — (owner-facing alerts) |
+| 4 | Reviews | sonnet-4-6 | New review event | drafts (review_reply, platform=google_business_profile → copy-paste) | ✅ | ✅ + Israeli-tone | ✅ (Sprint 3I Phase 2 Batch 2) |
+| 5 | Hot Leads | haiku-4-5 | Real-time webhook | `hot_leads` + cascade to Sales QR | ✅ | ✅ | — (classification JSON only, no customer text) |
+| 6 | Social | sonnet-4-6 | Cron 05:30 (no Sat) | drafts (social_post, platform=manual_paste → copy-paste) | ✅ | ✅ + hashtags removed | ✅ (Sprint 3I Phase 2 Batch 2) |
+| 7 | Sales | sonnet-4-6 + thinking | TWO entry points §6.8 | drafts (sales_followup × email/IG → copy-paste; sales_quick_response → WhatsApp send) | ✅ | ✅ | ✅ both entry points (Sprint 3I Phase 2 Batch 2) |
+| 8 | Inventory | sonnet-4-6 | Cron 05:30 Sun/Wed | `agent_runs.output` JSONB + `inventory_snapshots.last_analyzed_at` (NOT drafts — see §10.39 for the validation pass that confirmed this) | ✅ | ✅ | — (owner-facing inventory snapshots) |
+| 9 | Growth | haiku-scan + sonnet-draft | Weekly cron (Sun) + on-demand | `growth_candidates` + drafts (growth_reactivation → WhatsApp send) | ✅ | ✅ | ⏭️ Batch 3 PENDING (Sonnet draft path, direct `cache_control`) |
 
-**As of 1.5.3:** ALL 8 agents have anti-AI hygiene at both prompt level AND post-processing level.
+**As of 1.5.3:** ALL 9 agents have anti-AI hygiene at both prompt level AND post-processing level.
+
+**As of Sprint 3I Phase 2 Batch 2 (2026-05-13):** the `business_brief` column reflects which agents inject the owner-authored voice brief into their system prompts. **5 customer-facing agents** are eligible (Reviews, Sales×2, Social, Growth) — those that produce customer-facing text. 4 done, Growth pending. Morning/Hot Leads/Manager/Watcher/Inventory are owner-facing or produce non-text output, so brief is irrelevant (Batch 4 descope rationale; see §10.40).
 
 **As of Sprint 3M (validation pass on 2026-05-10):** the table above was corrected — pre-3M docs claimed Morning + Inventory write to `drafts`, but the actual code shows Morning writes nowhere except `agent_runs.output` and Inventory writes to `inventory_snapshots`. Sprint 3M added the Morning auto-send pipeline; Inventory remains owner-facing only via the `/dashboard/inventory` UI. The corresponding entry in `SPIKE-DRAFT-EXAMPLES.json` (#7 inventory + #8 morning daily_summary) describes intended-but-unimplemented draft shapes — out-of-sync with prod, low-priority cleanup task.
 
@@ -1517,6 +1520,51 @@ Step 4: Re-curl → `{"sent":1, results:[{"outcome":"sent"}]}`. **Spike's third 
 
 ---
 
+### 10.40 Sprint 3I Phase 2 — Business Brief Injection into Customer-Facing Agents (Batches 1+2 DONE, Batch 3 PENDING, Batch 4 DESCOPED) — 2026-05-13
+
+After §15.29 was resolved (commit `c4b6942`, type extraction pattern — see §15.33), Sprint 3I moved from "BLOCKED" to actively shipping. The phase was split into 4 batches; 2 are done, 1 is pending, 1 was descoped after analysis.
+
+**Goal:** persist an owner-authored Hebrew description of their business voice (free-form text up to 2000 chars), and inject it into every customer-facing agent's system prompt so drafts already match the owner's voice on first generation. The killer-differentiator §19.7 called out as the missing piece — Spike's drafts had been "generic Hebrew SMB voice" rather than "this owner's voice".
+
+**Batch 1 — Settings UI (DONE, commit TBD).** Three things shipped together:
+- `src/app/dashboard/settings/types.ts` — added `BUSINESS_BRIEF_MAX_LENGTH = 2000`, `businessBrief: string | null` field in `TenantSettingsInput`.
+- `src/app/dashboard/settings/actions.ts` — `updateTenantSettings` now validates brief length (≤2000 chars), normalizes empty/whitespace to `null` before persist, writes to `tenants.config.business_brief` (top-level JSONB key, not nested under any agent sub-config — it describes the business as a whole).
+- `src/components/dashboard/settings-form.tsx` — new Card 3 "סגנון העסק שלך" with a 7-row textarea, character counter that turns amber at 90% and pink at the cap, importing `BUSINESS_BRIEF_MAX_LENGTH` from `./types`.
+- `src/app/dashboard/settings/page.tsx` — loads `business_brief` from config; also fixed a pre-existing plural-gender bug where `as "male" | "female"` cast silently downgraded plural tenants to male in the form (resolved by using the broader `BusinessOwnerGender` type from `./types` and `VALID_GENDERS` runtime check).
+
+**Verification on demo tenant:** Dean typed *"סלון יופי קטן בעין השופט. אני מתמחה בקרטין. אוהבת לקרוא ללקוחות 'יקירה'"*, clicked save, toast "ההגדרות נשמרו" appeared, SQL `SELECT config->>'business_brief' FROM tenants WHERE id='15ef2c6e-…'` returned the value. Plural gender test (UPDATE → form shows כללי button selected → revert UPDATE) also passed.
+
+**Batch 2 — Injection into 4 Sonnet agents via `withGenderLock` (DONE, commit TBD).** The brief is added to the Anthropic `system` array AFTER the cache breakpoint, preserving §15.32's prompt caching (the static prompt prefix stays cached; only the dynamic gender + brief blocks vary per tenant).
+
+Files modified:
+- **NEW** `src/lib/safety/business-brief.ts` — exports `extractBusinessBrief(config)` (safe JSONB extraction returning `null` for missing/non-string/empty/whitespace) and `buildBusinessBriefBlock(brief)` (formats brief as a `<business_voice>…</business_voice>` XML-style block with defensive tag-injection escape; closing instructions clarify brief affects tone/word-choice/values but does NOT override hard safety rules like em-dash bans, hashtag bans, price-disclosure controls).
+- **MODIFIED** `src/lib/safety/gender-lock.ts` — `withGenderLock(staticPrompt, gender, brief?)` accepts an optional 3rd `brief` parameter. When provided, a 3rd text block (the brief, formatted by `buildBusinessBriefBlock`) is appended after the gender block. Backwards-compatible — existing 2-arg callers continue to work unchanged.
+- **MODIFIED** `src/lib/agents/reviews/run.ts` — added `businessBrief: string | null` to `TenantSafetyContext`; `loadTenantContext` extracts brief in the same DB query (no extra roundtrip); passed as 3rd arg to `withGenderLock`.
+- **MODIFIED** `src/lib/agents/sales/run.ts` — same pattern in the SHARED `loadTenantContext` (one place serving BOTH entry points); brief passed to `withGenderLock` at both call sites (`runSalesAgent` line ~433 + `runSalesQuickResponseOnEvent` line ~703).
+- **MODIFIED** `src/lib/agents/social/run.ts` — same pattern; brief lives at TOP-level config, not nested in `config["social"]` sub-object.
+
+**Verification (definitive, demo tenant, 2026-05-13 evening):** vertical set to `יופי / מספרה`, gender = `male`, brief = the salon description above. Social agent ran via "הרץ עכשיו" → 3 posts at `/dashboard/approvals`:
+- **Evening post** contained *"...שתפו בתגובות, **יקירים ויקירות**, ואולי נוציא מזה גם כמה טיפים..."* — the brief's "יקירה" address adapted naturally into the content.
+- **Afternoon post** contained *"...עכשיו זה הזמן הנכון לטיפול שישמור על השיער... **טיפול קרטין**, מסכות משקמות..."* — the brief's "קרטין" specialty manifested in concrete content.
+- All 3 posts salon-themed (hair care, summer damage, restorative treatments), natural Hebrew, no AI tells.
+
+This is §19.7's "drafts already in owner's voice on first generation" thesis confirmed in production.
+
+**Batch 3 — Growth Agent injection (PENDING).** Growth uses direct `cache_control` in `src/lib/agents/growth/draft.ts` (the Sonnet draft path), NOT `withGenderLock` — different pattern. Requires inspection of `run.ts`, `draft.ts`, and `prompts.ts` to identify the call site and add the brief block AFTER the existing cache breakpoint. The Haiku scan path (`scan.ts`) does NOT need the brief — scan only classifies candidates, no customer-facing text generation. Estimated 1-2 file modifications + 1 commit.
+
+**Batch 4 — Morning + Hot Leads DESCOPED (analysis, no code).** The original §19.7 claim of "7 agents to inject" was wrong. Correct list is **5 customer-facing agents** (Reviews + Sales×2 + Social + Growth). Rationale:
+- **Morning agent:** owner-facing per §15.25 carve-out. Recipient IS the business owner via WhatsApp auto-send at 07:00 IL. No customer voice to imitate. Brief is irrelevant — the agent speaks TO the owner, not FOR the owner.
+- **Hot Leads agent:** produces classification JSON only (`bucket` + `reason` + `suggested_action`). No customer-facing text. The customer-facing text in the Hot Leads flow comes from the Sales QR cascade, which IS customer-facing and DOES inject brief (covered by Batch 2). Adding brief to Hot Leads would be noise that affects nothing.
+- **Manager / Watcher / Inventory:** all owner-facing (manager_reports, alerts, inventory_snapshots). Not customer text. Brief irrelevant for the same reason as Morning.
+
+This descope saves ~2 hours of work that would have produced no observable benefit.
+
+**Commits:** `c4b6942` (§15.29 type extraction fix, Phase 1 unblock) + Batch 1 commit (TBD hash) + Batch 2 commit (TBD hash).
+
+**Architectural note (§15.32 caching preserved):** the brief block's position AFTER the cache breakpoint matters. If it had been added BEFORE the breakpoint, every tenant-specific brief would invalidate the static-prompt cache for that tenant, costing ~25% more on first runs and eliminating the ~80% input-token discount on subsequent runs within the 1h TTL. By placing it after, the cached static prompt stays cached across all tenants while each tenant's brief is a tiny dynamic suffix. Verified at runtime: `agent_runs.usage.cache_read_input_tokens` > 0 on second runs within the TTL window post-Batch-2 deploy.
+
+---
+
 ## 11. Current Status
 
 ### 11.1 What Works ✅ — STAGE 1 COMPLETE + POST-STAGE-1 POLISH
@@ -1687,7 +1735,6 @@ vcita inTandem partnership (OEM) · Voicenter voice channel · Israeli franchise
 | Email-as-product | Mailchimp / ActiveCampaign exist. |
 | Calendar booking | Calendly / vcita won. |
 | Generic chatbot widget | That's the "בוט" we don't sell. |
-| 360dialog / BSP middleman | Direct Meta = $0. |
 | Refer customers to competitors | Decided 1.3.5. Hurts retention. |
 | Merge actions/ files back into one | 1430-line monolith was a maintenance liability. See §1.10, §10.23. |
 
@@ -2513,7 +2560,11 @@ Heavy Sonnet 4.6 + thinking agents on a populated demo tenant exceed 25s but fit
 
 ---
 
-### 15.29 Turbopack/SWC `import type` + `"use server"` + nodejs Runtime Bug ⚠️ UNFIXED
+### 15.29 Turbopack/SWC `import type` + `"use server"` + nodejs Runtime Bug ✓ RESOLVED 2026-05-13
+
+**Resolution (2026-05-13, commit `c4b6942`):** fixed via the **type extraction pattern** — all types and constants moved out of `src/app/dashboard/settings/actions.ts` into a neutral sibling `src/app/dashboard/settings/types.ts`. The "use server" file now contains ONLY `"use server"` + imports + the async exported function + a private `validate()` helper. Zero type exports, zero constant exports. The settings page (`page.tsx`) imports types from `./types`, the form (`settings-form.tsx`) imports types from `./types` and the function from `./actions`. Verified end-to-end on production: clicking "שמור הגדרות" produces the success toast "ההגדרות נשמרו", brief persists to `tenants.config.business_brief`, zero Vercel runtime errors over a 30-min observation window. The general principle is documented in §15.33 (type extraction pattern for Turbopack `"use server"` quirks). **Note:** the §15.27 "tsc + npm run build before every push" rule was instrumental — the fix required clean `.next` cache (§15.5) and `npm run build` gate before commit, both of which earlier attempts had skipped.
+
+Historical record of the bug (preserved for archaeology):
 
 **Symptom:** runtime error `ReferenceError: BusinessOwnerGender is not defined at module evaluation (.next/server/chunks/ssr/_0cwvw...)` when a server action is invoked. The function digest matches the SSR chunk that references a type-only import. Specifically observed in `src/app/dashboard/settings/actions.ts` when it had:
 ```typescript
@@ -2530,28 +2581,19 @@ const VALID_GENDERS = ["male", "female", "plural"] as const satisfies readonly B
 - The user fills the form and clicks "שמור הגדרות" → server action triggered → SSR chunk evaluates → `BusinessOwnerGender` is referenced as a value at module-load time but was never defined as a runtime value (it's a type)
 - Crash happens before the action body executes — the error is at module evaluation, not inside the function
 
-**Worked on Edge, broke on Node:** the SWC plugin Next.js uses for Edge runtime erases the `import type` correctly; the SWC plugin for Node runtime under Turbopack does not (as of Next.js 16.2.4, May 2026). The same file works in Edge but crashes in Node.
+**Worked on Edge, broke on Node:** initially this was believed to be the cause, but the resolution (2026-05-13) found that the settings page had `runtime = "edge"` set throughout AND still crashed. The real cause was Turbopack/SWC mishandling certain type usage patterns inside `"use server"` files **regardless of runtime**. Edge vs Node was a red herring.
 
 **Attempted fixes (all failed during 3I attempts 1-5):**
 1. Remove `as const satisfies readonly BusinessOwnerGender[]` → still crashed (type still referenced via `interface`)
 2. Use inline modifier `import { type BusinessOwnerGender }` instead of `import type { ... }` → still crashed
 3. Remove the `export type` re-export → still crashed (other internal references)
-4. Define `BusinessOwnerGender` LOCALLY in `actions.ts` as `"male" | "female" | "plural"` literal union, removing all imports from `gender-lock.ts` → still crashed (suggesting the bug is more subtle than just the import path)
+4. Define `BusinessOwnerGender` LOCALLY in `actions.ts` as `"male" | "female" | "plural"` literal union, removing all imports from `gender-lock.ts` → still crashed (suggesting the bug is more subtle than just the import path) — likely stale Vercel cache contributed; subsequent attempts didn't run `npm run build` locally before push (§15.27 violation), so the same broken bundle persisted
 5. Add comprehensive try-catch + logging → didn't address root cause; the crash is BEFORE the function runs
 
-**Status:** UNRESOLVED as of session end 2026-05-13. The Sprint 3I attempts were rolled forward through commits `408b4ed` → `cadde7c` → `7580b4d` → `1aa4877` (reverts) → `331ebb7` → `59feb7b` → `7539dcd` (runtime change). The runtime change to nodejs fixed the dashboard but DID NOT fix settings save — settings save still crashes.
+**Why the type extraction pattern worked (where attempts 1-5 didn't):**
+The bug is triggered when Turbopack's SSR chunk for a `"use server"` file references a TYPE in a context that creates a runtime symbol reference (interface fields, `satisfies` clauses, etc). Even local type definitions can trigger this under the wrong circumstances. The solution removes the entire surface: the `"use server"` file has NO type references at all. Types live in `types.ts` (a neutral file with no directives, no `"use server"`, no `"server-only"`), which Turbopack handles correctly. This decoupling sidesteps the bug rather than fighting it.
 
-**Recommended approach for next attempt (session after 2026-05-13):**
-1. Rollback to `f19c0fe` (pre-Sprint-3I, clean baseline)
-2. Build Sprint 3I from scratch BUT:
-   - Keep `src/app/dashboard/settings/actions.ts` on Edge runtime (default), where types erase correctly
-   - Avoid mixing `nodejs` runtime + `"use server"` + transitive type imports in the same file
-   - OR define ALL types locally without any cross-module type imports
-3. Run `npm run build` locally before every commit (§15.27)
-4. Test save action in production immediately after deploy goes green
-5. If crash persists, check Vercel Runtime Logs for the exact module-evaluation error before iterating
-
-**Open question for future investigation:** does the bug reproduce with a minimal repro (`actions.ts` with just `import type { X } from "./other"` and an async function)? If yes — file upstream issue with Next.js/Turbopack. If no — it's a Spike-specific code pattern issue and the fix is structural.
+**Earlier "Recommended approach" (now superseded by the type extraction fix):** rollback to `f19c0fe`, build Sprint 3I from scratch on Edge runtime. This was the plan as of 2026-05-13 morning. The actual fix turned out simpler — type extraction worked on Node runtime without rolling back. The 5 prior attempt commits were preserved and the fix built on top of them.
 
 ---
 
@@ -2686,6 +2728,44 @@ export function withGenderLock(
 
 ---
 
+### 15.33 Type Extraction Pattern for Turbopack `"use server"` Quirks (Sprint 3I resolution lesson) ⚠️
+
+**The rule:** a `"use server"` file should contain ONLY the `"use server"` directive, imports, the async exported function(s), and pure helper functions. **No type exports. No constant exports. No interfaces beyond the function signature's inline parameter type if absolutely needed.** All types and constants belong in a sibling `types.ts` (or `constants.ts`) file with NO directives — Turbopack handles those perfectly, and consumers can import from there.
+
+**Why this matters:** Turbopack/SWC's handling of `"use server"` files is brittle around type usage (see §15.29 for the full history). Even type-only imports can produce runtime `ReferenceError` crashes under the wrong circumstances. The bug surface is essentially unpredictable — you can't tell from reading the code which patterns will trip it. The defensive strategy is to keep `"use server"` files type-free.
+
+**Concrete pattern (Spike's settings folder, the test case for §15.29 resolution):**
+```
+src/app/dashboard/settings/
+├── page.tsx           ← Server Component, imports types from ./types, function from ./actions
+├── actions.ts         ← "use server"; imports types from ./types; defines async updateTenantSettings + private validate(); NO type/constant exports
+├── types.ts           ← Neutral file; defines TenantSettingsInput, UpdateTenantSettingsResult, BUSINESS_BRIEF_MAX_LENGTH, VALID_VERTICALS, VALID_GENDERS, re-exports BusinessOwnerGender
+└── settings-form.tsx  ← "use client"; imports function from ./actions; imports types from ./types
+```
+
+The split lets all three consumers (page, action, form) share types via `./types` while the action file stays minimal and Turbopack-safe.
+
+**Anti-pattern (the §15.29 trap):**
+```typescript
+// actions.ts — BAD
+"use server";
+import type { BusinessOwnerGender } from "@/lib/safety/gender-lock";
+export type { BusinessOwnerGender };  // ← runtime reference under the hood
+const VALID_GENDERS = ["male", "female"] as const satisfies readonly BusinessOwnerGender[];  // ← runtime reference
+export async function updateTenantSettings(...) { ... }
+```
+
+This crashes at module evaluation with `ReferenceError: BusinessOwnerGender is not defined` even when the type is logically erasable. The fix is structural, not patchable — move types out, period.
+
+**Verification:** if you suspect a `"use server"` file has this issue, search it: `grep -E "(interface |type [A-Z]|satisfies|: [A-Z]\w+)" actions.ts`. Any hit is a candidate to relocate. The action file's TypeScript surface should be: `"use server"` + a few imports + one async function signature + body. Nothing more.
+
+**Sibling rules:**
+- §15.5 — clean `.next` cache before reproducing or fixing (stale cache hid the §15.29 fix multiple times)
+- §15.27 — run `npm run build` locally (not just `tsc --noEmit`) before every push; Turbopack issues only manifest in build, not in type-check
+- §15.26 — `"use server"` cannot export non-async values (a stricter sibling of this rule for constants specifically)
+
+---
+
 ## 16. Commit Conventions
 
 Conventional commits, English subject, Hebrew body OK.
@@ -2706,7 +2786,7 @@ If you are Claude reading this for the first time:
 6. ✅ Confirm you've read this file in your first reply, in 2-3 lines max.
 
 **Sample first reply:**
-> קראתי את CLAUDE.md. Spike Engine — 9 סוכני AI מול לקוח (Morning, Watcher, Reviews, Hot Leads, Social, Manager, Sales, Inventory, Growth) + cleanup פנימי, drafts-only **למעט carve-out של 3M ל-owner-self loopback** (ראה §15.25 + §10.39), עברית RTL, Anthropic only. Stage 1 הושלם במלואו + Post-Stage-1 polish דרך 1.16 + Sprint 2 Batch 2C/2D + 3A + **3M (Morning auto-send + helpers extraction = 3B absorbed)** + 2 RLS migrations (025 memberships recursion, 026 events tenant SELECT) + **Dashboard runtime fix (`7539dcd`, 2026-05-13)** שמתקן 4 סוכנים כבדים שנכשלו ב-25s Edge timeout — עכשיו רצים על nodejs runtime עם 60s. **שלוש WhatsApp deliveries אמיתיות הוכחו end-to-end:** Growth Reactivation (דנה כהן) ב-2026-05-08, Sales quick_response (מוחמד אבו ראס) ב-2026-05-09, Morning daily_summary auto-send לבעל-העסק (+972509918196) ב-2026-05-10. /dashboard/approvals מרנדר messageHebrew נכון לאחר 3A; double-execute race בdrafts.ts מוקשח (§15.23 mitigations 1+2); helpers משותפים ב-`src/lib/whatsapp/helpers.ts` (3M). **All 5 LLM call sites already optimally cached** (Manager + Inventory direct, Sales×2 + Social via `withGenderLock` — see §15.32). **Cron:** 8 jobs ב-vercel.json, Morning ב-`0 4 * * *`. הכל בייצור על app.spikeai.co.il. **חוסם פתוח: Sprint 3I — Business Context Brief** — settings page נשבר בלחיצת "שמור" עם `ReferenceError: BusinessOwnerGender is not defined at module evaluation` (Turbopack/SWC bug תחת nodejs runtime, §15.29). 5 ניסיונות תיקון נכשלו. הגישה המומלצת לסשן הבא: rollback ל-`f19c0fe`, בנייה מחדש על Edge runtime, `npm run build` לוקלי לפני כל commit (§15.27). **לקחים חדשים נוספו:** §15.26 (`"use server"` לא יכול לייצא non-async), §15.27 (`tsc --noEmit` ≠ `next build`), §15.28 (Vercel Hobby: Edge 25s vs Node 60s), §15.29 (Turbopack import type bug — unfixed), §15.30 (`agent_runs` schema + cleanup SQL), §15.31 (Compress-Archive collisions), §15.32 (`withGenderLock` caching). Latest commit: `7539dcd` (runtime fix + reapplied 3I); הLAST KNOWN GOOD לפני 3I זה `f19c0fe`. חוסמים חיצוניים: עוסק מורשה / Meta Business verification / מספר טלפון עסקי. אופציונלי-לא-חוסם: Vault encryption ל-access_token, sonner Toaster migration (alert→toast), Suspense pattern לדפים נוספים, marketing landing alignment, 3X (Watcher auto-send), 3Y (Manager weekly auto-send), Inngest fire-and-forget לסוכנים כבדים. **החלטות אסטרטגיות נעולות (§19):** pricing **revised** ל-package יחיד ₪999-1500 (§19.1 מציין שהמודל הישן של 4 tiers deprecated); BSP=360dialog; wedge=[אשר] button + voice notes + no-shows ROI; channel=periphery + bookkeepers + Achiya. מה אתה רוצה לעשות?
+> קראתי את CLAUDE.md. Spike Engine — 9 סוכני AI מול לקוח (Morning, Watcher, Reviews, Hot Leads, Social, Manager, Sales, Inventory, Growth) + cleanup פנימי, drafts-only **למעט carve-out של 3M ל-owner-self loopback** (ראה §15.25 + §10.39), עברית RTL, Anthropic only. Stage 1 הושלם במלואו + Post-Stage-1 polish דרך 1.16 + Sprint 2 Batch 2C/2D + 3A + **3M (Morning auto-send + helpers extraction = 3B absorbed)** + 2 RLS migrations (025 memberships recursion, 026 events tenant SELECT) + **Dashboard runtime fix (`7539dcd`, 2026-05-13)** שמתקן 4 סוכנים כבדים שנכשלו ב-25s Edge timeout — עכשיו רצים על nodejs runtime עם 60s. **שלוש WhatsApp deliveries אמיתיות הוכחו end-to-end:** Growth Reactivation (דנה כהן) ב-2026-05-08, Sales quick_response (מוחמד אבו ראס) ב-2026-05-09, Morning daily_summary auto-send לבעל-העסק (+972509918196) ב-2026-05-10. /dashboard/approvals מרנדר messageHebrew נכון לאחר 3A; double-execute race בdrafts.ts מוקשח (§15.23 mitigations 1+2); helpers משותפים ב-`src/lib/whatsapp/helpers.ts` (3M). **All 5 LLM call sites already optimally cached** (Manager + Inventory direct, Sales×2 + Social via `withGenderLock` — see §15.32). **Cron:** 8 jobs ב-vercel.json, Morning ב-`0 4 * * *`. הכל בייצור על app.spikeai.co.il. **Sprint 3I — Business Context Brief — Phase 2 SHIPPED ✅ ✅ ⏭️ (Batches 1+2 done, Batch 3 Growth pending, Batch 4 descoped):** Phase 1 unblocked ב-2026-05-13 דרך §15.33 type extraction pattern (commit `c4b6942` — הוצאת כל הtypes/constants מ-"use server" actions.ts לקובץ `types.ts` נייטרלי). Batch 1 (settings UI ל-business_brief — Card 3 textarea 2000 chars + save action + page loader + תיקון bonus של plural-gender) + Batch 2 (הזרקה ל-4 Sonnet agents — Reviews/Sales×2/Social דרך withGenderLock עם פרמטר brief אופציונלי 3rd, ה-block ממוקם אחרי ה-cache breakpoint לשמירה על §15.32 caching). אומת end-to-end על demo tenant: brief="סלון יופי...אוהבת לקרוא ללקוחות 'יקירה'" → Social יצר 3 פוסטים עם "יקירים ויקירות" ו"טיפול קרטין" — proof of voice injection. **Batch 3 pending:** Growth agent (Sonnet draft path, pattern שונה — direct cache_control, לא withGenderLock). **Batch 4 descoped:** Morning + Hot Leads לא זקוקים ל-brief (Morning owner-facing §15.25; Hot Leads classification JSON only — downstream Sales QR מכוסה). **לקחים חדשים נוספו:** §15.26 (`"use server"` לא יכול לייצא non-async), §15.27 (`tsc --noEmit` ≠ `next build`), §15.28 (Vercel Hobby: Edge 25s vs Node 60s), **§15.29 (Turbopack import type bug — RESOLVED 2026-05-13)**, §15.30 (`agent_runs` schema + cleanup SQL), §15.31 (Compress-Archive collisions), §15.32 (`withGenderLock` caching), **§15.33 (type extraction pattern for "use server" — Sprint 3I resolution)**. **Latest commits:** Batch 2 (TBD), Batch 1 (TBD), `c4b6942` (§15.29 fix). חוסמים חיצוניים: עוסק מורשה / Meta Business verification / מספר טלפון עסקי. אופציונלי-לא-חוסם: Vault encryption ל-access_token, sonner Toaster migration (alert→toast), Suspense pattern לדפים נוספים, marketing landing alignment, 3X (Watcher auto-send), 3Y (Manager weekly auto-send), Inngest fire-and-forget לסוכנים כבדים. **החלטות אסטרטגיות נעולות (§19):** pricing **OPEN QUESTION** — §19.1 thesis "single package, all agents" עומדת אבל המספר המדויק TBD; §12.1's old Solo/Pro/Chain table deprecated; BSP=360dialog; wedge=[אשר] button + voice notes + no-shows ROI; channel=periphery + bookkeepers + Achiya. מה אתה רוצה לעשות?
 
 ---
 
@@ -2728,7 +2808,10 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 
 | Hash | What |
 |---|---|
-| `7539dcd` | fix(dashboard): switch from edge to nodejs runtime to give heavy Sonnet agents 60s instead of 25s — also re-applied Sprint 3I (settings page still broken on save, see §15.29) |
+| TBD | feat(agents): business_brief injection in Reviews/Sales/Social via withGenderLock (Sprint 3I Phase 2 Batch 2 — see §10.40) |
+| TBD | feat(settings): business_brief textarea + save + load + plural-gender fix (Sprint 3I Phase 2 Batch 1 — see §10.40) |
+| `c4b6942` | fix(settings): extract types out of "use server" actions.ts into neutral types.ts — resolves §15.29 ReferenceError + unblocks Sprint 3I Phase 2 (see §15.33 type extraction pattern) |
+| `7539dcd` | fix(dashboard): switch from edge to nodejs runtime to give heavy Sonnet agents 60s instead of 25s — also re-applied Sprint 3I attempt (settings save fixed later by `c4b6942`) |
 | `59feb7b` | Reapply "fix(settings): move BUSINESS_BRIEF_MAX_LENGTH to constants.ts" (Sprint 3I attempt; settings save STILL crashes — §15.29) |
 | `331ebb7` | Reapply "feat(settings): Sprint 3I Phase 1 — Business Context Brief in settings + reviews agent injection" (Sprint 3I attempt; settings save STILL crashes — §15.29) |
 | `7580b4d` | Revert "feat(settings): Sprint 3I Phase 1" (intermediate rollback, later reapplied) |
@@ -2959,7 +3042,7 @@ Each is a separate session / batch. Don't combine.
 - **Sprint 3A — UI fix for approvals page** ✅ DONE — display `messageHebrew` + render `message` field from approveDraft response + double-execute hardening (§15.23 mitigations 1+2). See §10.38. Commit `1ab5a08`.
 - **Sprint 3B — helpers extraction** ✅ DONE (absorbed into 3M, see §10.39) — `src/lib/whatsapp/helpers.ts` now houses `lookupWhatsAppIntegration`, `wasContactedInLast24h`, `mapSendErrorToHebrew`. Function name harmonized (was `lookupTenantWhatsAppIntegration` in growth.ts). All three callers (drafts.ts, growth.ts, cron/morning/route.ts) import from one place. Commit `2e72f78`.
 - **Sprint 3M — Morning auto-send to owner via WhatsApp** ✅ DONE — first Iron-Rule carve-out (owner-self loopback, §15.25). Cron at `0 4 * * *` UTC. End-to-end validated 2026-05-10 with the third real WhatsApp delivery from Spike (owner's own daily briefing). See §10.39. Commit `2e72f78`.
-- **Sprint 3I — Business Context Brief (self-service brand voice)** ⚠️ **BLOCKED** (attempts 2026-05-12/13 failed, see §15.29) — `/dashboard/settings` page where the owner writes a free-form Hebrew description of their business: what they sell, how they work, how they talk to customers, their style, anything that defines their voice. Stored in `tenants.config->>'business_brief'` (or new dedicated column `tenants.brief text`). Injected into the system prompt of every customer-facing agent (Sales QR, Sales Followup, Reviews, Social, Growth, Hot Leads, Morning summary) as a `<business_context>...</business_context>` block. Effect: drafts already match the owner's voice on first generation — no manual editing required. **This is the missing killer-differentiator** the product has been operating without — every Spike draft is currently "generic Hebrew SMB voice" rather than "this owner's voice." 4-8 hours of work: migration (optional — config JSONB works); settings UI (textarea + save action); prompt injection across 7 agents (find-and-replace pattern in `src/lib/agents/*/prompt.ts`). **Status as of 2026-05-13:** Phase 1 implementation was attempted across commits `408b4ed` → `cadde7c` → `7580b4d`/`1aa4877` (reverts) → `331ebb7` → `59feb7b` → `7539dcd`. Settings page renders the new Card 3 with textarea correctly, but clicking "שמור הגדרות" crashes with `ReferenceError: BusinessOwnerGender is not defined at module evaluation` (Turbopack/SWC bug under nodejs runtime — see §15.29). 5 fix attempts failed. **Recommended approach for next attempt:** rollback to `f19c0fe`, build Sprint 3I from scratch using Edge runtime (where the type-erasure works correctly), and add `npm run build` to pre-push checklist (§15.27). **Relationship to Sprint 3G:** 3G is the AI-driven version of this — auto-extract the brief from the business's website / Google reviews / Instagram during onboarding. 3I ships the manual version first (the foundation); 3G later auto-populates 3I via Sonnet during onboarding (the magic moment). Ship 3I before 3G.
+- **Sprint 3I — Business Context Brief (self-service brand voice)** ⏳ **IN PROGRESS** (Phase 1 unblocked 2026-05-13 via §15.33 type extraction; Phase 2 Batches 1+2 SHIPPED + Batch 3 PENDING — see §10.40) — `/dashboard/settings` page where the owner writes a free-form Hebrew description of their business: what they sell, how they work, how they talk to customers, their style, anything that defines their voice. Stored in `tenants.config->>'business_brief'` (TOP-level JSONB key). Injected into the system prompt of **5 customer-facing agents** (Reviews ✅, Sales Followup ✅, Sales QR ✅, Social ✅, Growth ⏭️) as a `<business_voice>…</business_voice>` block placed AFTER the §15.32 cache breakpoint to preserve prompt caching. **Batch 4 (Morning + Hot Leads) DESCOPED** after analysis — Morning is owner-facing (§15.25), Hot Leads produces classification JSON only (downstream Sales QR already covered). Original "7 agents" claim was wrong; correct count is 5. **Effect on day-one production:** drafts already match the owner's voice on first generation — no manual editing required. **Validated end-to-end on demo tenant 2026-05-13** with brief = *"סלון יופי קטן בעין השופט. אני מתמחה בקרטין. אוהבת לקרוא ללקוחות 'יקירה'"*: Social agent produced 3 salon-themed posts with *"יקירים ויקירות"* + *"טיפול קרטין"* — proof of voice injection. **Resolution history:** Phase 1 was attempted across commits `408b4ed` → `cadde7c` → `7580b4d`/`1aa4877` (reverts) → `331ebb7` → `59feb7b` → `7539dcd` (5 attempts failed with `ReferenceError: BusinessOwnerGender is not defined at module evaluation` — see §15.29). The §15.33 type extraction pattern (commit `c4b6942`) resolved it by moving all types/constants out of the `"use server"` actions.ts into a neutral sibling `types.ts`. **Relationship to Sprint 3G:** 3G is the AI-driven version — auto-extract the brief from the business's website / Google reviews / Instagram during onboarding, pre-filling 3I's settings textarea. 3G now has a stable foundation to build on.
 - **Sprint 3X — Watcher auto-send alerts to owner** (candidate, not started) — same template as 3M applied to Watcher's `alerts` table. Eligible for the same owner-self carve-out per §15.25. Estimated ~30-45 min using the established pattern. Pre-flight: decide which alert severities trigger WhatsApp (probably `high` only) vs which stay dashboard-only.
 - **Sprint 3Y — Manager weekly auto-send to owner** (candidate, not started) — same template applied to Manager's weekly `manager_reports`. Sundays. Estimated ~30-45 min. Higher-leverage than 3X for Israeli SMBs because Sunday-morning weekly digest matches the actual week-start there.
 - **Sprint 3C — Voice-note-to-Hebrew-draft pipeline** — ElevenLabs Scribe ingestion + Haiku post-pass for code-switching + draft generation (~3 weeks, the highest-ROI feature on the backlog).
