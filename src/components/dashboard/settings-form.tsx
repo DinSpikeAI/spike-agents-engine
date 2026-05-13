@@ -8,6 +8,13 @@
 // server action on submit, and displays both inline field errors AND a
 // sonner toast on success/failure (decision (ג) from spec discussion).
 //
+// §15.29 mitigation (attempt 6): types are now imported from
+// @/app/dashboard/settings/types (neutral file), NOT re-exported via
+// the "use server" actions file. The previous pattern
+// (`import { updateTenantSettings, type X, type Y } from "../actions"`)
+// was implicated in the Turbopack bundler crash. Function import stays
+// from actions; type imports moved to types.
+//
 // Style: Calm Frosted — Glass primitive cards, CSS variables for colors,
 // inline styles for system colors.
 
@@ -15,11 +22,11 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Loader2, Check } from "lucide-react";
 import { Glass } from "@/components/ui/glass";
-import {
-  updateTenantSettings,
-  type Vertical,
-  type BusinessOwnerGender,
-} from "@/app/dashboard/settings/actions";
+import { updateTenantSettings } from "@/app/dashboard/settings/actions";
+import type {
+  Vertical,
+  BusinessOwnerGender,
+} from "@/app/dashboard/settings/types";
 
 interface SettingsFormProps {
   initialOwnerName: string;
@@ -58,7 +65,8 @@ export function SettingsForm({
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Track if the form has changed from initial — used to disable button when nothing to save.
+  // Track if the form has changed from initial — used to disable button
+  // when nothing to save.
   const hasChanges =
     ownerName !== initialOwnerName ||
     businessName !== initialBusinessName ||
@@ -185,7 +193,7 @@ export function SettingsForm({
           )}
         </div>
 
-        {/* Gender — radio buttons */}
+        {/* Gender — button toggle */}
         <div className="space-y-1.5">
           <label
             className="block text-[12.5px] font-medium"
