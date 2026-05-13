@@ -8,7 +8,7 @@
 //
 // Flow:
 //   1. Insert growth_runs row (status='running')
-//   2. Load tenant context for prompts
+//   2. Load tenant context for prompts (including Sprint 3I business_brief)
 //   3. Gather candidates from internal interactions + Meta inbox
 //   4. Haiku scan → top scored
 //   5. For each top-N: build draft context, run Sonnet (concurrency 5)
@@ -38,6 +38,7 @@ import {
   MAX_CANDIDATES_PER_RUN,
 } from "./_shared";
 import type { TenantContextForGrowth } from "./prompts";
+import { extractBusinessBrief } from "@/lib/safety/business-brief";
 import type {
   CandidateInput,
   GrowthCandidateStatus,
@@ -427,6 +428,13 @@ async function loadTenantContextForGrowth(
     vertical: config.vertical ?? "general",
     toneNotes: config.tone_notes ?? null,
     signatureStyle: config.signature_style ?? null,
+    // Sprint 3I Phase 2 Batch 3 — extract owner voice brief from the
+    // top-level config.business_brief key (same row, no extra query).
+    // extractBusinessBrief returns null when missing/empty/whitespace,
+    // and draft.ts skips brief block emission when null.
+    businessBrief: extractBusinessBrief(
+      tenant.config as Record<string, unknown> | null
+    ),
   };
 }
 

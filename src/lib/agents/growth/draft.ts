@@ -11,11 +11,21 @@
 // drafts that's ~₪0.60 (Sonnet stage), plus ~₪0.90 (Haiku scan) =
 // ~₪1.50 per run. Times 4-5 runs/month = ~₪6 base, dropping to ~₪3-4
 // after caching kicks in.
+//
+// Sprint 3I Phase 2 Batch 3 (2026-05-13): owner-authored voice brief
+// from tenants.config.business_brief is injected as a third system block
+// AFTER the two existing cached blocks. The brief block has NO
+// cache_control — it's the dynamic tail. This keeps brief edits from
+// invalidating the cached static prompt + cached tenant context.
+// Brief edits are more frequent than vertical/tone-notes edits (owners
+// iterate on brief), so the cache wins more often this way.
+// See §10.40 + §15.32 + §15.33 in CLAUDE.md.
 
 import "server-only";
 import { anthropic } from "@/lib/anthropic";
 import { withRetry } from "@/lib/with-retry";
 import { stripAiTellsDeep } from "@/lib/safety/anti-ai-strip";
+import { buildBusinessBriefBlock } from "@/lib/safety/business-brief";
 import { GROWTH_DRAFT_OUTPUT_SCHEMA } from "./schemas";
 import {
   SONNET_DRAFT_SYSTEM_PROMPT,
@@ -51,23 +61,44 @@ export async function runGrowthDraft(
 ): Promise<GrowthDraftResult> {
   const tenantContextBlock = buildTenantContextBlock(tenantContext);
 
+  // Build the system array. Two cached blocks (static prompt + per-tenant
+  // context) followed by an optional NON-cached brief block. Conditional
+  // spread avoids emitting an empty block when the tenant hasn't filled
+  // out their brief — keeps the prompt minimal for new tenants.
+  const systemBlocks: Array<{
+    type: "text";
+    text: string;
+    cache_control?: { type: "ephemeral"; ttl: "1h" };
+  }> = [
+    {
+      type: "text",
+      text: SONNET_DRAFT_SYSTEM_PROMPT,
+      cache_control: { type: "ephemeral", ttl: "1h" },
+    },
+    {
+      type: "text",
+      text: tenantContextBlock,
+      cache_control: { type: "ephemeral", ttl: "1h" },
+    },
+  ];
+
+  // Sprint 3I Phase 2 Batch 3 — append owner voice brief as 3rd block.
+  // No cache_control on this block; it varies per brief edit, and we
+  // want the two preceding blocks to stay cached when only the brief
+  // changes between runs.
+  if (tenantContext.businessBrief) {
+    systemBlocks.push({
+      type: "text",
+      text: buildBusinessBriefBlock(tenantContext.businessBrief),
+    });
+  }
+
   const response = await withRetry(
     () =>
       anthropic.messages.create({
         model: MODEL,
         max_tokens: 800,
-        system: [
-          {
-            type: "text",
-            text: SONNET_DRAFT_SYSTEM_PROMPT,
-            cache_control: { type: "ephemeral", ttl: "1h" },
-          },
-          {
-            type: "text",
-            text: tenantContextBlock,
-            cache_control: { type: "ephemeral", ttl: "1h" },
-          },
-        ],
+        system: systemBlocks,
         messages: [
           {
             role: "user",

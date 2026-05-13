@@ -10,6 +10,15 @@
 // block. The 1h ephemeral TTL is right for Growth: the Sunday-morning cron
 // fires Sonnet 10-15 times in succession, so cache reads (0.1x base) save
 // ~50% of Sonnet cost on the run after the first call.
+//
+// Sprint 3I Phase 2 Batch 3 (2026-05-13): owner-authored voice brief is
+// loaded into TenantContextForGrowth.businessBrief by run.ts and injected
+// into draft.ts as a third NON-cached system block placed after the
+// two existing cached blocks. The brief deliberately lives OUTSIDE the
+// cached tenant-context block so edits to the brief don't invalidate
+// the cache for the rest of the tenant context (name/vertical/tone
+// change rarely; brief is edited more often by iterating owners).
+// See §10.40 + §15.33 in CLAUDE.md.
 
 import "server-only";
 
@@ -103,6 +112,16 @@ export interface TenantContextForGrowth {
   toneNotes: string | null;
   /** Signature preference (e.g. "ללא חתימה" / "כולל שם פרטי") */
   signatureStyle: string | null;
+  /**
+   * Sprint 3I Phase 2 — owner-authored voice brief from
+   * tenants.config.business_brief. Loaded by run.ts via
+   * extractBusinessBrief. Used by draft.ts to add a third
+   * NON-cached system block via buildBusinessBriefBlock. Null
+   * for tenants who haven't filled the settings textarea yet.
+   * Intentionally NOT included in buildTenantContextBlock — see
+   * the cache-rationale note at the top of this file.
+   */
+  businessBrief: string | null;
 }
 
 export function buildTenantContextBlock(ctx: TenantContextForGrowth): string {
