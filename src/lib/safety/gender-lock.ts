@@ -16,8 +16,16 @@
 // The fix: lock gender at the prompt level via tenants.business_owner_gender.
 // Inject the instruction AFTER the cached static prefix (so the cache still
 // works for the static portion; only the gender line is dynamic).
+//
+// Sprint 3I — withGenderLock now optionally accepts a `brief` parameter
+// (the owner's free-form business voice description from
+// tenants.config.business_brief). When provided, a third text block is
+// appended after the gender block. The brief lives AFTER the cache
+// breakpoint, so tenant-specific brief content doesn't invalidate the
+// cached static prompt prefix (§15.32).
 
 import "server-only";
+import { buildBusinessBriefBlock } from "./business-brief";
 
 export type BusinessOwnerGender = "male" | "female" | "plural";
 
@@ -40,19 +48,26 @@ export function buildGenderInstruction(g: BusinessOwnerGender): string {
 }
 
 /**
- * Inject gender instruction into a `system` array for the Anthropic API.
+ * Inject gender instruction (and optional business brief) into a `system`
+ * array for the Anthropic API.
  *
- * Pattern:
- *   system: [
- *     { type: "text", text: STATIC_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } },
- *     { type: "text", text: buildGenderInstruction(tenant.business_owner_gender) }
- *   ]
+ * Block layout:
+ *   [0] STATIC_PROMPT with cache_control breakpoint  ← cached, never changes
+ *   [1] gender instruction                            ← dynamic, no cache
+ *   [2] business voice brief (if provided)            ← dynamic, no cache
  *
- * The static portion stays cached. Only the gender block changes per tenant.
+ * Brief is appended AFTER the cache breakpoint so it varies per tenant
+ * without invalidating the cached static prompt portion (§15.32).
+ *
+ * Sprint 3I: the third `brief` parameter is OPTIONAL and BACKWARDS-
+ * COMPATIBLE — existing callers that pass only (staticPrompt, gender)
+ * continue to work unchanged. Callers that want owner-voice injection
+ * pass the brief loaded via `extractBusinessBrief(tenants.config)`.
  */
 export function withGenderLock(
   staticPrompt: string,
-  gender: BusinessOwnerGender | null
+  gender: BusinessOwnerGender | null,
+  brief?: string | null,
 ): { type: "text"; text: string; cache_control?: { type: "ephemeral"; ttl: "1h" } }[] {
   const blocks: ReturnType<typeof withGenderLock> = [
     {
@@ -75,6 +90,15 @@ export function withGenderLock(
     });
   }
 
+  // Sprint 3I — append business voice brief if configured for this tenant.
+  // Null/empty brief = no injection (default for tenants pre-3I).
+  if (brief) {
+    blocks.push({
+      type: "text",
+      text: buildBusinessBriefBlock(brief),
+    });
+  }
+
   return blocks;
 }
 
@@ -87,7 +111,7 @@ export function withGenderLock(
  */
 export function detectGenderViolations(
   text: string,
-  expectedGender: BusinessOwnerGender
+  expectedGender: BusinessOwnerGender,
 ): string[] {
   const violations: string[] = [];
 

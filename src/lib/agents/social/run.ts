@@ -1,16 +1,18 @@
 /**
  * Social Agent — Day 14 + Sub-stage 1.5.1 (LLM retry)
  *                + 1.5.1 hotfix (anti-AI post-processing + hashtags removal)
+ *                + Sprint 3I (owner voice brief injection)
  *
  * Generates 3 daily Hebrew social media post drafts.
  * Owner copy-pastes manually to Instagram/Facebook (no auto-posting).
  *
  * Pipeline:
- *   1. Load tenant context (name, vertical, owner, social config)
+ *   1. Load tenant context (name, vertical, owner, social config, brief)
  *   2. Resolve "today" — date, day-of-week, holiday status
  *   3. Build prompt with all context (silent-day branch returns empty posts)
  *   4. Send to Sonnet 4.6 with native JSON schema output
  *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
+ *      — system blocks include owner voice brief (Sprint 3I, after cache breakpoint)
  *   5. Strip AI signature tells (em-dash, hashtags inline) — 1.5.1 hotfix
  *      — ALSO: empty the hashtags[] array per post (visual AI-spam in UI)
  *   6. Persist each post as a draft row in the drafts table:
@@ -43,6 +45,7 @@ import {
   type SocialPromptContext,
 } from "./prompt";
 import { withGenderLock, type BusinessOwnerGender } from "@/lib/safety/gender-lock";
+import { extractBusinessBrief } from "@/lib/safety/business-brief";
 import type { RunResult } from "../types";
 
 const MODEL = "claude-sonnet-4-6" as const;
@@ -95,6 +98,8 @@ interface TenantSocialContext {
   ctaDefault: string;
   audienceGenderFocus: "all" | "feminine" | "masculine";
   configIsEmpty: boolean;
+  /** Sprint 3I — owner-authored voice brief from tenants.config.business_brief. */
+  businessBrief: string | null;
 }
 
 async function loadTenantContext(tenantId: string): Promise<TenantSocialContext> {
@@ -136,6 +141,9 @@ async function loadTenantContext(tenantId: string): Promise<TenantSocialContext>
         | "feminine"
         | "masculine") ?? "all",
     configIsEmpty,
+    // Sprint 3I — brief lives at the TOP level of config (not nested in
+    // `social` sub-config) since it describes the business as a whole.
+    businessBrief: extractBusinessBrief(config),
   };
 }
 
@@ -217,10 +225,12 @@ export async function runSocialAgent(
     configIsEmpty: tenant.configIsEmpty,
   };
 
-  // ─── Build system blocks (cached + gender-locked) ───────────
+  // ─── Build system blocks (cached + gender-locked + brief) ───
+  // Sprint 3I: brief appended after cache breakpoint via withGenderLock 3rd arg.
   const systemBlocks = withGenderLock(
     SOCIAL_AGENT_SYSTEM_PROMPT,
-    tenant.gender
+    tenant.gender,
+    tenant.businessBrief,
   );
 
   // ─── Define the executor that runAgent will call ────────────

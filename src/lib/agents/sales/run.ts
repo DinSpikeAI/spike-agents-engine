@@ -1,5 +1,6 @@
 /**
  * Sales Agent — Day 15 + Sub-stage 1.3 (LLM retry) + Sub-stage 1.3.5 (quick response)
+ *               + Sprint 3I (owner voice brief injection)
  *
  * Two distinct entry points sharing this file:
  *
@@ -16,8 +17,14 @@
  * Both functions share `loadTenantContext`, `buildWhatsappUrl`, and use
  * `runAgent` for unified observability (agent_runs row, cost_ledger).
  *
+ * Sprint 3I: the shared loadTenantContext now extracts the owner voice
+ * brief from `tenants.config.business_brief` in the same DB query (no
+ * extra roundtrip). The brief is passed to `withGenderLock` as a 3rd
+ * arg in BOTH entry points so it lands in the system prompt after the
+ * cache breakpoint (§15.32).
+ *
  * STUCK pipeline (existing, unchanged from Sub-stage 1.3):
- *   1. Load tenant context (name, vertical, sales config)
+ *   1. Load tenant context (name, vertical, sales config, brief)
  *   2. Query stuck leads:
  *        bucket IN ('warm','hot','blazing')
  *        AND status = 'classified'
@@ -29,7 +36,7 @@
  *
  * QUICK RESPONSE pipeline (new in 1.3.5):
  *   1. Idempotency: check if a sales_quick_response draft already exists for this event
- *   2. Load event + tenant
+ *   2. Load event + tenant (including brief)
  *   3. Build single-lead block from event.payload
  *   4. Send to Sonnet 4.6 (wrapped in withRetry) with quick-response schema
  *   5. Persist single draft (type='sales_quick_response', context.event_id=eventId)
@@ -55,6 +62,7 @@ import {
   type SalesQuickResponsePromptContext,
 } from "./prompt-quick-response";
 import { withGenderLock, type BusinessOwnerGender } from "@/lib/safety/gender-lock";
+import { extractBusinessBrief } from "@/lib/safety/business-brief";
 import type { RunResult } from "../types";
 
 const MODEL = "claude-sonnet-4-6" as const;
@@ -117,6 +125,8 @@ interface TenantSalesContext {
   availabilityLink: string | null;
   servicesPricingDisclose: boolean;
   followUpAggressiveness: "gentle" | "standard" | "persistent";
+  /** Sprint 3I — owner-authored voice brief from tenants.config.business_brief. */
+  businessBrief: string | null;
 }
 
 async function loadTenantContext(tenantId: string): Promise<TenantSalesContext> {
@@ -158,6 +168,9 @@ async function loadTenantContext(tenantId: string): Promise<TenantSalesContext> 
         | "gentle"
         | "standard"
         | "persistent") ?? "standard",
+    // Sprint 3I — brief lives at the TOP level of config (not nested in
+    // `sales` sub-config) since it describes the business as a whole.
+    businessBrief: extractBusinessBrief(config),
   };
 }
 
@@ -429,10 +442,12 @@ export async function runSalesAgent(
     )
     .join("\n\n");
 
-  // ─── Build system blocks (cached + gender-locked) ───────────
+  // ─── Build system blocks (cached + gender-locked + brief) ───
+  // Sprint 3I: brief appended after cache breakpoint via withGenderLock 3rd arg.
   const systemBlocks = withGenderLock(
     SALES_AGENT_SYSTEM_PROMPT,
-    tenant.gender
+    tenant.gender,
+    tenant.businessBrief,
   );
 
   // ─── Define the executor ────────────────────────────────────
@@ -699,10 +714,12 @@ export async function runSalesQuickResponseOnEvent(
 ההודעה: ${rawMessage}
 </LEAD>`;
 
-  // ─── Build system blocks (gender-locked) ────────────────────
+  // ─── Build system blocks (gender-locked + brief) ────────────
+  // Sprint 3I: brief appended after cache breakpoint via withGenderLock 3rd arg.
   const systemBlocks = withGenderLock(
     SALES_QUICK_RESPONSE_SYSTEM_PROMPT,
-    tenant.gender
+    tenant.gender,
+    tenant.businessBrief,
   );
 
   // ─── Define executor ────────────────────────────────────────

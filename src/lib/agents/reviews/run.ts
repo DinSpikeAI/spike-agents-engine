@@ -1,6 +1,7 @@
 /**
  * Reviews Agent — Day 8 + Sub-stage 1.5.1 (LLM retry on main reviews call)
  *                + 1.5.1 hotfix (anti-AI post-processing)
+ *                + Sprint 3I (owner voice brief injection)
  *
  * Pipeline:
  *   1. Receive list of mock reviews from action layer
@@ -8,6 +9,7 @@
  *   3. Wrap each scrubbed review in <REVIEW_CONTENT> sentinel tags
  *   4. Send all wrapped reviews to Sonnet 4.6 in one call
  *      — wrapped in withRetry: 3 attempts, 1s/2s/4s exponential backoff
+ *      — system blocks include owner voice brief (Sprint 3I, after cache breakpoint)
  *   5. Sonnet returns N drafts (one per review)
  *   6. Strip AI signature tells (em-dash, en-dash, hashtags) — 1.5.1 hotfix
  *   7. For each draft, run defamation check (Haiku 4.5)
@@ -39,6 +41,7 @@ import {
 import { scrubPii, hashRecipient } from "@/lib/safety/pii-scrubber";
 import { wrapUntrustedInput } from "@/lib/safety/prompt-injection-guard";
 import { withGenderLock, type BusinessOwnerGender } from "@/lib/safety/gender-lock";
+import { extractBusinessBrief } from "@/lib/safety/business-brief";
 import { checkDefamationRisk } from "@/lib/safety/defamation-guard";
 import type {
   ReviewsAgentOutput,
@@ -66,6 +69,8 @@ interface TenantSafetyContext {
   vertical: string;
   ownerName: string;
   businessName: string;
+  /** Sprint 3I — owner-authored voice brief from tenants.config.business_brief. */
+  businessBrief: string | null;
 }
 
 async function loadTenantContext(tenantId: string): Promise<TenantSafetyContext> {
@@ -82,15 +87,19 @@ async function loadTenantContext(tenantId: string): Promise<TenantSafetyContext>
     throw new Error(`Tenant ${tenantId} not found: ${error?.message}`);
   }
 
+  const config = data.config as Record<string, unknown> | null;
+
   return {
     gender: data.business_owner_gender as BusinessOwnerGender | null,
     consentStatus: data.consent_status ?? "pending",
     dpaAccepted: !!data.dpa_accepted_at,
     vertical: data.vertical ?? "general",
     ownerName:
-      (data.config as Record<string, unknown> | null)?.["owner_name"]?.toString() ??
+      (config as Record<string, unknown> | null)?.["owner_name"]?.toString() ??
       "בעל העסק",
     businessName: data.name ?? "העסק שלי",
+    // Sprint 3I — extract brief in the same query (no extra DB roundtrip).
+    businessBrief: extractBusinessBrief(config),
   };
 }
 
@@ -120,8 +129,15 @@ export async function runReviewsAgent(
     )
     .join("\n\n");
 
-  // ─── Build system blocks (cached static + dynamic gender) ────
-  const systemBlocks = withGenderLock(REVIEWS_AGENT_SYSTEM_PROMPT, tenant.gender);
+  // ─── Build system blocks (cached static + dynamic gender + brief) ───
+  // Sprint 3I: 3rd arg is the owner voice brief. It's appended after the
+  // gender block, after the cache breakpoint — tenant-specific without
+  // invalidating the cached static prompt (§15.32).
+  const systemBlocks = withGenderLock(
+    REVIEWS_AGENT_SYSTEM_PROMPT,
+    tenant.gender,
+    tenant.businessBrief,
+  );
 
   const promptContext: ReviewsPromptContext = {
     ownerName: tenant.ownerName,
