@@ -1,18 +1,25 @@
 // src/lib/agents/brief-extractor/extract.ts
 //
-// Sprint 3G Phase 1a (2026-05-16) — core extractor function.
+// Sprint 3G Phase 1d (2026-05-16) — quality pass after real-world validation
+// against spikeai.co.il in Phase 1b showed Haiku 4.5 produced briefs with
+// translation-feel and English-Hebrew mixing. See prompt.ts header for full
+// list of issues observed and addressed.
 //
-// Pipeline:
+// Changes from Phase 1a/b:
+//   - MODEL: Haiku 4.5 → Sonnet 4.6 (one-time extraction per tenant, so
+//     ₪0.03 → ₪0.30 cost is negligible vs. quality gain)
+//   - Prompt rewritten with anti-translation rules + bad examples
+//
+// Pipeline (unchanged):
 //   1. Validate URL (http/https, no private/local addresses for SSRF safety)
 //   2. Fetch HTML with 10s timeout, polite User-Agent
 //   3. Strip HTML to plain text (regex-based, no cheerio dependency)
-//   4. Truncate to 20K chars (~5K tokens — well inside Haiku context)
-//   5. Call Haiku 4.5 with cached system prompt
+//   4. Truncate to 20K chars (~5K tokens — well inside Sonnet context)
+//   5. Call Sonnet 4.6 with cached system prompt
 //   6. Validate output length (50-1000 chars) + sentinel check
 //
-// Future Phase 1b will wrap this in a Server Action for the
-// /dashboard/settings page (button: "🪄 צור brief מהאתר").
-// Future Phase 1c may add Google Business + Instagram public posts.
+// Future Phase 1c may add Google Business + Instagram public posts as
+// additional signal sources beyond the website HTML.
 
 import "server-only";
 
@@ -22,7 +29,12 @@ import {
   buildBriefExtractorUserMessage,
 } from "./prompt";
 
-const MODEL = "claude-haiku-4-5-20251001" as const;
+// Sonnet 4.6 — same model string Manager uses (see src/lib/agents/manager/run.ts).
+// Sonnet produces dramatically more native Hebrew than Haiku for free-form
+// rewriting tasks; the speed gap (~25s vs ~10s) is fine for a one-time
+// extraction button, and the cost gap (~₪0.30 vs ~₪0.03) is negligible at
+// 1 call per tenant.
+const MODEL = "claude-sonnet-4-6" as const;
 const MAX_HTML_CHARS = 20000;
 const FETCH_TIMEOUT_MS = 10000;
 const MIN_USEFUL_TEXT_CHARS = 50;
@@ -131,11 +143,11 @@ export async function extractBriefFromWebsite(
 
   const truncated = cleaned.slice(0, MAX_HTML_CHARS);
 
-  // ── Call Haiku 4.5 ──
+  // ── Call Sonnet 4.6 ──
   try {
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 600,
+      max_tokens: 800,
       system: [
         {
           type: "text",
@@ -187,9 +199,10 @@ export async function extractBriefFromWebsite(
         .trim();
       return {
         ok: true,
-        brief: truncatedBrief.length >= MIN_BRIEF_LENGTH
-          ? truncatedBrief
-          : briefText.slice(0, MAX_BRIEF_LENGTH),
+        brief:
+          truncatedBrief.length >= MIN_BRIEF_LENGTH
+            ? truncatedBrief
+            : briefText.slice(0, MAX_BRIEF_LENGTH),
         fetchedBytes,
         cleanedTextChars,
         durationMs,

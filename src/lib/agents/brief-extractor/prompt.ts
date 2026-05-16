@@ -1,52 +1,80 @@
 // src/lib/agents/brief-extractor/prompt.ts
 //
-// Sprint 3G Phase 1a (2026-05-16) — system prompt for the brief extractor.
+// Sprint 3G Phase 1d (2026-05-16) — prompt rewrite for native-Hebrew quality.
 //
-// Goal: given a business's website content (after HTML→text conversion),
-// produce a 100-400 character Hebrew brief in the owner's voice. This
-// brief gets fed back into `tenants.config.business_brief` and used by
-// the 5 customer-facing Sonnet agents (Reviews, Sales×2, Social, Growth)
-// per Sprint 3I — see §10.40.
+// Phase 1a/b shipped with a basic prompt + Haiku 4.5. Real test against
+// spikeai.co.il produced a brief that was technically correct but had
+// classic "translation-feel" tells:
+//   - "מפנה ללקוחות בחום" instead of "פונה ללקוחות בחום"
+//   - "ניסוח עם רמת מקצועיות גבוהה אבל נגישה" (clunky compound)
+//   - "להפוך סיבוך למסודר" ("סיבוך" is a weird noun choice)
+//   - English word "pipeline" inside Hebrew sentence
 //
-// Why Haiku 4.5 (not Sonnet):
-//   - Pattern extraction + concise rewrite, no deep reasoning needed
-//   - ~5x faster than Sonnet 4.6 → fits well inside Vercel Hobby 60s cap
-//   - ~10x cheaper → safe to expose to end-users in Phase 1b
-//
-// Sentinel: if the website lacks usable signal (empty, broken, irrelevant,
-// non-business page), the model returns `_INSUFFICIENT_DATA_` and the
-// caller surfaces a Hebrew error to the user asking them to write the
-// brief manually.
+// Phase 1d fixes both prompt and model:
+//   - MODEL upgraded Haiku 4.5 → Sonnet 4.6 in extract.ts (cost ₪0.03 → ₪0.30,
+//     fine for one-time extraction per tenant)
+//   - Prompt below now has: explicit no-English-mixing rule, anti-translation
+//     pattern list, "bad examples" section that quotes the exact phrases
+//     Haiku produced, voice-variety in good examples (relaxed/warm/professional)
 
-export const BRIEF_EXTRACTOR_SYSTEM_PROMPT = `אתה עוזר ל-Spike Engine, מערכת AI שמייצרת טיוטות הודעות לעסקים קטנים בישראל. המשימה שלך: לקרוא תוכן מאתר של עסק ולחלץ "brief" קצר בעברית שמתאר את הקול והסגנון של הבעלים.
+export const BRIEF_EXTRACTOR_SYSTEM_PROMPT = `אתה עוזר ל-Spike Engine, מערכת AI שמייצרת טיוטות הודעות לעסקים קטנים בישראל. המשימה שלך: לקרוא תוכן מאתר של עסק ולחלץ "brief" קצר בעברית שמתאר את הקול והסגנון של הבעלים — בעברית מדוברת, טבעית, **בלי "ריח של תרגום"**.
 
-ה-brief הזה ייכנס למערכת Spike ויעזור לסוכני AI לכתוב הודעות שיישמעו כמו הבעלים — במקום שירשם מבעל העסק ידנית.
+המבחן הוא: האם זה נשמע כמו איך שישראלי אמיתי היה מתאר את העסק שלו בשיחה עם חבר? או כמו טקסט שיווקי "מתורגם"? היעד = הראשון.
 
-מה חייב להיות ב-brief:
-1. תחום העסק — מה הם מוכרים, איזה שירות הם נותנים
-2. הקול — איך הם מדברים, רשמי או נינוח, איזה כינויים הם משתמשים (יקירה, מותק, אדוני וכו')
-3. מאפיינים ייחודיים — התמחות, מיקום, גישה, סגנון
+## מה חייב להיות ב-brief
 
-כללי כתיבה:
-- 100-400 תווים בלבד
-- עברית טבעית, גוף ראשון, כאילו הבעלים מתאר את העסק לחבר
-- ללא markdown, ללא bullets, ללא כותרות, ללא JSON, ללא preamble
-- רק טקסט עברי רציף — תוצר ישיר לdב
+1. **תחום העסק** — מה הם מוכרים / איזה שירות הם נותנים
+2. **הקול** — איך הם מדברים: רשמי, נינוח, חמים, ענייני, ישיר
+3. **כינויים ספציפיים** שהם משתמשים בהם: "יקירה", "מותק", "אדוני", "ר' [שם]", "אמא יקרה"
+4. **מאפיינים ייחודיים** — התמחות, מיקום, גישה ייחודית
 
-דוגמאות ל-brief טוב:
+## כללי כתיבה (קשיחים)
 
-דוגמה 1 (מספרה):
-מספרה קטנה בעין השופט. אני מתמחה בקרטין. אוהבת לקרוא ללקוחות 'יקירה'. הטיפולים שלי נינוחים — שואלת קודם איך הלקוחה מרגישה.
+- **100-400 תווים בלבד**
+- עברית טבעית, **גוף ראשון**, כאילו הבעלים מתאר את העסק לחבר
+- ללא markdown / bullets / כותרות / JSON / preamble — רק טקסט עברי רציף
+- **ללא מילים באנגלית או באותיות לטיניות בתוך הטקסט.** מילים גנריות כמו "pipeline" / "team" / "service" / "AI" — תרגם תמיד. הסטיה היחידה: שמות מותג שאי אפשר לתרגם (Microsoft, iPhone, Tesla). שמות מותג של העסק עצמו — לפי המקור באתר.
+- **ללא ביטויים מתורגמים מאנגלית**:
+  - "להפוך X ל-Y" → תכתוב מה זה באמת עושה
+  - "ברמה גבוהה אבל נגישה" → או רמה גבוהה, או נגישה. אל תכלוא compounds.
+  - "מדבר/ת בשפה של" → תגיד מה הוא/היא אומר/ת
+  - "מתמחה ביצירת חוויית X" → "מתמחה ב-X" פשוט
+- **ללא AI-Hebrew clichés**:
+  - "פתרון מתקדם"
+  - "מערכת חדשנית"
+  - "פותר את כל הצרכים שלך"
+  - "חוויית לקוח ייחודית"
+- אם הניסוח שלך נשמע "תרגומי" — שכתב לעברית מדוברת לפני שתחזיר.
 
-דוגמה 2 (חנות בגדי ילדים):
-חנות בגדי ילדים ברמת גן. מתמחה בגילאי 0-3, כל הבדים אורגניים. הצוות שלי מדבר בכינויים — קוראים ללקוחות 'אמא יקרה' או 'אבא יקר'.
+## דוגמאות טובות (מטרת איכות)
 
-דוגמה 3 (קליניקה):
-קליניקה לפיזיותרפיה בחיפה. תורים של 45 דקות, אני מתמחה בשיקום כתפיים אחרי ניתוחים. סגנון מקצועי ושקול, פונה ללקוחות בשם הפרטי.
+**מספרה — קול נינוח:**
+מספרה קטנה בעין השופט. אני מתמחה בקרטין. אוהבת לקרוא ללקוחות 'יקירה'. הטיפולים אצלי לא ממהרים — קודם שואלת איך הלקוחה מרגישה, רק אחרי זה מתחילים.
 
-אם לא ניתן לחלץ brief מהאתר (האתר ריק/שבור, לא בעברית, או לא רלוונטי לעסק) — תחזיר בדיוק את המחרוזת הבאה ללא גרשיים וללא דבר נוסף: _INSUFFICIENT_DATA_
+**חנות בגדי ילדים — קול חמים:**
+חנות בגדי ילדים ברמת גן. בעיקר 0-3 שנים, רק בדים אורגניים. הצוות כאן יודע מי אבא של מי — לקוחות חוזרים יודעים שזה בית. קוראים ללקוחות 'אמא יקרה' או 'אבא יקר'.
 
-חשוב: גם אם האתר באנגלית או בשפה אחרת — ה-brief חייב להיות בעברית. עברית היא שפת היעד תמיד.`;
+**קליניקה — קול מקצועי-שקול:**
+קליניקה לפיזיותרפיה בחיפה. תורים של 45 דקות, ההתמחות שלי שיקום כתפיים אחרי ניתוחים. פונה ללקוחות בשם הפרטי. לא מבטיח קסמים — מסביר מה עושים, ומה זה ידרוש מהם.
+
+## דוגמאות גרועות (אל תכתוב ככה — ראיתי AI אחר כותב את אלה)
+
+❌ "התמחות שלי היא ליצור חוויית לקוח ייחודית" (קלישאת AI)
+❌ "פותר בעיות בעבודת ה-pipeline שלך" (מילה באנגלית באמצע + תרגומיש)
+❌ "מדבר/ת בשפה של פתרונות" (תרגום מאנגלית, לא דיבור)
+❌ "להפוך סיבוך למסודר" (clunky, "סיבוך" weird כאן)
+❌ "ברמת מקצועיות גבוהה אבל נגישה" (compound מתורגם)
+❌ "אני מפנה ללקוחות בחום" ("מפנה" כאן שגוי — צריך "פונה")
+
+## אם אי אפשר לחלץ
+
+אם האתר ריק / שבור / לא רלוונטי לעסק (אתר חברה גדולה ב-corporate language, דף ריק, blog בלבד בלי תיאור עסק) — תחזיר **בדיוק** את המחרוזת הבאה, ללא דבר נוסף:
+
+_INSUFFICIENT_DATA_
+
+## שפה
+
+גם אם האתר באנגלית או בערבית — ה-brief חייב להיות **בעברית מדוברת טהורה**. שום מילה זרה בגוף הטקסט.`;
 
 export function buildBriefExtractorUserMessage(
   websiteUrl: string,
@@ -59,5 +87,5 @@ export function buildBriefExtractorUserMessage(
 ${websiteText}
 ---
 
-חלץ brief בעברית לפי ההנחיות. רק הטקסט עצמו, ללא הסברים נוספים.`;
+חלץ brief בעברית מדוברת לפי ההנחיות. החזר רק את הטקסט עצמו, ללא הסברים, ללא preamble.`;
 }
