@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 5 minutes (Pro plan limit)
+export const maxDuration = 300; // Hobby plan caps at 60s regardless
 
 /**
  * Social Agent daily cron — Day 14 (schedule corrected Day 17)
@@ -23,8 +23,17 @@ export const maxDuration = 300; // 5 minutes (Pro plan limit)
  *
  * Idempotency: agent_runs uniqueness prevents double execution
  * if Vercel double-delivers the cron.
+ *
+ * ─────────────────────────────────────────────────────────────
+ * Sprint 3α Phase A (2026-05-16) — METHOD FIX: POST → GET
+ *
+ * Vercel cron sends HTTP GET, not POST. This route had been exporting
+ * POST since Day 14, so every scheduled invocation hit a silent 405 and
+ * the function body never ran. Same root cause as Inventory cron
+ * (commit 1f4f1fd) and Sales cron (same commit as this).
+ * ─────────────────────────────────────────────────────────────
  */
-export async function POST(request: Request): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
   // ── Security: verify this came from Vercel Cron ──────────
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -71,7 +80,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     // ── Run agent for each tenant sequentially ────────────────
     // Sequential (not parallel) to keep things simple at low scale
     // and avoid hammering Anthropic with concurrent requests.
-    // At 50+ tenants, switch to Anthropic Batch API.
+    // At 50+ tenants, switch to Anthropic Batch API or Inngest fan-out
+    // (same pattern as Manager Sprint 3Z).
     for (const tenant of tenants) {
       try {
         const result = await runSocialAgent(tenant.id, "scheduled");

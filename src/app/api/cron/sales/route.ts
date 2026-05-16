@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 5 minutes (Pro plan limit)
+export const maxDuration = 300; // Hobby plan caps at 60s regardless
 
 /**
  * Sales Agent daily cron — Day 15
@@ -20,8 +20,22 @@ export const maxDuration = 300; // 5 minutes (Pro plan limit)
  *
  * Idempotency: agent_runs uniqueness prevents double execution
  * if Vercel double-delivers the cron.
+ *
+ * ─────────────────────────────────────────────────────────────
+ * Sprint 3α Phase A (2026-05-16) — METHOD FIX: POST → GET
+ *
+ * Vercel cron sends HTTP GET, not POST. This route had been exporting
+ * POST since Day 15, so every scheduled invocation hit a silent 405 and
+ * the function body never ran. Effect: agent_runs has trigger_source
+ * IN ('manual','webhook') only — never 'scheduled' — for the past
+ * 14+ days. Same root cause as Inventory cron (commit 1f4f1fd) and
+ * historically Manager cron before Sprint 3Z. After this fix, scheduled
+ * triggers begin firing again on the next Sun-Thu 07:30 UTC window.
+ * Auth header (Bearer CRON_SECRET) is still honored on GET — Vercel
+ * sends the same auth header regardless of method.
+ * ─────────────────────────────────────────────────────────────
  */
-export async function POST(request: Request): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     console.error("[cron/sales] Unauthorized call — bad or missing CRON_SECRET");
