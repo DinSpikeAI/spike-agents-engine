@@ -22,8 +22,14 @@ export const maxDuration = 300; // 5 minutes
  *
  * Idempotency: agent_runs uniqueness prevents double execution
  * if Vercel double-delivers the cron.
+ *
+ * IMPORTANT: Vercel Cron Jobs trigger as GET requests. An earlier
+ * version of this file exported POST, which silently 405'd on every
+ * scheduled invocation — agent_runs showed only `trigger_source = 'manual'`
+ * entries for inventory while morning/watcher/manager (which use GET) had
+ * `'scheduled'` entries. See §15.34 in CLAUDE.md for the diagnostic trail.
  */
-export async function POST(request: Request): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     console.error("[cron/inventory] Unauthorized — bad or missing CRON_SECRET");
