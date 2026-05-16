@@ -457,11 +457,21 @@ export async function runSalesAgent(
     // throws immediately on terminal errors (400, 401, 422). Total max wall
     // time when all 3 attempts fail: ~7s. Successful first-try is zero
     // overhead. See src/lib/with-retry.ts for details.
+    //
+    // Sprint 3α Phase B (2026-05-16) — budget reduction to fit Vercel Hobby
+    // 60s cap. Previous config (thinking 2048 / max_tokens 4096) was hitting
+    // ~50-65s on manual triggers with multi-lead inputs, with several
+    // failures via "Unexpected end of JSON input" at ~73s (Vercel killed
+    // mid-stream). Reduced to thinking 1024 / max_tokens 2500 — expected
+    // wall time drops to ~25-35s with comfortable margin. Output schema
+    // still validates; thinking quality minimally impacted because the
+    // schema is strict (followUps[] with bounded fields). Same play that
+    // fixed Manager in Sprint 3Z (commit 032a18c).
     const response = await withRetry(
       () =>
         anthropic.messages.create({
           model: MODEL,
-          max_tokens: 4096,
+          max_tokens: 2500,
           system: systemBlocks,
           messages: [
             {
@@ -469,7 +479,7 @@ export async function runSalesAgent(
               content: buildSalesUserMessage(promptContext, leadsBlock),
             },
           ],
-          thinking: { type: "enabled", budget_tokens: 2048 },
+          thinking: { type: "enabled", budget_tokens: 1024 },
           output_config: {
             format: {
               type: "json_schema",

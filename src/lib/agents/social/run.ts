@@ -244,7 +244,7 @@ export async function runSocialAgent(
       () =>
         anthropic.messages.create({
           model: MODEL,
-          max_tokens: 3000,
+          max_tokens: 2000, // Sprint 3a Phase B: 3000 to 2000 to fit Vercel Hobby 60s cap
           system: systemBlocks,
           messages: [
             {
