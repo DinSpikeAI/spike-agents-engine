@@ -45,6 +45,11 @@ const GENDERS: Array<{ id: Gender; label: string; sub: string }> = [
   { id: "plural", label: "כללי", sub: "ברוכים הבאים" },
 ];
 
+// Sprint 3I onboarding integration: same limit as the /dashboard/settings
+// textarea — keeps the two surfaces in lockstep. Mirrors MAX_BUSINESS_BRIEF_LENGTH
+// in ./actions.ts; if you change one, change both.
+const BUSINESS_BRIEF_MAX_LENGTH = 2000;
+
 export function OnboardingForm() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -54,7 +59,12 @@ export function OnboardingForm() {
   const [businessName, setBusinessName] = useState("");
   const [vertical, setVertical] = useState<Vertical | null>(null);
   const [gender, setGender] = useState<Gender | null>(null);
+  // Sprint 3I: optional brief — agents inject it on Day 1 if filled here.
+  const [businessBrief, setBusinessBrief] = useState("");
 
+  // businessBrief is NOT in the canSubmit gate — it's optional. The owner
+  // can complete onboarding without writing anything, and fill it later
+  // via /dashboard/settings if they prefer.
   const canSubmit =
     ownerName.trim().length > 0 &&
     businessName.trim().length > 0 &&
@@ -67,11 +77,15 @@ export function OnboardingForm() {
     setError(null);
 
     startTransition(async () => {
+      const trimmedBrief = businessBrief.trim();
       const res = await saveOnboardingAction({
         ownerName: ownerName.trim(),
         businessName: businessName.trim(),
         vertical: vertical!,
         gender: gender!,
+        // Send brief only when the user actually typed something — the
+        // server action skips writing config.business_brief on empty input.
+        businessBrief: trimmedBrief.length > 0 ? trimmedBrief : undefined,
       });
 
       if (res.success) {
@@ -229,6 +243,55 @@ export function OnboardingForm() {
         </div>
       </div>
 
+      {/* Business brief — Sprint 3I (2026-05-15). Optional 5th field. */}
+      {/* When filled, the 5 customer-facing agents (Reviews, Sales×2, */}
+      {/* Social, Growth) inject it into their system prompts so Day 1 */}
+      {/* drafts already match the owner's voice. See actions.ts header. */}
+      <div>
+        <div className="mb-1.5 flex items-baseline justify-between">
+          <label
+            htmlFor="businessBrief"
+            className="block text-[12.5px] font-medium"
+            style={{ color: "var(--color-ink-2)" }}
+          >
+            מה מאפיין את העסק שלך?{" "}
+            <span style={{ color: "var(--color-ink-3)", fontWeight: 400 }}>
+              (אופציונלי)
+            </span>
+          </label>
+          <span
+            className="text-[10.5px]"
+            style={{ color: "var(--color-ink-3)" }}
+          >
+            {businessBrief.length}/{BUSINESS_BRIEF_MAX_LENGTH}
+          </span>
+        </div>
+        <p
+          className="mb-2 text-[11.5px] leading-[1.45]"
+          style={{ color: "var(--color-ink-3)" }}
+        >
+          הסוכנים ינסחו ללקוחות שלך בסגנון שלך — תיאור קצר עוזר להם להישמע כמוך מהיום הראשון.
+        </p>
+        <textarea
+          id="businessBrief"
+          value={businessBrief}
+          onChange={(e) => setBusinessBrief(e.target.value)}
+          placeholder="לדוגמה: מספרה קטנה בעין השופט. אני מתמחה בקרטין. אוהבת לקרוא ללקוחות 'יקירה'. הטיפולים שלי נינוחים — אני שואלת קודם איך הלקוחה מרגישה."
+          maxLength={BUSINESS_BRIEF_MAX_LENGTH}
+          rows={5}
+          dir="rtl"
+          className="w-full rounded-[10px] px-3 py-2.5 text-[13.5px] leading-[1.5] outline-none transition-colors"
+          style={{
+            background: "rgba(255,255,255,0.7)",
+            border: "1px solid var(--color-hairline)",
+            color: "var(--color-ink)",
+            resize: "vertical",
+            minHeight: "112px",
+            fontFamily: "inherit",
+          }}
+        />
+      </div>
+
       {/* Error toast */}
       {error && (
         <div
@@ -285,10 +348,12 @@ export function OnboardingForm() {
             transform: rotate(360deg);
           }
         }
-        input::placeholder {
+        input::placeholder,
+        textarea::placeholder {
           color: var(--color-ink-3);
         }
-        input:focus {
+        input:focus,
+        textarea:focus {
           border-color: var(--color-sys-blue) !important;
           background: rgba(255, 255, 255, 0.95) !important;
         }

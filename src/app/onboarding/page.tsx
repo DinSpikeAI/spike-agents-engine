@@ -99,7 +99,7 @@ export default async function OnboardingPage() {
                 className="mx-auto mt-2 max-w-[420px] text-[13.5px] leading-[1.55]"
                 style={{ color: "var(--color-ink-2)" }}
               >
-                ארבעה פרטים בלבד לפני שנתחיל. הסוכנים ישתמשו בהם כדי לפנות
+                כמה פרטים לפני שנתחיל. הסוכנים ישתמשו בהם כדי לפנות
                 אליך ולעסק שלך באופן מותאם.
               </p>
             </div>

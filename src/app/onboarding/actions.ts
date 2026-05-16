@@ -4,6 +4,20 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 
+// Sprint 3I onboarding integration (2026-05-15):
+// `business_brief` is stored at `tenants.config->>'business_brief'`
+// (top-level JSONB key, max 2000 chars). 5 customer-facing agents
+// (Reviews, Sales×2, Social, Growth) inject it into their system prompts
+// via withGenderLock / direct cache_control — see §10.40 for the per-
+// agent integration details. By collecting brief during onboarding
+// instead of waiting for the owner to discover the /dashboard/settings
+// page, NEW tenants get Day-1 brief injection — drafts already match
+// the owner's voice on first generation, not after a settings detour.
+// Field is OPTIONAL in onboarding so the 4-required-field flow stays
+// fast; owners who skip it can fill it via /dashboard/settings later.
+
+const MAX_BUSINESS_BRIEF_LENGTH = 2000;
+
 export interface OnboardingFormData {
   ownerName: string;
   businessName: string;
@@ -17,6 +31,8 @@ export interface OnboardingFormData {
     | "financial"
     | "education";
   gender: "male" | "female" | "plural";
+  /** Optional Sprint 3I brief. If non-empty, persisted to tenants.config.business_brief. */
+  businessBrief?: string;
 }
 
 export interface OnboardingActionResult {
@@ -67,6 +83,7 @@ export async function saveOnboardingAction(
   // ─── Server-side validation (don't trust client) ──────────────────
   const ownerName = data.ownerName?.trim() ?? "";
   const businessName = data.businessName?.trim() ?? "";
+  const businessBrief = data.businessBrief?.trim() ?? "";
 
   if (ownerName.length === 0 || ownerName.length > 60) {
     return { success: false, error: "אנא הזן שם פרטי תקין (עד 60 תווים)" };
@@ -74,7 +91,24 @@ export async function saveOnboardingAction(
   if (businessName.length === 0 || businessName.length > 120) {
     return { success: false, error: "אנא הזן שם עסק תקין (עד 120 תווים)" };
   }
-  if (!["beauty", "restaurant", "retail", "services", "general", "clinic", "financial", "education"].includes(data.vertical)) {
+  if (businessBrief.length > MAX_BUSINESS_BRIEF_LENGTH) {
+    return {
+      success: false,
+      error: `תיאור העסק ארוך מדי (מקסימום ${MAX_BUSINESS_BRIEF_LENGTH} תווים)`,
+    };
+  }
+  if (
+    ![
+      "beauty",
+      "restaurant",
+      "retail",
+      "services",
+      "general",
+      "clinic",
+      "financial",
+      "education",
+    ].includes(data.vertical)
+  ) {
     return { success: false, error: "תחום לא תקין" };
   }
   if (!["male", "female", "plural"].includes(data.gender)) {
@@ -103,12 +137,21 @@ export async function saveOnboardingAction(
   const existingConfig =
     (current.config as Record<string, unknown> | null) ?? {};
 
-  const newConfig = {
+  const newConfig: Record<string, unknown> = {
     ...existingConfig,
     owner_name: ownerName,
     business_name: businessName,
     onboarding_completed_at: new Date().toISOString(),
   };
+
+  // Sprint 3I integration: only write business_brief if the user
+  // actually filled it. Empty/whitespace input preserves any prior
+  // value already in existingConfig (rare edge case where a user
+  // navigated to /dashboard/settings before completing onboarding)
+  // rather than clobbering it with empty string.
+  if (businessBrief.length > 0) {
+    newConfig.business_brief = businessBrief;
+  }
 
   const { error: updateErr } = await db
     .from("tenants")
