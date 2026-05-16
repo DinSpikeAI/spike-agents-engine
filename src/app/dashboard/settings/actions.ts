@@ -33,6 +33,10 @@
 import { revalidatePath } from "next/cache";
 import { requireOnboarded } from "@/lib/auth/require-onboarded";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  extractBriefFromWebsite,
+  type ExtractBriefResult,
+} from "@/lib/agents/brief-extractor/extract";
 import type {
   TenantSettingsInput,
   UpdateTenantSettingsResult,
@@ -168,4 +172,35 @@ export async function updateTenantSettings(
   revalidatePath("/dashboard/settings");
 
   return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sprint 3G Phase 1b — extract brief from website URL
+// ─────────────────────────────────────────────────────────────
+//
+// Auth-gated wrapper around lib/agents/brief-extractor/extract.
+// Called from the Settings form's "🪄 צור brief מהאתר" button.
+//
+// Auth model: requireOnboarded() ensures (a) logged-in user, (b) the
+// user has a tenant they belong to, (c) onboarding completed. No
+// per-tenant rate limit yet — Phase 1c may add one if abuse appears,
+// but Haiku 4.5 cost is low (~₪0.03 per call) and Anthropic's per-key
+// rate limits provide a global ceiling.
+//
+// Does NOT persist to tenants.config.business_brief — the user reviews
+// the returned brief in the textarea and clicks "שמור הגדרות" to commit.
+// That two-step flow keeps the user in control (Iron Rule §15.25-style).
+
+export async function extractBriefFromWebsiteAction(
+  websiteUrl: string,
+): Promise<ExtractBriefResult> {
+  // Auth — same gate as updateTenantSettings. Will redirect on auth failure.
+  await requireOnboarded();
+
+  const trimmed = (websiteUrl ?? "").trim();
+  if (trimmed.length === 0) {
+    return { ok: false, error: "כתובת URL ריקה" };
+  }
+
+  return await extractBriefFromWebsite(trimmed);
 }

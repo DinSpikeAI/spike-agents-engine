@@ -23,9 +23,12 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2, Check } from "lucide-react";
+import { Loader2, Check, Sparkles } from "lucide-react";
 import { Glass } from "@/components/ui/glass";
-import { updateTenantSettings } from "@/app/dashboard/settings/actions";
+import {
+  updateTenantSettings,
+  extractBriefFromWebsiteAction,
+} from "@/app/dashboard/settings/actions";
 import type {
   Vertical,
   BusinessOwnerGender,
@@ -80,6 +83,14 @@ export function SettingsForm({
     initialBusinessBrief ?? "",
   );
 
+  // Sprint 3G Phase 1b — auto-extract brief from website URL.
+  // websiteUrl is form-local state only — NOT persisted to tenants.config.
+  // Once the user clicks the magic-wand button, the extracted brief flows
+  // into the existing businessBrief textarea where the user reviews/edits
+  // and then saves via the existing "שמור הגדרות" button.
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [isExtracting, setIsExtracting] = useState(false);
+
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -123,6 +134,53 @@ export function SettingsForm({
       setGeneralError(errMsg);
       toast.error(errMsg);
     });
+  };
+
+  // Sprint 3G Phase 1b — extract handler.
+  // Two-step UX (per Iron Rule §15.25 — user always confirms):
+  //   1. Click button → fetch + Haiku call → returns brief (NOT persisted)
+  //   2. Brief lands in the existing textarea; user reviews / edits
+  //   3. User clicks "שמור הגדרות" to actually commit to tenants.config
+  // If a brief already exists in the textarea, prompt before overwriting.
+  const handleExtract = async () => {
+    const url = websiteUrl.trim();
+    if (url.length === 0 || isExtracting || isPending) return;
+
+    if (businessBrief.trim().length > 0) {
+      const overwrite = window.confirm(
+        "יש כבר תיאור קיים. להחליף אותו ב-brief חדש מהאתר?",
+      );
+      if (!overwrite) return;
+    }
+
+    setIsExtracting(true);
+    try {
+      const result = await extractBriefFromWebsiteAction(url);
+      if (result.ok && result.brief) {
+        setBusinessBrief(result.brief);
+        // Clear any prior field-error on businessBrief so the new content
+        // doesn't render with a stale error border.
+        setFieldErrors((prev) => {
+          const next = { ...prev };
+          delete next.businessBrief;
+          return next;
+        });
+        const durationLabel = result.durationMs
+          ? ` (${Math.round(result.durationMs / 100) / 10} שניות)`
+          : "";
+        toast.success(
+          `brief נוצר${durationLabel}. עיין, ערוך לפי הצורך, ולחץ "שמור הגדרות".`,
+        );
+      } else {
+        toast.error(result.error ?? "החילוץ נכשל");
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "שגיאה לא ידועה בחילוץ";
+      toast.error(message);
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   // Brief counter color — green by default, amber over threshold, pink at cap.
@@ -419,6 +477,69 @@ export function SettingsForm({
             שהם מנסחים טיוטות בשמך, כדי שהטון, הביטויים והערכים שלך יופיעו
             בכל הודעה.
           </p>
+        </div>
+
+        {/* ─── Sprint 3G Phase 1b: auto-extract from website URL ─── */}
+        <div className="space-y-1.5">
+          <label
+            htmlFor="website_url"
+            className="block text-[12.5px] font-medium"
+            style={{ color: "var(--color-ink-2)" }}
+          >
+            🪄 צור brief מהאתר שלך (אופציונלי)
+          </label>
+          <p
+            className="text-[11.5px] leading-[1.5]"
+            style={{ color: "var(--color-ink-3)" }}
+          >
+            הכנס כתובת URL של האתר שלך — נקרא את התוכן ונכתוב טיוטה ראשונית בעברית. תוכל לערוך אותה לפני שמירה.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              id="website_url"
+              type="url"
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+              disabled={isExtracting || isPending}
+              placeholder="https://your-website.co.il"
+              dir="ltr"
+              className="flex-1 rounded-[10px] px-3 py-2 text-[14px] outline-none transition-colors disabled:opacity-60"
+              style={{
+                background: "rgba(255,255,255,0.7)",
+                border: "1px solid var(--color-hairline)",
+                color: "var(--color-ink)",
+              }}
+            />
+            <button
+              type="button"
+              onClick={handleExtract}
+              disabled={
+                isExtracting || isPending || websiteUrl.trim().length === 0
+              }
+              className="flex items-center justify-center gap-1.5 rounded-[10px] px-4 py-2 text-[13.5px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40"
+              style={{
+                background: "rgba(10, 132, 255, 0.1)",
+                border: "1px solid var(--color-sys-blue)",
+                color: "var(--color-sys-blue)",
+              }}
+            >
+              {isExtracting ? (
+                <>
+                  <Loader2
+                    size={14}
+                    strokeWidth={2.5}
+                    className="animate-spin"
+                  />
+                  מחפש...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={14} strokeWidth={2.5} />
+                  צור brief
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         <div className="space-y-1.5">
