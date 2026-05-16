@@ -2,7 +2,9 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-15 late evening (post-session: **Owner-facing trinity COMPLETE** + Sprint 3W internal hygiene + **two follow-ups on top**: onboarding brief integration `87e2b20` + Sonner Toaster migration `b49bcb9`). **What this means in plain terms:** the business owner now receives three operational signals on WhatsApp automatically (Morning daily summary at 07:00 IL via Sprint 3M, real-time critical/high alerts via Sprint 3X, weekly health digest Sunday 08:00 IL via Sprint 3Y) AND new tenants who complete onboarding now have their brief captured on Day 1 (so the 5 customer-facing Sonnet agents inject the owner's voice from the very first run, not from "after the owner finds settings") AND error feedback in the dashboard is now styled Sonner toasts instead of jarring browser `alert()` modals. **6 sprints / 11 commits in one day.** **What shipped today (in order):** (1) Sprint 3X `e3bff86` — Watcher auto-send to owner with diff-based dedupe; (2) Sprint 3Y `3decc46` — Manager weekly auto-send + 9th cron in `vercel.json`; (3) Sprint 3W `451beae` — cleanup `agent_runs` insert removal + new engine README + watcher comment fixes; (4) Sprint 3I onboarding integration `87e2b20` — optional brief textarea in `/onboarding`, Day-1 brief injection works for NEW tenants (see §10.44); (5) Sonner Toaster migration `b49bcb9` — replaced 5 browser `alert()` calls with `toast.error` (see §10.45). **End-to-end WhatsApp delivery deferred for 3X + 3Y** on Meta access-token refresh (24h temp token expired during the multi-day session pause); SQL inspection of historical Watcher runs confirmed 3X dedupe + filter logic would have triggered correctly. Same `sendWhatsAppMessage` + helpers as 3M's 3 proven real-world deliveries — first 3X + 3Y deliveries will happen automatically once the Meta token is refreshed (waiting on system-user token post-Meta-verification post-עוסק-מורשה). **Earlier in this period (Sprint 3I, 2026-05-13):** Phase 1 unblock `c4b6942` (§15.33 type extraction pattern) + Phase 2 Batches 1+2+3 (`f39b26b` + `806904a` + `d1eba6a` — settings UI + 4 Sonnet agents + Growth) shipped the **killer-differentiator**: every customer-facing draft matches the owner's voice on first generation. 5 customer-facing agents inject `business_brief` from `tenants.config`; Batch 4 (Morning + Watcher + Manager + Inventory + Hot Leads) descoped because those agents are owner-facing or produce classification JSON only. **Validated end-to-end on demo tenant** with brief = *"סלון יופי קטן בעין השופט. אני מתמחה בקרטין. אוהבת לקוחות 'יקירה'"*: Growth produced a reactivation draft for דנה כהן with *"דנה יקירה"* + *"חידוש הקרטין"* + *"הקרטין מחזיק בערך עד כאן בדיוק"* + *"סליחה על זה"* — three brief-injection signals in one draft, all natural Hebrew owner-voice. **6 new sections / lessons added today:** §15.33 (type extraction pattern), §10.40 (3I Phase 2), §10.41 (3X), §10.42 (3Y), §10.43 (3W), §10.44 (3I onboarding integration), §10.45 (Sonner migration). **The product is functionally complete for design partner #1.** External blockers only: עוסק מורשה / Meta Business verification / business phone number (paperwork, not code). **Strategic decisions locked — see §19** (pricing is OPEN QUESTION — §19.1 thesis "single package, all agents" stands but exact number TBD; §12.1's old Solo/Pro/Chain table is deprecated, see header note in §19.1): BSP 360dialog primary, Meta Cloud direct fallback; wedges = [אשר] button (TM-pending) → voice notes → no-shows ROI; channel = periphery cities + bookkeepers + Achiya rev-share. **Latest commits (newest first):** `b49bcb9` (Sonner migration), `87e2b20` (onboarding brief), `451beae` (3W hygiene), `3decc46` (3Y Manager weekly), `e3bff86` (3X Watcher auto-send), `af59fe2` (Batch 5b CLAUDE.md backfill), `d1eba6a` (3I Batch 3 Growth), `d5ca7ad` (Batch 5 docs sweep), `806904a` (3I Batch 2), `f39b26b` (3I Batch 1), `c4b6942` (§15.29 fix).
+> **Last updated:** 2026-05-16 night (post-session: **7 sprints / 11 commits in one day** — the highest-throughput single-session in project history). **What this means in plain terms:** the auto-extractor that fills `business_brief` from any business website on first onboarding click (Sprint 3G, 4 phases) is shipped end-to-end; Manager's recurring 25-second-edge / 60-second-hobby timeouts are fully resolved via Inngest fan-out (Sprint 3Z); Inventory cron's silent 405 of 3+ weeks is fixed (Sprint 3 Inv); and the Sales+Social manual-trigger timeout saga — a three-layered bug (cron method, agent budgets, page runtime) — is fully untangled in three commits (Sprint 3α A+B+C). **What shipped today (in order):** (1) `9ba8b03` — docs sweep capturing previous session; (2) `1f4f1fd` — Inventory cron POST→GET (same root cause as Manager's earlier `7539dcd` lesson, now re-applied — see §15.34); (3) `032a18c` — Sprint 3Z: Manager moved from Vercel cron `0 5 * * 0` to Inngest event-driven `weeklyManagerCron` + per-tenant `runManagerForTenant` (fan-out, each tenant gets own 60s budget); `thinking_budget` 8000→3000 and `max_tokens` 16000→6000 (cuts wall time from ~55s to ~25s); `vercel.json` cron count 9→**8**. (4) `6845582` — Sprint 3G Phase 1a: brief-extractor core + admin test endpoint at `/api/admin/extract-brief` (Haiku 4.5, SSRF-safe HTML fetch, regex-strip to plain text, no cheerio); (5) `9c4d243` — Sprint 3G Phase 1b: magic-wand button on `/dashboard/settings` Card 3 (URL input + "צור brief" button + confirm-overwrite + toast feedback); (6) `8a72591` — Sprint 3G Phase 1d: quality pass — Haiku 4.5 → **Sonnet 4.6** plus prompt rewrite with anti-translation rules + bad-examples section quoting the exact Hebrew "translation feel" tells Haiku produced ("מפנה" instead of "פונה", "ניקיון pipeline", "להפוך סיבוך למסודר"); (7) `4ab6f96` — Sprint 3G Phase 1c: same magic-wand button on `/onboarding` flow with light auth (`auth.getUser()` instead of `requireOnboarded()` since user is mid-onboarding) — Day-1 brief auto-fill from first signup screen; (8) `6e2396c` — Sprint 3α Phase A: Sales+Social cron routes POST→GET (same bug as Inventory; silent 405 on every Sun-Thu scheduled invocation for weeks); (9) `e15b305` — Sprint 3α Phase B: budget reduction (Sales `thinking_budget` 2048→1024, `max_tokens` 4096→2500; Social `max_tokens` 3000→2000) — Sprint 3Z playbook applied to non-Manager agents; (10) `4ae9cf7` — Sprint 3α Phase C: `/dashboard/agents` runtime edge→nodejs (the §15.28 lesson from 2026-05-13 had been applied to `/dashboard/page.tsx` but **the agents-overview page was missed**, so Sales' post-Phase-B 25-35s runs kept dying at the Edge 25s init cap with `FUNCTION_INVOCATION_TIMEOUT`); (11) this CLAUDE.md sweep itself. **End-to-end validation today:** Sales manual trigger via `/dashboard/agents` Run button produced 5 personalized followup drafts (visible in `/dashboard/approvals`: PII-stripped, channel-aware email vs WhatsApp vs manual-copy, suggested timing, response-probability tag, Hebrew reasoning paragraph per draft); Social produced 3 timed posts (morning/noon/evening) with platform recommendations and rationale. Sprint 3G brief auto-extraction validated on `https://www.spikeai.co.il/` — first attempt with Haiku showed translation-feel tells; second attempt with Sonnet + tightened prompt produced 254 chars of native Hebrew ("פונים ללקוחות" correct verb, "עשרים וארבע שעות ביממה" instead of "24/7", "ישיר ועניני, בלי מינוח מסורבל" — natural compound-free Hebrew). **8 new sections / lessons added today:** §10.46 (3 Inv), §10.47 (3Z Manager Inngest), §10.48 (3G full lifecycle), §10.49 (3α three-layer fix), §15.34 (Vercel cron uses GET not POST), §15.35 (Sonnet + thinking_budget Vercel-cap calculus), §15.36 (two-step UX pattern for AI-generated form fields, Iron Rule extension), §15.28 addendum (Edge→nodejs lesson re-applied page-by-page). **Cron count: 8** (Manager removed when moved to Inngest in Sprint 3Z). **Strategic decisions locked — see §19** (pricing still OPEN — single flat tier candidate ~₪999/month under evaluation): BSP 360dialog primary, Meta Cloud direct fallback; wedges = [אשר] button + voice notes + no-shows ROI + **AI brief auto-extractor in onboarding** (new wedge as of Sprint 3G); channel = periphery cities + bookkeepers + Achiya rev-share. **Latest commits (newest first):** `4ae9cf7` (3α Phase C runtime), `e15b305` (3α Phase B budgets), `6e2396c` (3α Phase A cron method), `4ab6f96` (3G Phase 1c onboarding), `8a72591` (3G Phase 1d quality), `9c4d243` (3G Phase 1b settings), `6845582` (3G Phase 1a core), `032a18c` (3Z Manager Inngest), `1f4f1fd` (Inventory cron fix), `9ba8b03` (prior docs sweep).
+>
+> **Previous session (2026-05-15):** Owner-facing trinity COMPLETE + Sprint 3W internal hygiene + onboarding brief integration `87e2b20` + Sonner Toaster migration `b49bcb9`. 6 sprints / 11 commits in one day. The business owner now receives three operational signals on WhatsApp automatically (Morning daily 07:00 IL via 3M, real-time critical/high alerts via 3X, weekly health digest Sunday 08:00 IL via 3Y — **as of today moved to Inngest, see §10.47**). NEW tenants who complete onboarding have their brief captured on Day 1. Error feedback styled via Sonner toasts. **End-to-end WhatsApp delivery for 3X + 3Y** was deferred on Meta access-token refresh.
 
 ---
 
@@ -245,16 +247,19 @@ Resend, Supabase OTP
 
 ### 3.5 Background Tasks
 - `@vercel/functions@3.5.0` for `waitUntil()`
-- **Vercel Cron (9 jobs in `vercel.json`, all daily-or-less for Hobby tier):**
+- **Vercel Cron (8 jobs in `vercel.json`, all daily-or-less for Hobby tier — was 9 before Sprint 3Z moved Manager to Inngest, see §10.47):**
   - `/api/cron/reset-monthly-spend` (1 0 1 * *) — monthly
-  - `/api/cron/social` (30 5 * * 0-4)
-  - `/api/cron/sales` (30 7 * * 0-4)
-  - `/api/cron/inventory` (30 5 * * 0,3)
+  - `/api/cron/social` (30 5 * * 0-4) — **Method fixed to GET on Sprint 3α Phase A (`6e2396c`); was silent-405-on-POST for weeks. See §15.34.**
+  - `/api/cron/sales` (30 7 * * 0-4) — **Method fixed to GET on Sprint 3α Phase A (`6e2396c`).**
+  - `/api/cron/inventory` (30 5 * * 0,3) — **Method fixed to GET on Sprint 3 Inv (`1f4f1fd`); same root cause. See §10.46.**
   - `/api/cron/watcher` (0 6 * * *) — daily on Hobby; restore to hourly on Pro. Sprint 3X: auto-sends critical/high alerts to **owner** via WhatsApp post-classification with diff-based dedupe (§10.41).
   - `/api/cron/cleanup` (0 0 * * *) — 1.5.4. Sprint 3W: removed always-failing `agent_runs` insert (§10.43).
   - `/api/cron/hot-leads-sales-recovery` (0 2 * * *) — 1.5.2
   - `/api/cron/morning` (0 4 * * *) — 3M, daily 07:00 IL = 04:00 UTC. Auto-sends Morning daily summary to **owner** via WhatsApp (not customers). See §10.39.
-  - `/api/cron/manager` (0 5 * * 0) — 3Y, Sunday 08:00 IL = 05:00 UTC. Auto-sends weekly Manager digest to **owner** via WhatsApp with weekly idempotency check. See §10.42.
+- **Inngest (event-driven cron, was Vercel cron before Sprint 3Z):**
+  - `weeklyManagerCron` (Inngest cron `TZ=Asia/Jerusalem 0 8 * * 0`) — Sunday 08:00 IL discovers eligible tenants, fans out `manager/run.tenant` events
+  - `runManagerForTenant` (Inngest event consumer, `concurrency.limit: 5`) — per-tenant Manager run with own 60s Node budget. Same auto-send-to-owner Iron-Rule carve-out as the previous Vercel-cron path. See §10.47.
+- **Growth** also uses Inngest (the original Inngest-on-Spike pattern, see §10.29 + §15.18).
 
 ### 3.6 Hosting
 - Vercel auto-deploys from `main` (when not blocked — see §15.8)
@@ -1688,6 +1693,152 @@ Sprint 3I (Phase 2) shipped on 2026-05-13 with the `business_brief` field inject
 
 ---
 
+### 10.46 Sprint 3 Inv — Inventory Cron POST→GET (DONE, commit `1f4f1fd`) — 2026-05-16
+
+**The symptom.** SQL diagnostic on `agent_runs` showed the Inventory agent had only `trigger_source IN ('manual', 'webhook')` rows for the past 3+ weeks. No `'scheduled'` rows. But `vercel.json` had an entry `/api/cron/inventory @ 30 5 * * 0,3` (Sunday + Wednesday 05:30 UTC). The cron WAS configured to fire twice a week — yet nothing in the database showed it had.
+
+**The diagnosis.** Vercel Cron sends HTTP **GET** with `Authorization: Bearer ${CRON_SECRET}`. The route handler exported `POST(request: Request)`. Every scheduled fire hit a silent 405 (Method Not Allowed) at Next.js's route matcher. No log line, no error in `agent_runs`, no Vercel function-execution row to inspect — because the function body never ran. The bug had been in place since the Inventory agent's initial scaffold (~3 weeks ago) and went undetected because the manual trigger from the dashboard worked fine (different code path entirely).
+
+**The fix.** Single one-line change: `export async function POST(` → `export async function GET(`. The `Bearer ${CRON_SECRET}` auth check works identically on GET. Added a comment block explaining the historical bug for future archaeologists. Next scheduled run: the following Wednesday 05:30 UTC.
+
+**Why this lesson generalizes.** This was the first proof that the same bug existed on Sales + Social cron routes — they all exported POST. Sprint 3α Phase A (§10.49 + `6e2396c`) then re-applied the same fix to both, completing the cron-method audit. Pattern documented as §15.34 ("Vercel cron uses GET, not POST"). Going forward, `grep -rE "export async function POST" src/app/api/cron/` should always return zero matches.
+
+---
+
+### 10.47 Sprint 3Z — Manager Vercel Cron → Inngest Async + Thinking Budget Reduction (DONE, commit `032a18c`) — 2026-05-16
+
+**The symptom.** The Manager agent had a recurrent ~77% error rate (7 failures out of 9 runs over a 30-day window). All failures showed `error_message = 'auto-cleanup: stuck running after Vercel function timeout'` — meaning the function was killed at the runtime cap and the cleanup cron later marked the row failed. Last successful Manager run took 63 seconds — exactly at the Vercel Hobby 60s Node cap (off by 3s for clock skew). All others died just past the cap.
+
+**The two compounding causes.**
+
+1. **`thinking_budget = 8000` + `max_tokens = 16000`** in Manager's Anthropic call. These were carry-overs from earlier experimentation and never re-tuned. Per §15.35, thinking_budget of 8000 burns ~40 seconds of wall time alone; combined with input processing and output streaming for a multi-section Manager report, total wall time landed at 55-65s — riding the 60s Hobby Node cap directly.
+
+2. **Single Vercel cron handler processed all tenants sequentially in one function invocation.** The Manager cron at `/api/cron/manager` looped over `tenants WHERE is_active = true` and called `runManagerAgent` per tenant in series. At 1 active tenant (current demo) this was already at the cap; at N tenants it would scale linearly with no mechanism to survive a long Sonnet call.
+
+**The fix — two-pronged.**
+
+*Prong 1: Reduce thinking + max_tokens.* `src/lib/agents/manager/run.ts` modified — `THINKING_BUDGET = 8000 → 3000`, `MAX_TOKENS = 16000 → 6000`. The Manager output schema is strict (`MANAGER_AGENT_OUTPUT_SCHEMA` — 5 sections, each with bounded fields), so reducing thinking_budget has minimal quality impact: thinking primarily helps with section selection and reasoning trace, not with raw text generation. Expected wall time after this change alone: ~25-30s.
+
+*Prong 2: Migrate to Inngest event-driven async.* The single per-tenant-loop function was replaced with two Inngest functions:
+- `weeklyManagerCron` — Inngest cron triggered `TZ=Asia/Jerusalem 0 8 * * 0` (Sunday 08:00 IL), discovers eligible tenants, fans out `manager/run.tenant` events (one per tenant).
+- `runManagerForTenant` — Inngest event consumer, `concurrency.limit: 5`, runs ONE tenant per invocation with its own fresh 60s Node budget. Calls the new `sendManagerToOwner` helper (extracted into `src/lib/agents/manager/owner-send.ts`) which handles idempotency check → `runManagerAgent` → `renderManagerSummary` → integration lookup → 24h-window check → WhatsApp send.
+
+This means each tenant gets 60 seconds of its own — N tenants no longer compound into N×60s budget. Inngest's reliability layer also gives us automatic retry semantics that the previous setup didn't have.
+
+**Files changed.**
+- **MODIFIED `src/lib/agents/manager/run.ts`** — thinking_budget + max_tokens reduction
+- **NEW `src/lib/agents/manager/owner-send.ts`** — extracted `renderManagerSummary` + `sendManagerToOwner` (returns structured `ManagerOwnerSendResult`, does NOT throw — caller handles)
+- **MODIFIED `src/lib/inngest/functions.ts`** — added `weeklyManagerCron` + `runManagerForTenant` to the export array (now 4 functions: 2 for Growth, 2 for Manager)
+- **MODIFIED `vercel.json`** — removed `/api/cron/manager` entry. Cron count: 9 → **8**.
+- **DELETED `src/app/api/cron/manager/route.ts`** — replaced by Inngest path. Git auto-detected this as `renamed` to `owner-send.ts` (54% similarity).
+
+**Iron Rule §15.25 carve-out preserved.** Manager auto-send to owner remains an owner-self loopback — no `[אשר]` approval required. The carve-out moved with the code; the rule is unchanged.
+
+**Tracker-level effect.** Vercel cron entries: 9 → 8 (§3.5 updated). Manager cron documentation: §10.42 updated with a "post-3Z: moved to Inngest path" note. The runtime guarantee improved (each tenant gets own budget) while the externally-observable behavior — Sunday 08:00 IL WhatsApp digest to owner — stayed the same.
+
+**Why this lesson generalizes.** The Inngest fan-out pattern (cron triggers → fan out per-unit events → per-unit consumers with own budgets) is the right pattern for ANY heavy multi-tenant cron in this codebase. Sales+Social cron routes still use the sequential per-tenant loop (Sprint 3α Phases A+B kept that structure but reduced per-call wall time). When tenant count grows beyond ~5, those should migrate to Inngest too. Pattern reference: this commit.
+
+---
+
+### 10.48 Sprint 3G — AI-Driven Brief Auto-Extractor (DONE in 4 phases: 1a + 1b + 1d + 1c) — 2026-05-16
+
+**The killer-feature wedge.** Sprint 3I shipped the manual textarea for `tenants.config.business_brief`. Sprint 3I onboarding integration shipped the optional textarea on the onboarding form (§10.44). Sprint 3G closes the final friction step: paste a URL → get a Hebrew brief auto-drafted by Sonnet 4.6 → review/edit in the textarea → save. Both `/dashboard/settings` (existing tenants) and `/onboarding` (new tenants) now have this button. New tenants get Day-1 brief auto-fill from the very first signup screen.
+
+**Phase 1a — Brief extractor core (`6845582`).** Three new files under `src/lib/agents/brief-extractor/`:
+- `prompt.ts` — Hebrew system prompt with 3 examples (mispara / clothing store / clinic) + `_INSUFFICIENT_DATA_` sentinel for empty/broken sites + buildBriefExtractorUserMessage helper
+- `extract.ts` — `extractBriefFromWebsite(url)` async function. SSRF protection (rejects localhost, private network IPs, non-http(s) schemes), 10s fetch timeout, polite User-Agent header, regex-based HTML→plain-text stripper (no cheerio dependency to keep the bundle small), truncates to 20K chars (~5K tokens), Sonnet 4.6 call with cached system prompt (`cache_control: { type: 'ephemeral', ttl: '1h' }`), sanity bounds 50-1000 chars on output, returns structured `ExtractBriefResult { ok, brief?, error?, fetchedBytes?, cleanedTextChars?, durationMs? }`
+- `route.ts` at `/api/admin/extract-brief` — POST endpoint with `Bearer ${CRON_SECRET}` auth for end-to-end testing without UI
+
+**Phase 1b — Settings UI integration (`9c4d243`).** Modifications to two existing files:
+- `src/app/dashboard/settings/actions.ts` — added `extractBriefFromWebsiteAction(websiteUrl)` wrapping the core extractor with `requireOnboarded()` auth (rejects if onboarding not complete). Returns `ExtractBriefResult` directly to the form.
+- `src/components/dashboard/settings-form.tsx` — Card 3 ("סגנון העסק שלך") got a new sub-section ABOVE the existing textarea: label + helper text + URL input + "🪄 צור brief" button. Click flow: confirm-overwrite-if-existing → call extract action → on success update `businessBrief` state + toast.success with duration → on error toast.error with Hebrew error. The textarea then displays the extracted brief; user reviews/edits and clicks the existing "שמור הגדרות" button to commit. Two-step UX per §15.36.
+
+**Phase 1d — Quality pass: Haiku 4.5 → Sonnet 4.6 + prompt rewrite (`8a72591`).** Real-world test of Phase 1b against `https://www.spikeai.co.il/` produced a Haiku brief with classic "translation feel" tells:
+- "אני **מפנה** ללקוחות בחום" (wrong verb — should be "פונה")
+- "ניסוח עם **רמת מקצועיות גבוהה אבל נגישה**" (clunky compound)
+- "להפוך **סיבוך** למסודר" ("סיבוך" is an unnatural noun in this context)
+- English word "pipeline" inside a Hebrew sentence
+
+The grammar is correct; the Hebrew is *technically* fine — but it reads "AI translation feel" rather than native ownership voice. Two-pronged fix:
+
+1. **Model upgrade** in `extract.ts`: `MODEL = "claude-haiku-4-5-20251001"` → `"claude-sonnet-4-6"`. Cost ~₪0.03 → ~₪0.30 per call — negligible for a once-per-tenant extraction. `max_tokens: 600 → 800` for a small margin.
+2. **Prompt rewrite** in `prompt.ts`: heavy rewrite adding explicit "no English words in body" rule, anti-translation-feel pattern list (with the exact phrases Haiku produced flagged as "bad examples — don't write like this"), voice-variety in good examples (nuanced/warm/professional rather than three of the same voice), and an "if your phrasing sounds translation-feel, rewrite to spoken Hebrew" closer.
+
+Post-fix test on the same URL produced a brief like:
+> *"חברה ישראלית שבונה צוות של סוכני בינה מלאכותית לעסקים קטנים — מנהלים לידים, ביקורות, רשתות חברתיות ומלאי, עובדים עשרים וארבע שעות ביממה. הטון ישיר ועניני, בלי מינוח מסורבל. פונים ללקוחות בגוף שני רגיל, ומדגישים שהכל מוכן תוך שבוע, בלי לחץ ובלי התחייבויות."*
+
+Native Hebrew throughout — "פונים" correct verb, "סוכני בינה מלאכותית" Hebrew not "AI agents", "עשרים וארבע שעות ביממה" Hebrew not "24/7", "ישיר ועניני, בלי מינוח מסורבל" natural compound-free Hebrew. One minor typo ("שעות שעות" duplicate word) but otherwise clean. Sonnet also correctly chose third-person plural because spikeai.co.il is a company site (not a single-owner SMB) — the system prompt's first-person preference is calibrated for SMBs and Sonnet appropriately deviated for context.
+
+**Phase 1c — Onboarding UI integration (`4ab6f96`).** Same UX as Phase 1b but for `/onboarding`. Modifications to two files:
+- `src/app/onboarding/actions.ts` — added `extractBriefFromWebsiteOnboardingAction(websiteUrl)` with LIGHT auth (`createClient().auth.getUser()` only — NO `requireOnboarded()`, since the user is by definition mid-onboarding). Same return shape as the settings variant.
+- `src/app/onboarding/onboarding-form.tsx` — added URL input + magic-wand button row INSIDE the existing brief section, above the existing textarea. Reused `Sparkles` icon already imported. Reused the existing `@keyframes spin` from the form's `<style jsx>` block (so no need to import Loader2). Same confirm-overwrite + toast.success/error flow as Phase 1b.
+
+**Iron Rule §15.36 compliance.** Both the Settings and Onboarding magic-wand buttons follow the two-step UX: the AI call returns a brief into form state ONLY (does NOT persist to `tenants.config`); the existing save button on each page is the only path that writes to the DB. See §15.36 for the full pattern.
+
+**Phase 1c verified end-to-end on demo tenant (post-deploy).** Magic-wand button visible on `/dashboard/settings` Card 3 with correct label, helper text, URL input, and button styling matching the rest of the form. URL input → button click → ~20-25s wait → textarea fills with Hebrew brief → toast success with duration. Confirm-overwrite dialog fires correctly when textarea has existing content. Save button commits as expected.
+
+**Files & sizes (final).**
+- `src/lib/agents/brief-extractor/prompt.ts` — ~80 lines (system prompt + user message builder)
+- `src/lib/agents/brief-extractor/extract.ts` — ~250 lines (SSRF check, fetch, strip, Sonnet call, sanity bounds)
+- `src/app/api/admin/extract-brief/route.ts` — ~50 lines (POST endpoint, Bearer auth, returns ExtractBriefResult)
+- `src/app/dashboard/settings/actions.ts` — +35 lines (action + import)
+- `src/components/dashboard/settings-form.tsx` — +120 lines (state + handler + UI row)
+- `src/app/onboarding/actions.ts` — +43 lines (action + import)
+- `src/app/onboarding/onboarding-form.tsx` — +98 lines (state + handler + UI row)
+
+**Future work (out of scope for 3G v1).** Phase 2 could add Google Business + public Instagram posts as additional signal sources (current implementation reads website HTML only). Phase 3 could let the owner pick "regenerate" / "translate from English website" / "tone: nuanced vs warm vs professional" — but these are personalization gilding on a feature that already produces native Hebrew on a first call. Ship as-is, learn from design partner #1, iterate.
+
+---
+
+### 10.49 Sprint 3α — Sales/Social Manual-Trigger Timeout Saga (DONE in 3 phases: A + B + C) — 2026-05-16
+
+**The opening complaint.** Manual triggers of Sales and Social from `/dashboard/agents` Run buttons were failing at a high rate (Sales 100% fail on manual trigger; Social 30% fail). SQL on `agent_runs` showed all failures with `error_message LIKE 'auto-cleanup: stuck running%'` — the function had timed out and the cleanup cron later marked the row failed. Production webhook path for Sales (Sales QR from WhatsApp inbound) was at 100% success with ~5 second wall time — so the customer-facing hot path worked, only manual triggers broke.
+
+**The root-cause investigation revealed THREE separate bugs nested in one symptom.**
+
+**Phase A — Cron method bug (`6e2396c`).** SQL also showed neither agent had ANY `trigger_source = 'scheduled'` rows for the past 14 days. The cron entries for `/api/cron/sales` (Sun-Thu 07:30 UTC) and `/api/cron/social` (Sun-Thu 05:30 UTC) should have produced many rows. They didn't. Cause: both routes exported `POST(request: Request)`. Vercel Cron sends GET. Silent 405 every scheduled invocation. **Fix:** `POST` → `GET` × 2 files. Same as Sprint 3 Inv (§10.46) one day earlier. Pattern documented as §15.34.
+
+This fix exposed but did NOT cause the manual trigger failures — those happen on a different code path (the `/dashboard/agents` server action). Phase A made future scheduled runs work; Phase B + C are needed for manual.
+
+**Phase B — Sonnet thinking + max_tokens budget reduction (`e15b305`).** Diagnostic on Sales' `runSalesAgent` revealed `thinking_budget: 2048` + `max_tokens: 4096` on the main Sonnet call. Per §15.35, that's ~30-40 wall-second baseline before input processing or output streaming — landing at 30-65s for a populated tenant. Social had no thinking but `max_tokens: 3000`, landing around 35-50s.
+
+**Fix (same playbook as Manager Sprint 3Z — §10.47):**
+
+| File | Change |
+|---|---|
+| `src/lib/agents/sales/run.ts` | `thinking_budget: 2048 → 1024`, `max_tokens: 4096 → 2500` (the `runSalesAgent` call only; the Sales QR webhook path stays at `max_tokens: 1024` because it's already small and works at 5s) |
+| `src/lib/agents/social/run.ts` | `max_tokens: 3000 → 2000` (one number; in-place PowerShell edit to avoid re-uploading the file) |
+
+Expected wall time after Phase B: Sales 25-35s, Social 20-30s. Within 60s Node Hobby cap with comfortable margin.
+
+Manual triggers still failed after Phase B. The 25-35s Sales runs were dying at exactly 25s with `FUNCTION_INVOCATION_TIMEOUT`. This pointed at Phase C.
+
+**Phase C — `/dashboard/agents` runtime edge → nodejs (`4ae9cf7`).** §15.28 (2026-05-13 lesson) had documented that heavy Sonnet server actions need Node runtime (60s on Hobby), not Edge (25s on Hobby). The fix at the time was applied to `src/app/dashboard/page.tsx` (commit `7539dcd`). **But `src/app/dashboard/agents/page.tsx` was missed in that sweep** — it kept `runtime = "edge"`. Server actions invoked from buttons on that page therefore inherited the 25s cap. Even after Phase B brought Sales' wall time to 25-35s, it was still over 25s — so the Edge cap killed it.
+
+Vercel function log on the killed run showed it clean:
+```
+Edge Function Invocation
+Route: /dashboard/agents
+Error: FUNCTION_INVOCATION_TIMEOUT
+Error: Your function was stopped as it did not return an initial response within 25s
+Response finished in 25s
+[sales_agent] Skipped 15 duplicate leads. Processing 5 unique leads.
+```
+The Sales agent had even logged its progress mid-run — proving it had started Sonnet processing — before being killed at 25s.
+
+**Fix:** `src/app/dashboard/agents/page.tsx` `runtime = "edge"` → `"nodejs"` + `maxDuration = 60`. The §15.28 addendum (2026-05-16) documents this as a recurrence of the prior lesson and updates the operational rule to audit ALL pages with heavy-action buttons, not just the currently broken one.
+
+**End-to-end verification (post Phase C deploy).** Stuck `running` row from the pre-Phase-C Sales attempt was manually cleaned via SQL (§15.37 — the dashboard guard blocks new triggers while old runs are still nominally running). Refreshed `/dashboard/agents`, clicked Run on Sales, watched the spinner for ~28 seconds, Sales completed cleanly. `/dashboard/approvals` showed 5 new Sales drafts (Tamar Shimoni email followup, Rotem Berek phone-call manual-copy, 3 more) — each with native Hebrew owner-voice, channel-aware routing, suggested timing window ("בוקר 09:00-11:00 בימים א-ה"), response-probability tag ("סיכוי תגובה: נמוך"), PII stripping ("PII הוסתר"), and a "למה זה?" reasoning paragraph explaining WHY the draft is appropriate now. Clicked Run on Social — completed in ~24 seconds — produced 3 timed posts (evening engagement, noon seasonal, morning) with platform recommendations (Instagram / Facebook / both) and rationale per post.
+
+**Why the three-layer bug took three commits.** Each layer hid the next:
+- Phase A's cron-method bug was orthogonal (affected scheduled, not manual) but found via the same diagnostic
+- Phase B's budget bug was visible only AFTER realizing Phase B alone wouldn't fix manual (which it didn't)
+- Phase C's runtime bug was visible only AFTER Phase B brought wall time into the 25-30s range — before that, the wall time was 60s+ and people assumed the bug was always agent budget, not page runtime
+
+The lesson: when reducing wall time on a Sonnet agent, ALSO verify the page runtime can handle the new (smaller) wall time. The Edge 25s cap can be hit even by a moderately-sized Sonnet call. See §15.28 addendum + §15.35 for the systematic decision rules.
+
+---
+
 ## 11. Current Status
 
 ### 11.1 What Works ✅ — STAGE 1 COMPLETE + POST-STAGE-1 POLISH
@@ -2681,6 +2832,8 @@ Heavy Sonnet 4.6 + thinking agents on a populated demo tenant exceed 25s but fit
 
 **Operational rule going forward:** any new route that triggers a heavy LLM-using server action (Sonnet 4.6 + thinking + non-trivial DB work) should default to `runtime = "nodejs"` from day 1. Edge is best for read-only or lightweight routes.
 
+**Addendum 2026-05-16 (Sprint 3α Phase C — `4ae9cf7`):** the rule above was originally applied to `src/app/dashboard/page.tsx` (commit `7539dcd`) but **the agents-overview page `src/app/dashboard/agents/page.tsx` was missed** — it kept `runtime = "edge"` and was therefore subject to the same 25s init-response cap. After Sprint 3α Phase B (`e15b305`) reduced Sales' wall time to ~25-35s, manual triggers via `/dashboard/agents` Run button STILL died at exactly 25s with the identical `FUNCTION_INVOCATION_TIMEOUT` error pattern — proving Phase B's budget reduction wasn't enough on its own, and that the bottleneck was the page's Edge runtime, not the agent's Sonnet+thinking budget. Phase C flipped this single page to `nodejs` + `maxDuration = 60`; Sales then completed cleanly at ~28-32s producing 5 personalized followup drafts visible in `/dashboard/approvals`. **Operational rule extended:** when fixing this category of bug, audit ALL pages that host server actions invoking heavy agents — not just the ones currently broken. Check `grep -r 'runtime = "edge"' src/app/dashboard/` after any agent-budget change. Pages still on Edge as of 2026-05-16 (intentionally — they don't invoke heavy server actions): `/admin/page.tsx`, `/admin/integrations/page.tsx` (read-only views, no Sonnet calls).
+
 ---
 
 ### 15.29 Turbopack/SWC `import type` + `"use server"` + nodejs Runtime Bug ✓ RESOLVED 2026-05-13
@@ -2889,6 +3042,153 @@ This crashes at module evaluation with `ReferenceError: BusinessOwnerGender is n
 
 ---
 
+### 15.34 Vercel Cron Sends GET, Not POST — Route Must Export `GET` Or Every Scheduled Invocation Silently 405s (Sprint 3 Inv + Sprint 3α Phase A lesson) ⚠️
+
+**The bug.** Three cron routes (`/api/cron/inventory`, `/api/cron/sales`, `/api/cron/social`) all exported `POST(request: Request)` for months. Vercel Cron sends HTTP **GET** with the `Authorization: Bearer ${CRON_SECRET}` header — it does NOT send POST. Every scheduled invocation hit a silent 405 (Method Not Allowed) at Next.js's route matcher, so the handler body never ran. Effect: `agent_runs` had zero rows with `trigger_source = 'scheduled'` for these three agents over multi-week windows. Manual triggers (from the dashboard Run button) and webhook triggers (Sales QR from WhatsApp inbound) were unaffected because they POST through different routes.
+
+**How to detect.** SQL diagnostic that surfaces this in seconds:
+```sql
+SELECT
+  agent_id,
+  trigger_source,
+  COUNT(*) AS runs,
+  MAX(started_at) AS last_run
+FROM agent_runs
+WHERE agent_id IN ('sales', 'social', 'inventory', 'manager')
+  AND started_at >= NOW() - INTERVAL '30 days'
+GROUP BY agent_id, trigger_source
+ORDER BY agent_id, trigger_source;
+```
+If an agent has rows for `manual` / `webhook` but NONE for `scheduled` despite a vercel.json entry, the route is silent-405ing. Compare against a known-working cron like Watcher or Morning to sanity-check that scheduled rows do appear when the method matches.
+
+**Vercel docs confirm this.** The `crons` array in `vercel.json` documents that Vercel sends a GET to the path. The docs say so explicitly. The earlier route handlers in this codebase were authored under the wrong assumption (probably copy-pasted from a webhook handler that legitimately used POST), and the bug compounded across at least three migrations of the cron-handler boilerplate.
+
+**The fix.** One-line change × 3 files: `export async function POST(` → `export async function GET(`. The `Bearer ${CRON_SECRET}` auth check works identically on GET — Vercel sends the same header regardless of method. Commits: `1f4f1fd` (Inventory, Sprint 3 Inv) + `6e2396c` (Sales+Social, Sprint 3α Phase A).
+
+**The Manager exception.** Manager's cron at `0 5 * * 0` was NOT exhibiting this bug because Sprint 3Z moved it to Inngest event-driven cron BEFORE we discovered the pattern. Inngest sends POSTs to its own `/api/inngest` route, which uses the Inngest SDK's serve handler — no method-mismatch issue exists there. Manager's previous Vercel-cron version (now deleted) was also POST-only, so it had been silent-405ing in the same way until Sprint 3Z replaced the entire path. (Coincidence: we fixed Manager via Inngest migration for a different reason — the 60s timeout — but it also incidentally fixed the cron method bug. We didn't realize the second bug existed until we looked at Inventory.)
+
+**Operational rule.** Any new Vercel cron route MUST export `GET`, not POST. The function-name lint check is trivial: `grep -rE "export async function POST" src/app/api/cron/` should return zero matches after every change to this directory. If we ever need a route that's BOTH a webhook (POST) AND a cron (GET), split it into two routes.
+
+**Related lessons.** §10.46 (Sprint 3 Inv) + §10.49 (Sprint 3α Phase A) document the discovery/fix sessions. §15.28 (Vercel runtimes Edge vs Node) is the sibling category of "Vercel platform quirk that bites silently" — together these two lessons cover most of the Vercel-specific operational gotchas this project has hit.
+
+---
+
+### 15.35 Sonnet 4.6 + `thinking_budget` Calculus vs. Vercel Hobby Function Caps (Sprint 3Z + Sprint 3α Phase B lesson) ⚠️
+
+**The formula.** For a Sonnet 4.6 call on Vercel Hobby (60s Node / 25s Edge initial-response cap), wall-clock time is approximately:
+
+```
+wall_time_seconds ≈
+    network_round_trip (~0.5s)
+  + prompt_tokens / 2000  (input processing, ~rough)
+  + thinking_budget_tokens / 200  (thinking pace, ~10 tps observable)
+  + output_tokens / 50  (output streaming pace, ~50 tps observable)
+  + retry_overhead (0 if first try succeeds; +1s/+2s/+4s exponential backoff on withRetry hits)
+```
+
+These coefficients are very rough and vary with Anthropic's load, but they're useful for sanity-checking which agents will fit which Vercel runtime.
+
+**Historical data points (this codebase, post-mortem):**
+
+| Agent | thinking_budget | max_tokens (output) | Observed wall time | Status |
+|---|---|---|---|---|
+| Manager (pre-3Z) | 8000 | 16000 | 55-65s | Hit 60s Node cap; failed 77% of runs |
+| Manager (post-3Z, `032a18c`) | 3000 | 6000 | 20-30s | Comfortable margin under Node 60s |
+| Sales (pre-3α) | 2048 | 4096 | 30-65s+ | Hit 25s Edge cap on `/dashboard/agents`; FUNCTION_INVOCATION_TIMEOUT |
+| Sales (post-3α Phase B, `e15b305`) | 1024 | 2500 | 25-35s | Still over 25s Edge — but Phase C moved page to nodejs, so Node 60s applies → comfortable |
+| Social (pre-3α) | (none, no thinking) | 3000 | 35-50s | Hit 25s Edge cap occasionally (30% failure rate on manual) |
+| Social (post-3α Phase B) | (none) | 2000 | 20-30s | Comfortable under Node 60s post-Phase-C |
+| Inventory | (none, no thinking) | ~2000 | ~30-35s | Fits Node 60s comfortably |
+| Reviews | (none, Haiku-equivalent) | ~1500 | ~5-10s | Fits any runtime |
+| Hot Leads | (none) | ~1500 | ~5-10s | Fits any runtime |
+| Sales QR (webhook path) | (none) | 1024 | ~5s | Fits any runtime |
+
+**Decision rules going forward.**
+- For a Sonnet agent with `thinking_budget > 0`: target Node runtime (60s cap), not Edge.
+- For a Sonnet agent with `max_tokens > 3000`: target Node runtime.
+- For a Sonnet agent that loops over multiple tenants in one request: use Inngest fan-out (each tenant gets its own 60s budget) — see Sprint 3Z (`032a18c`) for the playbook.
+- For a Haiku agent (any thinking/output size): Edge is usually fine; cold-start is faster.
+
+**When the budget still doesn't fit.** Two escalation paths:
+1. **Inngest fan-out** — break the work into per-unit events (per-tenant, per-lead) and let each unit have its own function budget. Pattern: `weeklyManagerCron` (cron-triggered, fans out events) + `runManagerForTenant` (event consumer, runs ONE tenant with its own 60s). See `src/lib/inngest/functions.ts`.
+2. **Vercel Pro plan** — 300s Edge / 800s Node. Costs ~$20/user/month. Worth it only if Inngest fan-out doesn't naturally fit (e.g., the work is genuinely one inseparable unit that exceeds 60s — which we haven't hit yet).
+
+**The trap to avoid.** Don't blindly add `thinking: { type: "enabled", budget_tokens: 8000 }` to every Sonnet call. Each `thinking_budget` token is roughly 0.005s of wall time. Budget 8000 → 40 seconds. On Hobby Node (60s cap), that leaves only 20s for everything else (network + input processing + output streaming + retries). That's tight. Sprint 3Z reduced Manager's `thinking_budget` to 3000 with minimal quality impact because the agent's output schema is strict (5 sections, each with bounded fields) — thinking primarily helps with section selection and reasoning trace, not with raw text generation. The same logic applied to Sales in Sprint 3α Phase B: `thinking_budget` 2048→1024.
+
+**Sibling lessons.** §15.28 (Edge vs Node runtime cap), §15.8 (Vercel Hobby cron limit), §10.47 (Sprint 3Z Manager → Inngest), §10.49 (Sprint 3α three-layer fix).
+
+---
+
+### 15.36 Iron Rule §15.25 Extension: Two-Step UX Pattern for AI-Generated Form Fields (Sprint 3G lesson) ⚠️
+
+**The principle.** When an AI feature pre-fills a form field on the owner's behalf — e.g., the brief auto-extractor in Sprint 3G fills `business_brief` from website content — the AI call must NOT persist to the database directly. It must populate **client-side form state** only. The user reviews the AI output, edits if needed, and explicitly clicks the existing "שמור" / "Save" button to commit. This is the natural extension of the Iron Rule §15.25 ("AI מסמן, בעלים מחליט — AI flags, owner decides") to UI surfaces where AI produces editable content.
+
+**Why this matters more than it might seem.** Single-click "magic" buttons that BOTH generate AND persist content remove the owner's review step — the exact step the Iron Rule exists to protect. Even when the AI output is "obviously" correct (e.g., extracted brief is just a Hebrew summary of the owner's own website), the moment we save without explicit confirmation:
+- The owner can't catch translation-feel errors before they propagate to downstream agents
+- A future "click by mistake" overwrites valuable hand-tuned content
+- Trust in the AI system erodes when something goes wrong — "I didn't ask you to do that"
+
+**The two-step UX (Sprint 3G implementation).**
+
+```
+Step 1 — Extract: button click → AI call → result lands in form state (textarea)
+                                                ↓ NOT persisted yet
+Step 2 — Confirm: user reviews / edits → clicks "שמור הגדרות" → server action persists to DB
+```
+
+Both `/dashboard/settings` (Sprint 3G Phase 1b, `9c4d243`) and `/onboarding` (Sprint 3G Phase 1c, `4ab6f96`) follow this pattern. The extractor server action (`extractBriefFromWebsiteAction` / `extractBriefFromWebsiteOnboardingAction`) returns the brief object but writes nothing to `tenants.config`. Only the existing `updateTenantSettings` / `saveOnboardingAction` server action — already two clicks of separation from "AI generated something" — persists to the DB.
+
+**Additional guards added in Sprint 3G.**
+- If the textarea already has content when the extract button is clicked, confirm-overwrite dialog: "יש כבר תיאור קיים. להחליף ב-brief חדש מהאתר?". Forces a deliberate "yes, replace" rather than silent stomp.
+- Loading state is visually obvious (spinner + "מחפש..." label, button disabled) so the owner sees that an AI call is in-flight, not just a quick local UI shimmer.
+- Success toast tells the owner what happened and what to do next: "brief נוצר (X.X שניות). ערוך לפי הצורך לפני שמירה."
+- Error toast surfaces the Hebrew error from the extractor (URL unreachable, content insufficient, etc.) — never a generic "something failed".
+
+**Counter-example (a one-step pattern that would be WRONG).**
+```
+Owner: "צור brief מהאתר" (click)
+→ App fetches website, calls Sonnet, persists brief directly to tenants.config
+→ Toast: "brief נשמר!"
+```
+This skips review. If Sonnet emits a translation-feel brief or hallucinates content, the owner doesn't catch it before it ships to all five customer-facing Sonnet agents on the next run.
+
+**Where this rule applies.**
+- Any "AI fills the form" UX (brief extractor, suggested-reply auto-fill, default-config recommender)
+- Any "regenerate this draft" button (already follows the rule in `approvals-list.tsx` — generated draft enters the same approval queue, not auto-sent)
+- Future: Voice-note-to-draft (Sprint 3C) MUST follow this rule — voice ingested → draft proposed → owner approves before send. The owner doesn't bypass approval just because they spoke the message; that's still drafts-only territory.
+
+**Where this rule explicitly does NOT apply (Iron Rule carve-outs already documented).**
+- Owner-self loopback (Morning 3M, Watcher 3X, Manager weekly 3Y) — these auto-send to the owner's own WhatsApp without approval, by design. See §15.25. The "AI flags, owner decides" rule is about CUSTOMER-FACING content; owner-facing dashboards have always been allowed to push notifications directly.
+
+**Implementation cost.** Trivial. The settings + onboarding magic-wand buttons both reused the existing "save" path with zero changes. The extractor server actions just return data; persistence stays where it already was. Net cost of following this pattern in Sprint 3G was zero compared to a one-step "extract and save" implementation — but the durability gain is permanent.
+
+---
+
+### 15.37 Vercel Function Stuck in `running` Status After Edge Timeout Blocks Subsequent Manual Triggers (Sprint 3α Phase C operational lesson) ⚠️
+
+**The pattern.** When a Vercel function times out (Edge 25s or Node 60s), the runtime kills the function but the `agent_runs` row stays at `status = 'running'`. The cleanup cron (`/api/cron/cleanup`, daily 00:00 UTC) marks these as `failed` with `error_message = 'auto-cleanup: stuck running after Vercel function timeout'`. But until cleanup runs, the dashboard's per-agent "currently running, please wait" guard correctly refuses to start a new manual trigger — meaning a Sales/Social timeout makes the agent un-runnable for up to 24 hours.
+
+**Manual SQL fix when a stuck row blocks testing.** Targeted update — only for the specific tenant + agent:
+
+```sql
+UPDATE agent_runs
+SET status = 'failed',
+    error_message = 'manual cleanup: stuck running (Vercel function timeout, predates fix)',
+    finished_at = NOW()
+WHERE tenant_id = '15ef2c6e-a064-49bf-9455-217ba937ccf2'  -- replace with real tenant
+  AND agent_id = 'sales'                                   -- or 'social', 'manager', etc.
+  AND status = 'running'
+RETURNING id, agent_id, started_at, NOW() - started_at AS duration;
+```
+
+After this, refresh `/dashboard/agents` and the "currently running" warning clears.
+
+**The `duration` value lies.** The returned `duration` is `NOW() - started_at`, not the actual time-of-death. The function may have died at 25s (Edge cap) or 60s (Node cap), but the row stayed `'running'` until either the cleanup cron ran or this SQL did. So if you see `duration = 00:08:35` in the RETURNING clause, the function actually died ~25s after `started_at`; the other 8 minutes are the gap until manual cleanup. Don't use `duration` for diagnosing the timeout pattern; use Vercel's function logs (filter by route + 504 + FUNCTION_INVOCATION_TIMEOUT) or the original `started_at` cross-referenced with the next agent_run start.
+
+**Sibling lesson.** §15.30 — `agent_runs` schema reference + cleanup procedure for stuck `running` rows. This is the same procedure narrowed to the post-timeout case specifically.
+
+---
+
 ## 16. Commit Conventions
 
 Conventional commits, English subject, Hebrew body OK.
@@ -2909,7 +3209,7 @@ If you are Claude reading this for the first time:
 6. ✅ Confirm you've read this file in your first reply, in 2-3 lines max.
 
 **Sample first reply:**
-> קראתי את CLAUDE.md. Spike Engine — 9 סוכני AI מול לקוח (Morning, Watcher, Reviews, Hot Leads, Social, Manager, Sales, Inventory, Growth) + cleanup פנימי, drafts-only **למעט carve-outs ל-owner-self loopback** (3M Morning daily, 3X Watcher critical/high, 3Y Manager weekly — ראה §15.25 + §10.39 + §10.41 + §10.42), עברית RTL, Anthropic only. Stage 1 הושלם במלואו + Post-Stage-1 polish דרך 1.16 + Sprint 2 Batch 2C/2D + 3A + 2 RLS migrations (025 memberships recursion, 026 events tenant SELECT) + Dashboard runtime fix (`7539dcd`) שמתקן 4 סוכנים כבדים מ-25s Edge → 60s nodejs. **שלוש WhatsApp deliveries אמיתיות הוכחו end-to-end:** Growth Reactivation (דנה כהן) ב-2026-05-08, Sales quick_response (מוחמד אבו ראס) ב-2026-05-09, Morning daily_summary auto-send לבעל-העסק (+972509918196) ב-2026-05-10. /dashboard/approvals מרנדר messageHebrew נכון; double-execute race ב-drafts.ts מוקשח (§15.23 mitigations 1+2); helpers משותפים ב-`src/lib/whatsapp/helpers.ts`. **All 5 LLM call sites optimally cached** (Manager + Inventory direct, Sales×2 + Social via `withGenderLock` — §15.32). **Cron:** **9 jobs** ב-vercel.json (Morning `0 4 * * *`, Watcher `0 6 * * *`, Manager `0 5 * * 0`). הכל בייצור על app.spikeai.co.il. **Sprint 3I — Business Context Brief — COMPLETE ✅ (2026-05-13):** Phase 1 unblocked דרך §15.33 type extraction pattern (`c4b6942`). Phase 2: Batch 1 (`f39b26b` settings UI) → Batch 2 (`806904a` 4 Sonnet agents Reviews/Sales×2/Social) → Batch 3 (`d1eba6a` Growth). Batch 4 descoped. **5 customer-facing agents מזריקים brief.** אומת end-to-end: Social יצר 3 פוסטים עם "יקירים ויקירות" ו"טיפול קרטין"; Growth יצר טיוטה ל-דנה כהן עם "דנה יקירה!" + "חידוש הקרטין" + "סליחה על זה". **3I onboarding integration ✅ (`87e2b20`, 2026-05-15):** נוסף textarea חמישי אופציונלי ל-/onboarding — Day-1 brief injection לtenants חדשים. **Owner-facing trinity — COMPLETE ✅ (2026-05-15):** Morning daily 3M ✅ + Watcher real-time 3X ✅ (`e3bff86`, auto-send critical/high, diff-based dedupe) + Manager weekly 3Y ✅ (`3decc46`, Sunday 08:00 IL, weekly idempotency). End-to-end WhatsApp delivery של 3X+3Y deferred עד refresh של Meta access-token; logic מאומת ע"י SQL. **Sprint 3W — internal hygiene ✅ (`451beae`):** cleanup agent_runs insert הוסר, README חדש, watcher comment fixes. **Sonner Toaster migration ✅ (`b49bcb9`):** 5 alert() calls → toast.error בapprovals-list + leads-board. **לקחים חדשים נוספו:** §15.26 (`"use server"` non-async), §15.27 (tsc≠build), §15.28 (Vercel runtimes), §15.29 (Turbopack import type bug — RESOLVED), §15.30 (agent_runs schema), §15.31 (batch upload drops), §15.32 (`withGenderLock` caching), §15.33 (type extraction pattern), §10.40-§10.45 (Sprint docs). **Latest commits:** `b49bcb9` (Sonner), `87e2b20` (onboarding brief), `451beae` (3W), `3decc46` (3Y), `e3bff86` (3X), `af59fe2` (Batch 5b), `d1eba6a` (3I Batch 3). חוסמים חיצוניים: עוסק מורשה / Meta Business verification / מספר טלפון עסקי. אופציונלי: Vault encryption (premature pre-עוסק-מורשה), Suspense pattern לדפים נוספים, marketing landing alignment (חוסם door-knocking), 3C voice notes, 3D smart waitlist, 3E GreenInvoice, 3F Google Calendar, 3G AI-driven brief auto-extractor (depends on 3I — foundation stable), 3H self-service WhatsApp connection, Inngest fire-and-forget. **החלטות אסטרטגיות נעולות (§19):** pricing **OPEN QUESTION**; BSP=360dialog; wedge=[אשר] button + voice notes + no-shows ROI; channel=periphery + bookkeepers + Achiya. מה אתה רוצה לעשות?
+> קראתי את CLAUDE.md. Spike Engine — 9 סוכני AI מול לקוח (Morning, Watcher, Reviews, Hot Leads, Social, Manager, Sales, Inventory, Growth) + cleanup פנימי, drafts-only **למעט carve-outs ל-owner-self loopback** (§15.25 + §10.39 + §10.41 + §10.42). Stage 1 הושלם במלואו + Post-Stage-1 polish דרך 1.16 + Sprint 2 Batch 2C/2D + 3A + 2 RLS migrations + Dashboard runtime fix (`7539dcd`) שמתקן 4 סוכנים כבדים מ-25s Edge → 60s nodejs. **שלוש WhatsApp deliveries אמיתיות הוכחו end-to-end:** Growth Reactivation (דנה כהן) ב-2026-05-08, Sales quick_response (מוחמד אבו ראס) ב-2026-05-09, Morning daily_summary auto-send לבעל-העסק (+972509918196) ב-2026-05-10. /dashboard/approvals מרנדר messageHebrew נכון; double-execute race ב-drafts.ts מוקשח (§15.23 mitigations 1+2); helpers משותפים ב-`src/lib/whatsapp/helpers.ts`. **All 5 LLM call sites optimally cached** (§15.32). **Cron: 8 jobs** ב-vercel.json + 2 Inngest functions (Manager Sprint 3Z moved out of Vercel cron — see §10.47). הכל בייצור על app.spikeai.co.il. **Sprint 3I — Business Context Brief — COMPLETE ✅ (2026-05-13):** brief textarea ב-settings, 5 customer-facing agents מזריקים brief; aומת end-to-end. **3I onboarding integration ✅ (`87e2b20`).** **Owner-facing trinity — COMPLETE ✅ (2026-05-15):** 3M + 3X + 3Y. **Sprint 3W internal hygiene ✅ (`451beae`).** **Sonner Toaster migration ✅ (`b49bcb9`).** **HUGE 2026-05-16 session — 7 sprints / 11 commits in one day:** **Sprint 3 Inv** (`1f4f1fd`) — Inventory cron POST→GET fix (silent 405 for 3+ weeks; pattern §15.34). **Sprint 3Z** (`032a18c`) — Manager from Vercel cron → Inngest event-driven (`weeklyManagerCron` + `runManagerForTenant` concurrency.limit:5); thinking_budget 8000→3000 + max_tokens 16000→6000; cron count 9→**8**; fixes 77% Manager error rate (§10.47 + §15.35). **Sprint 3G** (`6845582` 1a + `9c4d243` 1b + `8a72591` 1d + `4ab6f96` 1c) — AI-driven brief auto-extractor: URL → Sonnet 4.6 reads website HTML → Hebrew brief in textarea → owner reviews/saves. Two-step UX per §15.36. Validated on spikeai.co.il: native Hebrew throughout, no translation feel, no English mixing (§10.48). **Sprint 3α** (3 phases A+B+C: `6e2396c` + `e15b305` + `4ae9cf7`) — Sales/Social manual-trigger timeout three-layer fix: (A) cron POST→GET on Sales+Social routes, (B) reduce thinking+max_tokens for Sales+Social, (C) `/dashboard/agents` runtime edge→nodejs (was missed in §15.28 sweep). End-to-end validated: Sales produced 5 followup drafts in `/dashboard/approvals`, Social produced 3 timed posts. **Lessons added today:** §15.28 addendum + §15.34 (cron GET not POST) + §15.35 (Sonnet+thinking calculus) + §15.36 (two-step UX for AI form fields) + §15.37 (post-timeout cleanup procedure). **Sections added today:** §10.46 + §10.47 + §10.48 + §10.49. **Latest commits (newest first):** `4ae9cf7` (3α C), `e15b305` (3α B), `6e2396c` (3α A), `4ab6f96` (3G 1c), `8a72591` (3G 1d), `9c4d243` (3G 1b), `6845582` (3G 1a), `032a18c` (3Z), `1f4f1fd` (3 Inv), `9ba8b03` (prior docs sweep). חוסמים חיצוניים: עוסק מורשה / Meta Business verification / מספר טלפון עסקי. **החלטות אסטרטגיות נעולות (§19):** pricing **OPEN QUESTION** (flat ₪999/month candidate under evaluation); BSP=360dialog; wedge=[אשר] button + voice notes + no-shows ROI + **AI brief auto-extractor** (new as of Sprint 3G); channel=periphery + bookkeepers + Achiya. מה אתה רוצה לעשות?
 
 ---
 
@@ -2931,6 +3231,17 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 
 | Hash | What |
 |---|---|
+| TBD | docs(claude): post-session sweep capturing Sprint 3 Inv + Sprint 3Z + Sprint 3G (4 phases) + Sprint 3α (3 phases) — 11 commits / 7 sprints in one day; new §10.46-§10.49 sections + §15.34-§15.37 lessons + §15.28 addendum + §3.5 cron count 9→8 + header refresh |
+| `4ae9cf7` | fix(dashboard-agents): Sprint 3α Phase C — `/dashboard/agents` runtime edge→nodejs (Edge Hobby 25s init cap killed long Sales runs at FUNCTION_INVOCATION_TIMEOUT even after Phase B; nodejs 60s on Hobby has comfortable margin) — see §10.49 + §15.28 addendum |
+| `e15b305` | fix(agents): Sprint 3α Phase B — reduce thinking_budget + max_tokens for Sales (2048/4096 → 1024/2500) and Social (max_tokens 3000 → 2000); same root cause as Manager 3Z timeouts (§10.47); fits Hobby 60s cap with margin — see §10.49 |
+| `6e2396c` | fix(cron): Sprint 3α Phase A — Sales + Social cron routes POST→GET (silent 405 on scheduled triggers for weeks; same root cause as Inventory `1f4f1fd`; manual + webhook triggers unaffected) — see §10.49 + §15.34 |
+| `4ab6f96` | feat(onboarding): Sprint 3G Phase 1c — magic-wand brief extractor in onboarding form (light-auth wrapper for mid-onboarding state, same two-step UX as settings, Day-1 brief auto-fill for new tenants) — see §10.48 + §15.36 |
+| `8a72591` | fix(brief-extractor): Sprint 3G Phase 1d — quality pass: Haiku 4.5 → Sonnet 4.6 + prompt rewrite with anti-translation rules and bad-examples section (fixes translation-feel briefs observed on spikeai.co.il test; cost ~₪0.03 → ~₪0.30, negligible for once-per-tenant) — see §10.48 |
+| `9c4d243` | feat(settings): Sprint 3G Phase 1b — magic-wand brief extractor button in settings form (auto-fill brief from website URL, Iron Rule two-step UX — extract fills textarea, user reviews and clicks save) — see §10.48 + §15.36 |
+| `6845582` | feat(brief-extractor): Sprint 3G Phase 1a — website-to-Hebrew-brief core (SSRF-safe fetch, regex strip, Haiku 4.5 call; admin test endpoint at `/api/admin/extract-brief`; no UI yet) — see §10.48 |
+| `032a18c` | feat(manager): Sprint 3Z — move Manager from Vercel cron `0 5 * * 0` to Inngest event-driven (weeklyManagerCron + runManagerForTenant with concurrency.limit:5); thinking_budget 8000→3000 + max_tokens 16000→6000; vercel.json cron 9→8; fixes recurrent 77% Manager error rate from Hobby 60s timeout — see §10.47 + §15.35 |
+| `1f4f1fd` | fix(cron): Sprint 3 Inv — inventory route POST→GET (silent 405 on every scheduled invocation; agent_runs missing scheduled trigger entries for 3+ weeks) — see §10.46 + §15.34 |
+| `9ba8b03` | docs(claude): post-session sweep — §10.44 (3I onboarding integration) + §10.45 (Sonner migration) + §18.2 backfill + §19.7-§19.8 updates + header refresh — 6 sprints 11 commits in one day |
 | `b49bcb9` | feat(ux): replace 5 browser alert() with Sonner toast.error in approvals-list + leads-board (§19.8 Sonner Toaster migration DONE — see §10.45) |
 | `87e2b20` | feat(onboarding): add optional business_brief textarea (Sprint 3I onboarding integration — Day-1 brief injection for new tenants, fixes empty-brief gap on first generation — see §10.44) |
 | `451beae` | chore(hygiene): remove cleanup agent_runs insert (eliminates daily warning log) + new engine README (replaces Next.js scaffold) + 4 watcher comment fixes ("hourly" → "daily" matching vercel.json `0 6 * * *`) — Sprint 3W, see §10.43 |
@@ -3179,11 +3490,15 @@ Each is a separate session / batch. Don't combine.
 - **Sprint 3W — Internal hygiene** ✅ **DONE 2026-05-15** — three small unrelated fixes in one commit: removed the always-failing `agent_runs` insert with `tenant_id: null` from `src/app/api/cron/cleanup/route.ts` (eliminates daily Vercel warning log; cleanup is platform-scope so there's no meaningful tenant_id to use); replaced Next.js scaffold `README.md` with a proper engine README (status, architecture table, agents table, project structure, dev setup, pre-push gates, security overview, link to CLAUDE.md); fixed 4 comment-only references in `src/app/api/cron/watcher/route.ts` that incorrectly claimed an hourly schedule (the route is daily per `vercel.json` `0 6 * * *`). Zero logic changes for the watcher comment fix. See §10.43. Commit `451beae`.
 - **Sprint 3I onboarding integration** ✅ **DONE 2026-05-15** — closes the gap where NEW tenants started with an empty `business_brief` because onboarding never asked for it (the 5 customer-facing agents fell back to no-brief output on Day 1 until the owner discovered `/dashboard/settings`). Added a 5th optional field to `src/app/onboarding/onboarding-form.tsx` (textarea + char counter + Hebrew helper text + placeholder demonstrating the Sprint-3I pattern), wired it through `src/app/onboarding/actions.ts` to `tenants.config.business_brief` only when non-empty (preserves existing values), and corrected the page copy "ארבעה פרטים בלבד" → "כמה פרטים" since the 5th field is optional. Day-1 brief injection now works for design partner #1. See §10.44. Commit `87e2b20`.
 - **Sonner Toaster migration** ✅ **DONE 2026-05-15** (was §19.8 item) — replaced 5 browser `alert()` calls (3 in `approvals-list.tsx` + 2 in `leads-board.tsx`) with `toast.error()` from Sonner. The `<Toaster />` mount was already in `src/app/layout.tsx` with `richColors position="top-center" dir="rtl"`; only the call sites needed updating. Net: +2 lines per file (1 import + 1 LF), build green, post-deploy verification confirmed 0 `alert()` remaining in `src/**.tsx`. See §10.45. Commit `b49bcb9`.
+- **Sprint 3 Inv — Inventory cron POST→GET** ✅ **DONE 2026-05-16** — silent 405 every Sun+Wed for 3+ weeks; `agent_runs` had zero `trigger_source = 'scheduled'` rows. Root cause: Vercel Cron sends GET, route exported POST. One-line fix `POST → GET` × 1 file (`src/app/api/cron/inventory/route.ts`). Same bug subsequently found on Sales+Social cron routes (Sprint 3α Phase A). Pattern documented as §15.34. See §10.46. Commit `1f4f1fd`.
+- **Sprint 3Z — Manager Vercel cron → Inngest async + thinking reduction** ✅ **DONE 2026-05-16** — fixes recurrent 77% Manager error rate (7/9 failures over 30 days, all hitting Hobby Node 60s cap). Two-pronged fix: (1) reduce `thinking_budget` 8000→3000 + `max_tokens` 16000→6000 in `src/lib/agents/manager/run.ts` (~55s → ~25s wall time); (2) split Vercel cron handler into two Inngest functions (`weeklyManagerCron` Inngest cron + `runManagerForTenant` event consumer with `concurrency.limit: 5`) — each tenant now gets its own 60s budget, scaling linearly with N tenants. NEW file `src/lib/agents/manager/owner-send.ts` extracted (the per-tenant flow: idempotency → runManagerAgent → render → integration lookup → 24h window → WhatsApp send). DELETED `src/app/api/cron/manager/route.ts`. `vercel.json` cron count: 9 → **8** (§3.5 updated). Iron Rule §15.25 carve-out preserved (Manager weekly digest still auto-sends to owner). Pattern documented as §15.35 (Sonnet+thinking timeout calculus). See §10.47. Commit `032a18c`.
+- **Sprint 3G — AI-driven brief auto-extractor (URL → Hebrew brief)** ✅ **DONE 2026-05-16** (4 phases: 1a + 1b + 1d + 1c) — the killer-feature wedge. Both `/dashboard/settings` (existing tenants) and `/onboarding` (new tenants) now have a "🪄 צור brief" button: paste URL → 20-25s wait → Hebrew brief lands in the textarea → owner reviews/edits → clicks save. Sonnet 4.6 reads the website HTML (SSRF-safe fetch, regex strip, 20K char truncate), Hebrew system prompt with anti-translation-feel rules + bad-examples section, returns 100-400 char brief in native Hebrew owner-voice. Validated on `spikeai.co.il`: produced "פונים ללקוחות בגוף שני רגיל" + "ישיר ועניני, בלי מינוח מסורבל" + "עשרים וארבע שעות ביממה" — native Hebrew throughout, no translation feel, no English mixing. Per §15.36, extract → textarea (form state) → owner reviews → existing save button persists; never single-click auto-save. Phase 1c (onboarding) uses LIGHT auth (`auth.getUser()`) instead of `requireOnboarded()` because user is mid-onboarding. **New wedge — design partner #1 will see the brief auto-fill on the FIRST screen of their first signup.** See §10.48. Commits `6845582` (1a core) → `9c4d243` (1b settings) → `8a72591` (1d quality pass) → `4ab6f96` (1c onboarding).
+- **Sprint 3α — Sales/Social manual-trigger timeout three-layer fix** ✅ **DONE 2026-05-16** (3 phases: A + B + C) — multi-layered debugging saga that uncovered three separate bugs in one symptom. Phase A (`6e2396c`): Sales+Social cron routes POST→GET (same as Inventory; scheduled triggers were silent-405-ing for weeks). Phase B (`e15b305`): reduce Sales `thinking_budget` 2048→1024 + `max_tokens` 4096→2500; reduce Social `max_tokens` 3000→2000 (Sprint 3Z playbook applied to non-Manager agents). Phase C (`4ae9cf7`): `/dashboard/agents` runtime edge→nodejs + maxDuration=60 — the §15.28 lesson from 2026-05-13 had been applied to `/dashboard/page.tsx` (`7539dcd`) but the agents-overview page was missed, so Sales' post-Phase-B 25-35s runs still died at Edge 25s cap. End-to-end validation: clicked Run on Sales via `/dashboard/agents`, watched ~28s spinner, completed cleanly, `/dashboard/approvals` showed 5 personalized followup drafts; clicked Run on Social, ~24s, produced 3 timed posts. Lessons added: §15.28 addendum (audit ALL pages with heavy-action buttons), §15.34 (Vercel cron GET not POST), §15.35 (Sonnet+thinking budget calculus), §15.37 (stuck-running cleanup procedure for post-timeout state). See §10.49. Commits `6e2396c` + `e15b305` + `4ae9cf7`.
 - **Sprint 3C — Voice-note-to-Hebrew-draft pipeline** — ElevenLabs Scribe ingestion + Haiku post-pass for code-switching + draft generation (~3 weeks, the highest-ROI feature on the remaining backlog).
 - **Sprint 3D — Smart Waitlist Agent** — auto-fill from waitlist when cancellation detected (~2 weeks).
 - **Sprint 3E — GreenInvoice integration** — most Israeli עוסק use it (~1 week).
 - **Sprint 3F — Google Calendar 2-way sync** — table stakes for service businesses (~2 weeks).
-- **Sprint 3G — Hebrew brand-voice extractor (AUTO version of 3I)** — Sonnet reads the business's website / Google Maps profile / public Instagram → auto-populates the `tenants.brief` field set up by 3I. Pre-fills the settings page with a Hebrew first-draft brief that the owner reviews and edits. Magic moment in onboarding (~2 weeks). Depends on 3I shipping first.
+- ~~**Sprint 3G — Hebrew brand-voice extractor**~~ ✅ DONE 2026-05-16 — see new entry above.
 - **Sprint 3H — Self-service WhatsApp connection UI** — `/dashboard/integrations/whatsapp` with Meta Embedded Signup (post-Tech Provider enrollment, ~2 weeks).
 
 External (not code, not a sprint, parallel work for the founder):
