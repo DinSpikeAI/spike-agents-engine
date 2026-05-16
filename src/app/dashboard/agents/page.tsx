@@ -12,6 +12,27 @@
 // No cost/quota display — see overview.ts header comment.
 //
 // Layout: same 3 categories as dashboard (routine / content / insight).
+//
+// ─────────────────────────────────────────────────────────────
+// Sprint 3α Phase C (2026-05-16) — RUNTIME: edge → nodejs
+//
+// This page was originally `runtime = "edge"` for fast cold-start, but
+// the Run buttons (RunSalesButton, RunSocialButton, etc.) invoke server
+// actions (triggerSalesAgentAction, triggerSocialAgentAction) that inherit
+// the page's runtime. Vercel Edge has a 25-second initial-response cap
+// on the Hobby plan — strictly enforced regardless of streaming. After
+// Phase B trimmed Sales' wall time to ~25-35s, manual triggers were
+// STILL dying at 25s exactly with FUNCTION_INVOCATION_TIMEOUT
+// (vercel log: "Your function was stopped as it did not return an initial
+// response within 25s") — proving the bottleneck was the Edge cap, not
+// the agent's Sonnet+thinking budget.
+//
+// nodejs runtime on Hobby gets 60s via `maxDuration` (default 10s),
+// which leaves comfortable headroom for Sales/Social manual triggers
+// to complete in their post-Phase-B 25-35s window. Cold-start is
+// slightly slower than edge (~100-200ms extra on first request after
+// idle), which is an acceptable trade for not killing user actions.
+// ─────────────────────────────────────────────────────────────
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -29,7 +50,8 @@ import { getAgentsOverview } from "@/lib/agents/overview";
 import type { AgentId } from "@/lib/agents/types";
 
 export const dynamic = "force-dynamic";
-export const runtime = "edge";
+export const runtime = "nodejs";
+export const maxDuration = 60; // Hobby Node cap — see Sprint 3α Phase C note above
 
 // Category mapping mirrors dashboard/page.tsx — same logical groups.
 type AgentCategory = "routine" | "content" | "insight";
