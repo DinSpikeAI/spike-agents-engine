@@ -31,6 +31,10 @@
     {
       "path": "/api/cron/morning",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/manager",
+      "schedule": "0 5 * * 0"
     }
   ]
 }
