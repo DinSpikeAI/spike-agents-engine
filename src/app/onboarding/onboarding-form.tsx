@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveOnboardingAction } from "./actions";
+import { toast } from "sonner";
+import {
+  saveOnboardingAction,
+  extractBriefFromWebsiteOnboardingAction,
+} from "./actions";
 import { useRouter } from "next/navigation";
 import {
   Sparkles,
@@ -62,6 +66,13 @@ export function OnboardingForm() {
   // Sprint 3I: optional brief — agents inject it on Day 1 if filled here.
   const [businessBrief, setBusinessBrief] = useState("");
 
+  // Sprint 3G Phase 1c — auto-extract brief from website URL.
+  // Form-local state only — NOT persisted. The extracted brief flows
+  // into the existing businessBrief textarea where the user reviews
+  // and edits before submitting via "בואו נתחיל".
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [isExtracting, setIsExtracting] = useState(false);
+
   // businessBrief is NOT in the canSubmit gate — it's optional. The owner
   // can complete onboarding without writing anything, and fill it later
   // via /dashboard/settings if they prefer.
@@ -96,6 +107,45 @@ export function OnboardingForm() {
         setError(res.error ?? "משהו השתבש");
       }
     });
+  };
+
+  // Sprint 3G Phase 1c — extract handler.
+  // Two-step UX (per Iron Rule §15.25 — user always confirms):
+  //   1. Click button → fetch + Sonnet call → returns brief (NOT persisted)
+  //   2. Brief lands in the businessBrief textarea; user reviews / edits
+  //   3. User clicks "בואו נתחיל" to commit via saveOnboardingAction
+  // If a brief is already in the textarea, prompt before overwriting.
+  const handleExtract = async () => {
+    const url = websiteUrl.trim();
+    if (url.length === 0 || isExtracting || isPending) return;
+
+    if (businessBrief.trim().length > 0) {
+      const overwrite = window.confirm(
+        "יש כבר תיאור. להחליף ב-brief מהאתר?"
+      );
+      if (!overwrite) return;
+    }
+
+    setIsExtracting(true);
+    try {
+      const result = await extractBriefFromWebsiteOnboardingAction(url);
+      if (result.ok && result.brief) {
+        setBusinessBrief(result.brief);
+        const durationLabel = result.durationMs
+          ? ` (${Math.round(result.durationMs / 100) / 10} שניות)`
+          : "";
+        toast.success(
+          `brief נוצר${durationLabel}. ערוך לפי הצורך לפני שמירה.`
+        );
+      } else {
+        toast.error(result.error ?? "החילוץ נכשל");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "שגיאה לא ידועה";
+      toast.error(message);
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   return (
@@ -272,6 +322,54 @@ export function OnboardingForm() {
         >
           הסוכנים ינסחו ללקוחות שלך בסגנון שלך — תיאור קצר עוזר להם להישמע כמוך מהיום הראשון.
         </p>
+
+        {/* Sprint 3G Phase 1c — URL → auto-fill brief via Sonnet 4.6 */}
+        <div className="mb-2 flex flex-col gap-2 sm:flex-row">
+          <input
+            type="url"
+            value={websiteUrl}
+            onChange={(e) => setWebsiteUrl(e.target.value)}
+            disabled={isExtracting || isPending}
+            placeholder="https://your-website.co.il"
+            dir="ltr"
+            className="flex-1 rounded-[10px] px-3 py-2 text-[13px] outline-none transition-colors disabled:opacity-60"
+            style={{
+              background: "rgba(255,255,255,0.7)",
+              border: "1px solid var(--color-hairline)",
+              color: "var(--color-ink)",
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleExtract}
+            disabled={
+              isExtracting || isPending || websiteUrl.trim().length === 0
+            }
+            className="flex items-center justify-center gap-1.5 rounded-[10px] px-3 py-2 text-[12.5px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40"
+            style={{
+              background: "var(--color-sys-blue-soft)",
+              border: "1px solid var(--color-sys-blue)",
+              color: "var(--color-sys-blue)",
+            }}
+          >
+            {isExtracting ? (
+              <>
+                <span
+                  className="inline-block h-3 w-3 rounded-full border-2 border-current border-t-transparent"
+                  style={{ animation: "spin 0.8s linear infinite" }}
+                  aria-hidden="true"
+                />
+                <span>מחפש...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={12} strokeWidth={2.5} />
+                <span>צור brief מהאתר</span>
+              </>
+            )}
+          </button>
+        </div>
+
         <textarea
           id="businessBrief"
           value={businessBrief}

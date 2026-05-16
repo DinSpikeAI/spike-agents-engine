@@ -3,6 +3,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
+import {
+  extractBriefFromWebsite,
+  type ExtractBriefResult,
+} from "@/lib/agents/brief-extractor/extract";
 
 // Sprint 3I onboarding integration (2026-05-15):
 // `business_brief` is stored at `tenants.config->>'business_brief'`
@@ -182,4 +186,43 @@ export async function completeOnboardingAndRedirect(
     redirect("/dashboard");
   }
   return res;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sprint 3G Phase 1c — extract brief from website URL (onboarding)
+// ─────────────────────────────────────────────────────────────
+//
+// Parallel to extractBriefFromWebsiteAction in /dashboard/settings/actions.ts,
+// but with LIGHT AUTH suited to mid-onboarding state:
+//   - settings version uses `requireOnboarded()` (rejects if onboarding
+//     not completed yet — fine for settings page, blocks onboarding)
+//   - this version checks only `auth.getUser()` (logged-in is enough,
+//     onboarding-in-progress is the expected state here)
+//
+// Does NOT persist to tenants.config — same Iron Rule two-step UX as
+// the settings version: extracted brief flows into the form's textarea,
+// the user reviews/edits, then clicks "בואו נתחיל" to commit via
+// saveOnboardingAction (which DOES persist).
+//
+// New tenants therefore get Day-1 brief auto-fill from the very first
+// signup screen — no detour to /dashboard/settings required.
+
+export async function extractBriefFromWebsiteOnboardingAction(
+  websiteUrl: string
+): Promise<ExtractBriefResult> {
+  // Light auth — just verify a logged-in user. No onboarding gate.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "לא מחובר" };
+  }
+
+  const trimmed = (websiteUrl ?? "").trim();
+  if (trimmed.length === 0) {
+    return { ok: false, error: "כתובת URL ריקה" };
+  }
+
+  return await extractBriefFromWebsite(trimmed);
 }
