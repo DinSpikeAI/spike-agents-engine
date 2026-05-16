@@ -1,5 +1,5 @@
 /**
- * Cleanup Cron — Sub-stage 1.5.4
+ * Cleanup Cron — Sub-stage 1.5.4 + Sprint 3W cleanup fix
  *
  * The 9th agent ("cleanup") finally implemented. Internal-only — never
  * appears in user UI, never creates drafts, never calls LLM.
@@ -25,6 +25,18 @@
  * NOTE: drafts.status='expired' assumes the column accepts that value.
  *  - If status is text → works immediately.
  *  - If status is an enum → requires migration 021_drafts_expired_status.sql first.
+ *
+ * Sprint 3W (2026-05-15): the previous version of this file appended a
+ * "best-effort" insert to agent_runs with tenant_id=null. That insert
+ * always failed (agent_runs.tenant_id is NOT NULL) and produced a daily
+ * warning in Vercel logs. The insert is removed entirely because cleanup
+ * is platform-level, not tenant-scoped — there is no meaningful tenant_id
+ * to put on the row. The cleanup results live in:
+ *   (a) the JSON response body (returned to the caller and visible in
+ *       Vercel function logs), and
+ *   (b) per-task console.log lines (also visible in Vercel logs).
+ * If we later want persistent cleanup telemetry, the right move is a
+ * dedicated `system_runs` table — not relaxing agent_runs constraints.
  */
 
 import "server-only";
@@ -54,6 +66,9 @@ export async function GET(req: NextRequest) {
 
   const db = createAdminClient();
   const startedAt = new Date().toISOString();
+  // runId is used for log correlation across the 3 task console.logs and
+  // is returned in the response body. Kept even after the agent_runs
+  // insert removal (Sprint 3W) because it still aids debugging.
   const runId = randomUUID();
   const result: CleanupResult = {
     drafts_expired: 0,
@@ -74,11 +89,13 @@ export async function GET(req: NextRequest) {
 
     if (error) throw error;
     result.drafts_expired = data?.length ?? 0;
-    console.log(`[cleanup] Expired ${result.drafts_expired} drafts`);
+    console.log(
+      `[cleanup ${runId.slice(0, 8)}] Expired ${result.drafts_expired} drafts`
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     result.errors.push(`drafts: ${msg}`);
-    console.error("[cleanup] drafts expiration failed:", err);
+    console.error(`[cleanup ${runId.slice(0, 8)}] drafts expiration failed:`, err);
   }
 
   // ─── Task 2: Count agent_runs older than 90 days ──────────
@@ -95,12 +112,12 @@ export async function GET(req: NextRequest) {
     if (error) throw error;
     result.agent_runs_old_count = count ?? 0;
     console.log(
-      `[cleanup] Found ${result.agent_runs_old_count} agent_runs older than 90 days (no action taken)`
+      `[cleanup ${runId.slice(0, 8)}] Found ${result.agent_runs_old_count} agent_runs older than 90 days (no action taken)`
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     result.errors.push(`agent_runs: ${msg}`);
-    console.error("[cleanup] agent_runs count failed:", err);
+    console.error(`[cleanup ${runId.slice(0, 8)}] agent_runs count failed:`, err);
   }
 
   // ─── Task 3: Delete expired idempotency_keys ──────────────
@@ -118,49 +135,25 @@ export async function GET(req: NextRequest) {
     if (error) throw error;
     result.idempotency_keys_deleted = data?.length ?? 0;
     console.log(
-      `[cleanup] Deleted ${result.idempotency_keys_deleted} expired idempotency_keys`
+      `[cleanup ${runId.slice(0, 8)}] Deleted ${result.idempotency_keys_deleted} expired idempotency_keys`
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     result.errors.push(`idempotency_keys: ${msg}`);
-    console.error("[cleanup] idempotency_keys deletion failed:", err);
+    console.error(
+      `[cleanup ${runId.slice(0, 8)}] idempotency_keys deletion failed:`,
+      err
+    );
   }
 
-  // ─── Best-effort log to agent_runs ────────────────────────
-  // tenant_id=null because cleanup is platform-wide, not tenant-scoped.
-  // If schema requires NOT NULL, this insert fails silently and the
-  // cron still returns 200 with the cleanup counts in the body.
+  // Sprint 3W: previously this block tried to insert into agent_runs with
+  // tenant_id=null and always failed silently (NOT NULL constraint). The
+  // insert was removed because cleanup is internal/platform-scope, not
+  // tenant-scope. Results are returned in the response body + console.log
+  // above. If durable cleanup telemetry is needed later, build a separate
+  // system_runs table rather than relaxing agent_runs constraints.
+
   const finishedAt = new Date().toISOString();
-  const overallStatus = result.errors.length === 3 ? "failed" : "succeeded";
-
-  try {
-    const { error } = await db.from("agent_runs").insert({
-      id: runId,
-      tenant_id: null,
-      agent_id: "cleanup",
-      status: overallStatus,
-      started_at: startedAt,
-      finished_at: finishedAt,
-      trigger_source: "scheduled",
-      model_used: null,
-      thinking_used: false,
-      cost_estimate_ils: 0,
-      cost_actual_ils: 0,
-      output: result as object,
-      error_message:
-        result.errors.length > 0 ? result.errors.join("; ") : null,
-      is_mocked: false,
-    });
-
-    if (error) {
-      console.warn(
-        "[cleanup] Could not log to agent_runs (likely tenant_id NOT NULL constraint or RLS):",
-        error.message
-      );
-    }
-  } catch (err) {
-    console.warn("[cleanup] agent_runs insert exception:", err);
-  }
 
   // Always return 200 — partial failures are acceptable for cleanup.
   // Non-200 would trigger Vercel cron retry, which we don't want.

@@ -1,13 +1,15 @@
 // src/app/api/cron/watcher/route.ts
 //
-// Hourly cron that runs the Watcher agent for any tenant with recent activity.
+// Daily cron that runs the Watcher agent for any tenant with recent activity.
 //
-// SCHEDULE: "0 * * * *" — every hour on the hour (configured in vercel.json).
+// SCHEDULE: "0 6 * * *" — daily at 06:00 UTC (~09:00 IL summer / 08:00 IL winter).
+//           Configured in vercel.json. Hobby tier has a flexible time window
+//           of up to 1 hour, so actual fire time may be 06:00-07:00 UTC.
 //
 // PURPOSE: safety net for the webhook-triggered Watcher run. The webhook
 //   handler at /api/webhooks/whatsapp uses waitUntil(runWatcherAgent(...))
 //   for fire-and-forget classification. If that fails (network blip, LLM
-//   timeout, Vercel context cutoff), this cron catches it within an hour.
+//   timeout, Vercel context cutoff), this cron catches it within a day.
 //
 // SPRINT 3X (2026-05-13) — Owner WhatsApp auto-send for critical/high alerts.
 //   After each successful Watcher run, this cron inspects the produced
@@ -26,7 +28,7 @@
 //   4. NEW alerts = current critical+high alerts whose signature is NOT in
 //      the previous run's critical+high alerts.
 //   5. If NEW is non-empty → format Hebrew WhatsApp body → send.
-//   This means: same alert continuing across hourly runs = sent once;
+//   This means: same alert continuing across daily runs = sent once;
 //   alert that drops out of the 24h window then re-appears = sent again
 //   (treated as new, which is correct since the situation re-emerged).
 //

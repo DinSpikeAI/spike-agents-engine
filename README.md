@@ -1,166 +1,117 @@
-# 🤖 Spike Engine
+# Spike Engine
 
-> **Multi-tenant SaaS engine running 9 AI agents for Israeli SMBs.**
-> Hebrew-first dashboard. Anthropic Claude. WhatsApp-native. Privacy by design.
+Hebrew-RTL multi-tenant SaaS for Israeli SMBs. Nine customer-facing AI agents plus one internal cleanup agent automate the operational long tail: reviews, leads, social posts, sales follow-ups, inventory snapshots, growth campaigns, daily briefings, and weekly digests.
 
-[![Status](https://img.shields.io/badge/status-pre--launch-orange)]()
-[![Day](https://img.shields.io/badge/day-3%20of%2014-blue)]()
-[![Stack](https://img.shields.io/badge/Next.js-16.2.4-black)]()
-[![License](https://img.shields.io/badge/license-proprietary-red)]()
+**Core principle: AI מסמן, בעלים מחליט** — AI flags, owner decides. Every customer-facing message is drafted by an AI agent and approved by the business owner via an [אשר] button before it ships. The only carve-out is owner-self loopback: the owner's own daily summary, weekly digest, and real-time critical alerts on WhatsApp are auto-delivered because the owner is both the producer and the recipient.
 
----
+## Status
 
-## What is Spike Engine?
+Pre-launch. Code-complete for design partner #1. External blockers only:
+- עוסק מורשה (Israeli sole-proprietor registration)
+- Meta Business verification
+- Business phone number
 
-A done-for-you operational AI platform for Israeli small businesses (SMBs) — clinics, salons, real estate agents, e-commerce stores. Business owners log into a clean Hebrew RTL dashboard at `app.spikeai.co.il`, see drafts the agents prepared, and approve with one tap. **Agents never speak with end customers** — only with the business owner.
+## Architecture
 
-Built as the proven architectural successor to [Spike AI Studio](https://spikeai.studio) (13 production agents on the same Next.js + Supabase + Claude stack).
+| Layer | Choice |
+|---|---|
+| Frontend | Next.js 16 (App Router, Turbopack, React 19) |
+| Backend | Server Actions + Vercel serverless / cron jobs |
+| Database | Supabase Postgres, Frankfurt EU region, RLS for tenant isolation |
+| AI | Anthropic Claude — Sonnet 4.6 for generation, Haiku 4.5 for classification |
+| Messaging | Meta WhatsApp Cloud API (direct, no BSP middleware) |
+| Auth | Supabase Auth (magic link + password) |
+| Queue | Inngest v4 (currently synchronous; deferred to a future sprint) |
+| Hosting | Vercel (Hobby tier currently) |
 
----
+## Agents
 
-## The 9 Agents
-
-| # | Agent | Schedule | Model |
+| Agent | Trigger | Output | Recipient |
 |---|---|---|---|
-| ☀️ | **בוקר** (Morning) | Daily 7:00 | Haiku 4.5 |
-| ⭐ | **ביקורות** (Reviews) | Every 2h | Sonnet 4.6 |
-| 📱 | **רשתות** (Social) | 3x daily | Sonnet 4.6 (Batch API) |
-| 🧠 | **מנהל** (Manager) | Daily 19:00 | Sonnet 4.6 + thinking 8000 |
-| 🎯 | **מעקב** (Watcher) | Real-time / 15min | Haiku 4.5 |
-| 🧹 | **ניקיון** (Cleanup) | Sunday 9:00 | Haiku 4.5 |
-| 💰 | **מכירות** (Sales) | Mon-Fri 10:00 | Sonnet 4.6 |
-| 📦 | **מלאי** (Inventory) | Daily 8:00 | Haiku 4.5 + thinking 2048 |
-| 🔥 | **לידים חמים** (Hot Leads) | Every 30min | Haiku 4.5 (bucketed) |
+| Morning | Daily 07:00 IL | Hebrew daily summary | Owner via WhatsApp |
+| Watcher | Webhook + daily 09:00 IL | Critical/high alerts | Owner via WhatsApp |
+| Reviews | New review event | Draft review reply | Owner approves → Google |
+| Hot Leads | Webhook | Lead bucket classification | Cascade to Sales Quick-Response |
+| Social | Daily 08:30 IL (Sun-Thu) | 3 post drafts | Owner copy-pastes to IG/FB |
+| Sales | 2 entry points (stuck-lead cron + QR webhook) | Hebrew draft messages | Owner approves → customer |
+| Inventory | Sun/Wed 08:30 IL | Inventory snapshot + summary | Owner via dashboard |
+| Manager | Sunday 08:00 IL | Weekly health digest | Owner via WhatsApp |
+| Growth | Sunday + on-demand | Reactivation drafts | Owner approves → customer |
+| Cleanup | Daily 03:00 IL | Internal maintenance | None (platform-internal) |
 
-All agents run server-side, write drafts to a queue, and notify the business owner via WhatsApp + Web Push + email digest.
+All customer-facing agents inject the owner-authored **business voice brief** (`tenants.config.business_brief`) into their system prompts, so drafts already match the owner's tone on first generation — no manual editing required.
 
----
-
-## Tech Stack
+## Project structure
 
 ```
-Frontend:   Next.js 16.2.4 (App Router) + Tailwind v4 + shadcn/ui RTL + Heebo
-Auth:       Supabase Magic Link + Custom Access Token Hook (tenant_id in JWT)
-Database:   Supabase Postgres + RLS + Realtime Broadcast + pg_cron
-Backend:    Vercel Fluid Compute (Node, NOT Edge) + QStash queues
-AI:         Anthropic only — Haiku 4.5 / Sonnet 4.6 / Opus 4.7
-            Native JSON Schema output, prompt caching ttl: "1h"
-Email:      Resend (auth.spikeai.co.il, click-tracking off)
-Region:     Frankfurt (eu-central-1)
+src/
+  app/
+    api/cron/                Vercel cron jobs (9 routes)
+    api/webhooks/whatsapp/   Meta WhatsApp inbound webhook
+    dashboard/               Owner UI (approvals, alerts, reports, settings)
+    onboarding/              New-tenant flow
+  lib/
+    agents/                  One folder per agent: run.ts + prompt.ts + schema.ts
+    safety/                  PII scrubber, defamation guard, prompt-injection guard, gender lock, business-brief
+    whatsapp/                Send + helpers (extracted from per-action duplicates)
+    quotas/                  Per-tenant spend caps + reservation RPCs
+    supabase/                Admin + server + browser clients
+  components/                React UI components (dashboard, approvals, settings)
+supabase/
+  migrations/                Numbered SQL migrations
+CLAUDE.md                    Operational source of truth — read before non-trivial changes
+vercel.json                  Cron schedules (UTC)
 ```
 
-**Why these choices:** see `01_TECHNICAL_STACK.md` in the docs repo.
-
----
-
-## Architecture Highlights
-
-- **Multi-tenant from day 1** — every table has RLS, `tenant_id` injected into JWT via Custom Access Token Hook
-- **Atomic spend cap** — `reserve_spend → call → settle_spend / refund_spend` flow prevents tenant overspend, with unique partial indexes for idempotency
-- **Native JSON Schema** for all Anthropic calls (no `tool_use` hacks, no prefilling)
-- **Right-RTL Hebrew dashboard** — Israeli convention, sidebar on the right, WhatsApp FAB always visible
-- **Privacy by design** — Israeli Privacy Law Amendment 13 compliant, audit log per tenant, "why did this agent act?" traceability
-
----
-
-## Project Status
-
-**Currently:** Day 3 of 14 (pre-launch).
-
-### ✅ Done
-- Schema 2.0 (16 tables, 30+ RLS policies, atomic spend cap)
-- Custom Access Token Hook live
-- Authentication (Hebrew Magic Link via Resend SMTP)
-- Dashboard app shell (sidebar, header KPIs, 9 agent cards, WhatsApp FAB)
-- DNS infrastructure (Vercel as authority for `spikeai.co.il`)
-
-### 🔄 In Progress
-- Morning Agent end-to-end (Day 3)
-- Master scheduler + QStash (Day 4)
-- Other agents (Days 5-7)
-
-### 📅 Next Milestones
-- **Day 8:** Onboarding wizard + first paying customer
-- **Day 14:** Production launch + Day-1 customer onboarded
-
-See `03_ROADMAP_DAYS_3_TO_14.md` (private docs).
-
----
-
-## Local Development
+## Local development
 
 ```bash
-# Clone (Public repo, no auth needed)
-git clone https://github.com/DinSpikeAI/spike-agents-engine.git
-cd spike-agents-engine
-
-# Install
 npm install
-
-# Environment (copy .env.example to .env.local and fill in)
-cp .env.example .env.local
-# Required: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-# SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY
-
-# Dev server
-npm run dev
-# → http://localhost:3000
+cp .env.example .env.local            # then fill in keys (see below)
+npm run dev                           # http://localhost:3000
 ```
 
-### Database setup
+Required environment variables:
 
-The `supabase/migrations/` folder contains schema 2.0 migrations applied in order:
-1. `001_reset.sql` — drop any v1 schema
-2. `002_schema.sql` — 16 tables
-3. `003_rls.sql` — Row-Level Security policies
-4. `004_grants.sql` — role permissions
-5. `005_functions.sql` — atomic spend cap functions
-6. `006_hook.sql` — Custom Access Token Hook
-7. `007_seed.sql` — 9 agents seed data
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (browser-safe, RLS-enforced) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase admin key (server-only, bypasses RLS) |
+| `ANTHROPIC_API_KEY` | Anthropic Claude API key |
+| `CRON_SECRET` | Random string; required Bearer token for production cron endpoints |
+| `META_WHATSAPP_APP_SECRET` | HMAC secret for webhook signature verification |
 
-Apply via Supabase SQL Editor or `supabase db reset` if using local Supabase CLI.
+## Pre-push gates
 
----
+```bash
+rm -rf .next
+npx tsc --noEmit
+npm run build
+```
 
-## Documentation
+Both must pass before commit. See `CLAUDE.md` §15.27 for context — `tsc` alone is insufficient because Turbopack-specific issues only surface during `next build`.
 
-This repo contains the **code only**. Full project documentation lives in a private repository:
+## Deployment
 
-🔒 **`DinSpikeAI/spike-engine-docs`** (Private) — 11 master docs covering:
-- Project overview & decisions
-- Technical stack deep-dive
-- Database schema & RLS patterns
-- 9 agents detailed specs
-- Hebrew brand voice & UI copy
-- Code patterns (auth, agent infrastructure, RLS)
-- Known issues & gotchas
-- Daily progress log
-- Chat handoff templates
-- Secrets inventory (registry, not values)
+Production: `app.spikeai.co.il` on Vercel.
+Cron schedules in `vercel.json`. Hobby tier provides a flexible 1-hour window for cron execution.
 
-Access is restricted. If you're a collaborator, contact [@DinSpikeAI](https://github.com/DinSpikeAI).
+## Security
 
----
+- **Tenant isolation:** Postgres Row Level Security enforces `tenant_id` filtering at the database level. The application code cannot bypass it.
+- **Server-side auth:** all mutations go through Next.js Server Actions with CSRF protection; the browser never holds the service-role key.
+- **Webhooks:** Meta WhatsApp webhooks are verified with HMAC-SHA256 against `META_WHATSAPP_APP_SECRET` before any processing.
+- **Cron endpoints:** require `Authorization: Bearer ${CRON_SECRET}`; unauthenticated requests are rejected with 401.
+- **PII:** customer phone numbers, emails, IDs, and credit card numbers are scrubbed from text **before** it reaches Claude — the LLM never sees raw PII.
+- **Prompt injection:** untrusted customer text is wrapped in sentinel tags; the prompt-injection guard tells Claude explicitly to treat wrapped content as data, not instructions.
+- **Defamation:** every draft review reply is re-checked by Haiku 4.5 for defamation risk before reaching the owner.
+- **Data residency:** all data in Supabase Frankfurt (EU) — GDPR-aligned.
 
-## Related Projects
+## Internal documentation
 
-- 🎬 [**Spike AI Studio**](https://spikeai.studio) — proven predecessor, 13 agents in production. Same Next.js + Supabase + Telegram + Claude stack. Live since 2026.
-- 📄 [**spike-agents**](https://github.com/DinSpikeAI/spike-agents) — marketing landing page for `agents.spikeai.co.il` (separate repo).
-
----
+`CLAUDE.md` is the operational source of truth — architecture decisions, sprint history, lessons learned, known issues, and the running backlog. It is intentionally verbose; read it before making non-trivial changes.
 
 ## License
 
-Proprietary — All rights reserved © 2026 Spike AI / Dean Moshe.
-
-This source is published for transparency and recruiting purposes. Not for redistribution, fork, or commercial use without written permission.
-
----
-
-## Maintainer
-
-**Dean Moshe** — Founder & Solo Developer
-[@DinSpikeAI](https://github.com/DinSpikeAI) · Israel
-
-> Built one day at a time, with Claude as pair programmer.
-> Day 1: Apr 26, 2026. Target launch: May 9, 2026.
+Proprietary. © Spike Engine.
