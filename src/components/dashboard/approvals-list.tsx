@@ -9,6 +9,7 @@ import {
 } from "@/app/dashboard/actions";
 import { Glass } from "@/components/ui/glass";
 import { Check, X, Copy, MessageCircle, Lock } from "lucide-react";
+import { toast } from "sonner";
 
 const SENTIMENT_LABELS: Record<string, string> = {
   positive: "חיובי",
@@ -103,7 +104,7 @@ function CopyButton({ text }: { text: string }) {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         } catch {
-          alert("לא ניתן להעתיק. נסה ידנית.");
+          toast.error("לא ניתן להעתיק. נסה ידנית.");
         }
       }}
       className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11.5px] font-medium transition-all hover:bg-white"
@@ -129,7 +130,7 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
     startTransition(async () => {
       const res = await approveDraft(id);
       if (res.success) router.refresh();
-      else alert(`שגיאה: ${res.error ?? "לא ידוע"}`);
+      else toast.error(`שגיאה: ${res.error ?? "לא ידוע"}`);
       setActioningId(null);
     });
   };
@@ -140,7 +141,7 @@ export function ApprovalsList({ drafts }: { drafts: PendingDraft[] }) {
     startTransition(async () => {
       const res = await rejectDraft(id);
       if (res.success) router.refresh();
-      else alert(`שגיאה: ${res.error ?? "לא ידוע"}`);
+      else toast.error(`שגיאה: ${res.error ?? "לא ידוע"}`);
       setActioningId(null);
     });
   };

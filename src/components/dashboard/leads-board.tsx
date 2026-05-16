@@ -10,6 +10,7 @@ import {
 import type { LeadBucket } from "@/lib/agents/types";
 import { Glass } from "@/components/ui/glass";
 import { Check, X, Phone, Mail, Camera, MessageCircle, Globe } from "lucide-react";
+import { toast } from "sonner";
 
 // ─────────────────────────────────────────────────────────────
 // Bucket styling — Calm Frosted edition
@@ -370,7 +371,7 @@ export function LeadsBoard({ leads }: { leads: ClassifiedLead[] }) {
     startTransition(async () => {
       const res = await markLeadContacted(id);
       if (res.success) router.refresh();
-      else alert(`שגיאה: ${res.error ?? "לא ידוע"}`);
+      else toast.error(`שגיאה: ${res.error ?? "לא ידוע"}`);
       setActioningId(null);
     });
   };
@@ -381,7 +382,7 @@ export function LeadsBoard({ leads }: { leads: ClassifiedLead[] }) {
     startTransition(async () => {
       const res = await dismissLead(id);
       if (res.success) router.refresh();
-      else alert(`שגיאה: ${res.error ?? "לא ידוע"}`);
+      else toast.error(`שגיאה: ${res.error ?? "לא ידוע"}`);
       setActioningId(null);
     });
   };
