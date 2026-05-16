@@ -1,19 +1,20 @@
-// src/app/api/cron/manager/route.ts
+// src/lib/agents/manager/owner-send.ts
 //
-// Sprint 3Y — Weekly Manager auto-send to owner via WhatsApp.
+// Sprint 3Z (2026-05-16) — extracted from the deleted Vercel cron route
+// (src/app/api/cron/manager/route.ts) to support the Inngest async pattern.
 //
-// Schedule: 0 5 * * 0  (05:00 UTC Sunday = 08:00 IL Sunday).
-//                       Comes 1 hour after Morning (which fires at 07:00 IL daily).
-// Auth:     Authorization: Bearer ${CRON_SECRET}
-// Runtime:  Node.js (Manager uses thinking + 16000 max_tokens; not Edge-compatible).
+// runManagerForTenant (in src/lib/inngest/functions.ts) listens for the
+// "manager/run.tenant" event and calls `sendManagerToOwner` here. Each
+// Inngest event gives its own 60s step budget rather than sharing a single
+// cron-route execution across all tenants.
 //
 // ─────────────────────────────────────────────────────────────────────
 // Iron Rule carve-out
 // ─────────────────────────────────────────────────────────────────────
-// Manager's recipient is the OWNER, not a customer. The Manager weekly
-// digest is a self-reflection report about the owner's own business —
-// requiring the owner to press [אשר] on their own self-report would be
-// circular UX. Same carve-out as Morning (§15.25) and Watcher (§3X).
+// Manager's recipient is the OWNER, not a customer. Weekly digest is a
+// self-reflection report about the owner's own business — requiring the
+// owner to press [אשר] on their own self-report would be circular UX.
+// Same carve-out as Morning (§15.25) and Watcher (§3X).
 //
 // ─────────────────────────────────────────────────────────────────────
 // Per-tenant flow
@@ -25,22 +26,14 @@
 //      result.status will be 'failed' with a Hebrew error.
 //   3. Render to a compact Hebrew WhatsApp body — teaser, not full report.
 //      Owner clicks the link to see the full report on /dashboard/reports.
-//   4. Resolve owner phone from tenants.config.owner_phone.
-//   5. lookupWhatsAppIntegration. If not connected → skip.
-//   6. wasContactedInLast24h(ownerPhone). If outside window → skip.
+//   4. lookupWhatsAppIntegration. If not connected → skip.
+//   5. wasContactedInLast24h(ownerPhone). If outside window → skip.
 //      (Same Meta session-window constraint as Morning.)
-//   7. sendWhatsAppMessage. On failure → log; on success → done.
+//   6. sendWhatsAppMessage. On failure → log; on success → done.
 //
-// ─────────────────────────────────────────────────────────────────────
-// Why this exists separately from the Manager agent itself
-// ─────────────────────────────────────────────────────────────────────
-// runManagerAgent() is callable from anywhere (manual trigger, future
-// integrations, etc.). This cron is the SCHEDULED owner-delivery layer.
-// Keeping them separate means a developer can run Manager ad-hoc without
-// auto-sending, and this cron's behavior can change (e.g., schedule shift,
-// rendering tweaks) without touching the agent code.
+// Does NOT throw — returns a structured outcome for observability.
 
-import { NextResponse } from "next/server";
+import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runManagerAgent } from "@/lib/agents/manager/run";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/send";
@@ -51,177 +44,36 @@ import {
 } from "@/lib/whatsapp/helpers";
 import type { ManagerAgentOutput } from "@/lib/agents/types";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
-// Manager is the most expensive agent (~₪0.50 with thinking). 5 concurrent
-// matches Morning's MAX_CONCURRENT_TENANTS. For single-digit active tenants
-// this is plenty; bump only if scale demands.
-const MAX_CONCURRENT_TENANTS = 5;
-
-// ─────────────────────────────────────────────────────────────────────
-// Outcome type — for the response JSON + logging
-// ─────────────────────────────────────────────────────────────────────
-
-type Outcome =
+export type ManagerOwnerSendOutcome =
   | "sent"
   | "already_ran_this_week"
   | "agent_failed"
-  | "no_owner_phone"
   | "no_integration"
   | "missing_credentials"
   | "outside_24h"
   | "send_failed"
-  | "no_summary_text"
-  | "uncaught_error";
+  | "no_summary_text";
 
-interface TenantResult {
-  tenantId: string;
-  outcome: Outcome;
+export interface ManagerOwnerSendResult {
+  outcome: ManagerOwnerSendOutcome;
   detail?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Route handler
+// sendManagerToOwner
 // ─────────────────────────────────────────────────────────────────────
 
-export async function GET(request: Request) {
-  // ── Auth ────────────────────────────────────────────────────────
-  const auth = request.headers.get("authorization");
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
-  const db = createAdminClient();
-
-  // ── Tenant discovery (same pattern as Morning cron) ─────────────
-  const { data: integrations, error: intErr } = await db
-    .from("integrations")
-    .select("tenant_id")
-    .eq("provider", "whatsapp")
-    .eq("status", "connected");
-
-  if (intErr) {
-    console.error("[cron/manager] integrations query failed:", intErr);
-    return NextResponse.json(
-      { error: "integrations_query_failed", detail: intErr.message },
-      { status: 500 }
-    );
-  }
-
-  const eligibleTenantIds = Array.from(
-    new Set((integrations ?? []).map((r) => r.tenant_id as string))
-  );
-  if (eligibleTenantIds.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      processed: 0,
-      reason: "no_connected_tenants",
-    });
-  }
-
-  const { data: tenants, error: tenantsErr } = await db
-    .from("tenants")
-    .select("id, name, config")
-    .in("id", eligibleTenantIds);
-
-  if (tenantsErr) {
-    console.error("[cron/manager] tenants query failed:", tenantsErr);
-    return NextResponse.json(
-      { error: "tenants_query_failed", detail: tenantsErr.message },
-      { status: 500 }
-    );
-  }
-
-  type EligibleTenant = { id: string; ownerPhone: string };
-  const eligible: EligibleTenant[] = [];
-  const missingPhone: string[] = [];
-
-  for (const t of tenants ?? []) {
-    const cfg = (t.config ?? {}) as Record<string, unknown>;
-    const ownerPhone = cfg.owner_phone;
-    if (typeof ownerPhone === "string" && ownerPhone.trim().length > 0) {
-      eligible.push({ id: t.id as string, ownerPhone: ownerPhone.trim() });
-    } else {
-      missingPhone.push(t.id as string);
-    }
-  }
-
-  if (eligible.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      processed: 0,
-      reason: "no_eligible_tenants",
-      missing_owner_phone: missingPhone,
-    });
-  }
-
-  // ── Run per-tenant in chunks ────────────────────────────────────
-  const results: TenantResult[] = [];
-
-  for (const id of missingPhone) {
-    results.push({ tenantId: id, outcome: "no_owner_phone" });
-  }
-
-  for (let i = 0; i < eligible.length; i += MAX_CONCURRENT_TENANTS) {
-    const chunk = eligible.slice(i, i + MAX_CONCURRENT_TENANTS);
-    const chunkResults = await Promise.allSettled(
-      chunk.map((t) => processTenant(t.id, t.ownerPhone))
-    );
-    chunkResults.forEach((r, idx) => {
-      const tenantId = chunk[idx].id;
-      if (r.status === "fulfilled") {
-        results.push({
-          tenantId,
-          outcome: r.value.outcome,
-          detail: r.value.detail,
-        });
-      } else {
-        results.push({
-          tenantId,
-          outcome: "uncaught_error",
-          detail:
-            r.reason instanceof Error ? r.reason.message : String(r.reason),
-        });
-      }
-    });
-  }
-
-  // ── Summary log ─────────────────────────────────────────────────
-  const tally = results.reduce<Record<string, number>>((acc, r) => {
-    acc[r.outcome] = (acc[r.outcome] ?? 0) + 1;
-    return acc;
-  }, {});
-  console.log(
-    `[cron/manager] processed ${results.length} tenants:`,
-    Object.entries(tally)
-      .map(([o, n]) => `${o}=${n}`)
-      .join(", ")
-  );
-
-  return NextResponse.json({
-    ok: true,
-    processed: results.length,
-    tally,
-    results,
-  });
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// processTenant
-// ─────────────────────────────────────────────────────────────────────
-
-async function processTenant(
+export async function sendManagerToOwner(
   tenantId: string,
   ownerPhone: string
-): Promise<{ outcome: Outcome; detail?: string }> {
+): Promise<ManagerOwnerSendResult> {
   const db = createAdminClient();
 
   // ─── Idempotency: did Manager already run successfully this week? ───
   // "This week" = since Sunday 00:00 UTC of the current calendar week.
   // JS Date.getUTCDay() returns 0=Sunday, so subtracting it from the
   // current UTC date gives the most recent Sunday at midnight UTC.
-  // The cron fires Sunday 05:00 UTC, so weekStart is 5 hours earlier;
+  // The cron fires Sunday morning IL, so weekStart is a few hours earlier;
   // any Manager run since then = already executed this week → skip.
   const weekStart = new Date();
   weekStart.setUTCHours(0, 0, 0, 0);
@@ -238,7 +90,7 @@ async function processTenant(
 
   if (runsErr) {
     console.warn(
-      `[cron/manager] idempotency check failed for ${tenantId}:`,
+      `[manager/owner-send] idempotency check failed for ${tenantId}:`,
       runsErr.message
     );
     // Don't bail — proceed and accept the small risk of double-run.
@@ -309,7 +161,7 @@ async function processTenant(
 
   if (!sendResult.ok) {
     console.warn(
-      `[cron/manager] send failed for tenant ${tenantId}: ${sendResult.errorCategory} / ${sendResult.metaCode ?? "no-code"} / ${sendResult.errorMessage}`
+      `[manager/owner-send] send failed for tenant ${tenantId}: ${sendResult.errorCategory} / ${sendResult.metaCode ?? "no-code"} / ${sendResult.errorMessage}`
     );
     return {
       outcome: "send_failed",
@@ -331,31 +183,8 @@ async function processTenant(
 //
 // WhatsApp formatting: *bold* with single asterisks, newlines, emojis.
 // Sections that are empty/zero are omitted to keep the message compact.
-//
-// Composition (vertical):
-//   🗓 Spike — דוח שבועי
-//
-//   <summary one-liner from agent>
-//
-//   📊 *סיכום שבועי:*
-//   ✅ הצליחו: X | ❌ נכשלו: Y
-//
-//   📈 *מדדים:*           (only if approvalRate or median ≠ null)
-//   שיעור אישור: X%
-//   זמן חציוני לאישור: Y דק'
-//
-//   ⚠️ X טיוטות ממתינות 24h+    (only if > 0)
-//   🔥 Y לידים בוערים לא נענו    (only if > 0)
-//
-//   🚨 *נדרשת תשומת לב:*    (only if hasCriticalIssues)
-//   • <up to 2 critical issues>
-//
-//   💡 *המלצה:* <titleHe>    (only if type ≠ "no_action_needed")
-//   <suggestedActionHe>
-//
-//   דוח מלא: app.spikeai.co.il/dashboard/reports
 
-function renderManagerSummary(output: ManagerAgentOutput): string {
+export function renderManagerSummary(output: ManagerAgentOutput): string {
   const lines: string[] = [];
 
   // Header + agent's own one-line summary (always present per schema's required[])

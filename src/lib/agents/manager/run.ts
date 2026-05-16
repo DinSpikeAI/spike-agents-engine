@@ -18,9 +18,9 @@
  *
  * Notes:
  *   - This is the FIRST agent that uses thinking. Anthropic SDK API:
- *     thinking: { type: "enabled", budget_tokens: 8000 }
+ *     thinking: { type: "enabled", budget_tokens: 3000 }  // Sprint 3Z reduced from 8000
  *   - With thinking, max_tokens MUST be greater than budget_tokens.
- *     We use 12000: 8000 thinking + 4000 output budget.
+ *     We use 6000: 3000 thinking + 3000 output budget.
  *   - With thinking, Sonnet returns content with thinking blocks first,
  *     then text/JSON. We extract the JSON from the text blocks.
  *   - We do NOT use runAgent() wrapper here because the Manager has
@@ -54,10 +54,21 @@ import { computeAndPersistHealthScore } from "@/lib/health/score";
 import type { ManagerAgentOutput, RunResult } from "../types";
 
 const MODEL = "claude-sonnet-4-6" as const;
-const THINKING_BUDGET = 8000;
-// max_tokens MUST be greater than thinking.budget_tokens.
-// 12000 = 8000 thinking + ~4000 for the JSON output.
-const MAX_TOKENS = 16000;
+// Sprint 3Z (2026-05-16) — reduced from 8000 to fix recurrent Vercel Hobby
+// 60s timeout. Anthropic call with thinking=8000 took 55-65s on Sonnet 4.6,
+// sitting right at the cap and flaking ~75% of the time. With 3000 tokens of
+// thinking, calls fit comfortably in ~20-30s. Sonnet still has enough budget
+// to reason across the 5 required schema sections (status_summary,
+// quality_findings, system_health, growth_metrics, recommendation); the
+// trade-off is less cross-section creative synthesis, which the structured
+// schema partially compensates for. Pair with Inngest async pattern
+// (src/lib/inngest/functions.ts → runManagerForTenant) so each tenant gets
+// its own 60s step budget instead of sharing one cron-route execution.
+const THINKING_BUDGET = 3000;
+// max_tokens MUST be greater than thinking.budget_tokens. 6000 split as
+// 3000 thinking + ~3000 for the JSON output is plenty for 5 sections +
+// recommendation (typical output is ~2000 tokens).
+const MAX_TOKENS = 6000;
 
 export interface ManagerRunResult extends RunResult<ManagerAgentOutput> {
   reportId: string | null;
