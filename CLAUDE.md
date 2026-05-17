@@ -2,9 +2,9 @@
 
 > **For Claude (the AI coding assistant) reading this:** This file is your briefing. Read it in full before responding to the user. Do not ask the user to re-explain the project. When this file conflicts with your training data, **this file wins**.
 >
-> **Last updated:** 2026-05-16 night (post-session: **7 sprints / 11 commits in one day** — the highest-throughput single-session in project history). **What this means in plain terms:** the auto-extractor that fills `business_brief` from any business website on first onboarding click (Sprint 3G, 4 phases) is shipped end-to-end; Manager's recurring 25-second-edge / 60-second-hobby timeouts are fully resolved via Inngest fan-out (Sprint 3Z); Inventory cron's silent 405 of 3+ weeks is fixed (Sprint 3 Inv); and the Sales+Social manual-trigger timeout saga — a three-layered bug (cron method, agent budgets, page runtime) — is fully untangled in three commits (Sprint 3α A+B+C). **What shipped today (in order):** (1) `9ba8b03` — docs sweep capturing previous session; (2) `1f4f1fd` — Inventory cron POST→GET (same root cause as Manager's earlier `7539dcd` lesson, now re-applied — see §15.34); (3) `032a18c` — Sprint 3Z: Manager moved from Vercel cron `0 5 * * 0` to Inngest event-driven `weeklyManagerCron` + per-tenant `runManagerForTenant` (fan-out, each tenant gets own 60s budget); `thinking_budget` 8000→3000 and `max_tokens` 16000→6000 (cuts wall time from ~55s to ~25s); `vercel.json` cron count 9→**8**. (4) `6845582` — Sprint 3G Phase 1a: brief-extractor core + admin test endpoint at `/api/admin/extract-brief` (Haiku 4.5, SSRF-safe HTML fetch, regex-strip to plain text, no cheerio); (5) `9c4d243` — Sprint 3G Phase 1b: magic-wand button on `/dashboard/settings` Card 3 (URL input + "צור brief" button + confirm-overwrite + toast feedback); (6) `8a72591` — Sprint 3G Phase 1d: quality pass — Haiku 4.5 → **Sonnet 4.6** plus prompt rewrite with anti-translation rules + bad-examples section quoting the exact Hebrew "translation feel" tells Haiku produced ("מפנה" instead of "פונה", "ניקיון pipeline", "להפוך סיבוך למסודר"); (7) `4ab6f96` — Sprint 3G Phase 1c: same magic-wand button on `/onboarding` flow with light auth (`auth.getUser()` instead of `requireOnboarded()` since user is mid-onboarding) — Day-1 brief auto-fill from first signup screen; (8) `6e2396c` — Sprint 3α Phase A: Sales+Social cron routes POST→GET (same bug as Inventory; silent 405 on every Sun-Thu scheduled invocation for weeks); (9) `e15b305` — Sprint 3α Phase B: budget reduction (Sales `thinking_budget` 2048→1024, `max_tokens` 4096→2500; Social `max_tokens` 3000→2000) — Sprint 3Z playbook applied to non-Manager agents; (10) `4ae9cf7` — Sprint 3α Phase C: `/dashboard/agents` runtime edge→nodejs (the §15.28 lesson from 2026-05-13 had been applied to `/dashboard/page.tsx` but **the agents-overview page was missed**, so Sales' post-Phase-B 25-35s runs kept dying at the Edge 25s init cap with `FUNCTION_INVOCATION_TIMEOUT`); (11) this CLAUDE.md sweep itself. **End-to-end validation today:** Sales manual trigger via `/dashboard/agents` Run button produced 5 personalized followup drafts (visible in `/dashboard/approvals`: PII-stripped, channel-aware email vs WhatsApp vs manual-copy, suggested timing, response-probability tag, Hebrew reasoning paragraph per draft); Social produced 3 timed posts (morning/noon/evening) with platform recommendations and rationale. Sprint 3G brief auto-extraction validated on `https://www.spikeai.co.il/` — first attempt with Haiku showed translation-feel tells; second attempt with Sonnet + tightened prompt produced 254 chars of native Hebrew ("פונים ללקוחות" correct verb, "עשרים וארבע שעות ביממה" instead of "24/7", "ישיר ועניני, בלי מינוח מסורבל" — natural compound-free Hebrew). **8 new sections / lessons added today:** §10.46 (3 Inv), §10.47 (3Z Manager Inngest), §10.48 (3G full lifecycle), §10.49 (3α three-layer fix), §15.34 (Vercel cron uses GET not POST), §15.35 (Sonnet + thinking_budget Vercel-cap calculus), §15.36 (two-step UX pattern for AI-generated form fields, Iron Rule extension), §15.28 addendum (Edge→nodejs lesson re-applied page-by-page). **Cron count: 8** (Manager removed when moved to Inngest in Sprint 3Z). **Strategic decisions locked — see §19** (pricing still OPEN — single flat tier candidate ~₪999/month under evaluation): BSP 360dialog primary, Meta Cloud direct fallback; wedges = [אשר] button + voice notes + no-shows ROI + **AI brief auto-extractor in onboarding** (new wedge as of Sprint 3G); channel = periphery cities + bookkeepers + Achiya rev-share. **Latest commits (newest first):** `4ae9cf7` (3α Phase C runtime), `e15b305` (3α Phase B budgets), `6e2396c` (3α Phase A cron method), `4ab6f96` (3G Phase 1c onboarding), `8a72591` (3G Phase 1d quality), `9c4d243` (3G Phase 1b settings), `6845582` (3G Phase 1a core), `032a18c` (3Z Manager Inngest), `1f4f1fd` (Inventory cron fix), `9ba8b03` (prior docs sweep).
+> **Last updated:** 2026-05-17 evening (continuation session: **3 additional commits** on top of the 2026-05-16 marathon, totaling **14 commits / 9 sprints across the two-day stretch**). **What this means in plain terms:** the post-3G/3α product gained two new owner-facing features today — a "Spike Impact" weekly ROI widget on both `/dashboard` and `/dashboard/agents` that tells the owner what Spike did this week in 4-second visual scan (Sprint 3F, two phases), and the FOURTH Iron-Rule §15.25 carve-out — an Approvals Pile-Up WhatsApp reminder that pings the owner when ≥5 drafts have been waiting for them (Sprint 3J). **What shipped today (in order):** (1) Sprint 3F Phase 1 — Spike Impact widget mounted on `/dashboard/agents` (new `src/lib/dashboard/spike-impact.ts` server-only 2-query parallel loader + new `src/components/dashboard/spike-impact-widget.tsx` RSC with 4 stat cells and empty state); (2) `9fc2f2b` — Sprint 3F Phase 2: widget mounted on `/dashboard` main page via Promise.all join with existing `listPendingDrafts()` (zero added wall time); (3) `67476c0` — Sprint 3J: new cron route `/api/cron/approvals-reminder` daily 14:00 UTC = 17:00 IL Sun-Thu, threshold ≥5 pending drafts older than 1h, 6h dedupe window via `events` table, reuses ALL existing helpers from §10.39 (`lookupWhatsAppIntegration` + `wasContactedInLast24h` + `mapSendErrorToHebrew` + `sendWhatsAppMessage`) — zero new shared code, 4th Iron-Rule carve-out joining Morning/Watcher/Manager. **End-to-end validation today:** Spike Impact widget visible on `/dashboard/agents` (Dean screenshot) showing demo tenant's 19 drafts created, 1 approved+sent (5% conversion), 5 hot leads, ~0 hours saved over the last 7 days — the 5% approval rate is what motivated Sprint 3J: drafts pile up because owners forget to visit `/approvals`, and a daily WhatsApp ping closes that gap. **2 new sections / lessons added today:** §10.50 (3F Spike Impact two phases), §10.51 (3J approvals reminder), §15.38 (read helper type signatures before calling — lesson from 4 rounds of tsc errors during 3J), §15.39 (`events.id` is text NOT NULL with no default — caller MUST supply; helpers.ts uses `received_at` + `provider` columns, NOT `occurred_at`). **§3.5 cron count: 8 → 9** (approvals-reminder added). **Strategic decisions** — pricing was REVISITED today; a structured memo recommended ₪799/month flat + ₪399 design-partner intro × 5; Dean DEFERRED ("עוד לא התחלתי, לא משנה כל כך כרגע") — §19.1 stays OPEN. **Latest commits (newest first):** `67476c0` (3J approvals reminder), `9fc2f2b` (3F Phase 2 dashboard mount), [3F Phase 1 — Sprint 3F Phase 1 widget files], `91ddb9d` (prior docs sweep), `4ae9cf7` (3α Phase C runtime), `e15b305` (3α Phase B budgets), `6e2396c` (3α Phase A cron method), `4ab6f96` (3G Phase 1c onboarding), `8a72591` (3G Phase 1d quality), `9c4d243` (3G Phase 1b settings), `6845582` (3G Phase 1a core), `032a18c` (3Z Manager Inngest), `1f4f1fd` (Inventory cron fix), `9ba8b03` (prior docs sweep).
 >
-> **Previous session (2026-05-15):** Owner-facing trinity COMPLETE + Sprint 3W internal hygiene + onboarding brief integration `87e2b20` + Sonner Toaster migration `b49bcb9`. 6 sprints / 11 commits in one day. The business owner now receives three operational signals on WhatsApp automatically (Morning daily 07:00 IL via 3M, real-time critical/high alerts via 3X, weekly health digest Sunday 08:00 IL via 3Y — **as of today moved to Inngest, see §10.47**). NEW tenants who complete onboarding have their brief captured on Day 1. Error feedback styled via Sonner toasts. **End-to-end WhatsApp delivery for 3X + 3Y** was deferred on Meta access-token refresh.
+> **Previous session block (2026-05-16):** 7 sprints / 11 commits in one day — Sprint 3 Inv (Inventory cron), Sprint 3Z (Manager → Inngest), Sprint 3G (brief auto-extractor, 4 phases), Sprint 3α (Sales/Social timeout three-layer fix). See §10.46-§10.49 for full per-sprint detail and §15.34-§15.37 for the lessons distilled out.
 
 ---
 
@@ -247,7 +247,7 @@ Resend, Supabase OTP
 
 ### 3.5 Background Tasks
 - `@vercel/functions@3.5.0` for `waitUntil()`
-- **Vercel Cron (8 jobs in `vercel.json`, all daily-or-less for Hobby tier — was 9 before Sprint 3Z moved Manager to Inngest, see §10.47):**
+- **Vercel Cron (9 jobs in `vercel.json`, all daily-or-less for Hobby tier — was 8 between Sprint 3Z and Sprint 3J; Sprint 3J added approvals-reminder, see §10.51):**
   - `/api/cron/reset-monthly-spend` (1 0 1 * *) — monthly
   - `/api/cron/social` (30 5 * * 0-4) — **Method fixed to GET on Sprint 3α Phase A (`6e2396c`); was silent-405-on-POST for weeks. See §15.34.**
   - `/api/cron/sales` (30 7 * * 0-4) — **Method fixed to GET on Sprint 3α Phase A (`6e2396c`).**
@@ -256,6 +256,7 @@ Resend, Supabase OTP
   - `/api/cron/cleanup` (0 0 * * *) — 1.5.4. Sprint 3W: removed always-failing `agent_runs` insert (§10.43).
   - `/api/cron/hot-leads-sales-recovery` (0 2 * * *) — 1.5.2
   - `/api/cron/morning` (0 4 * * *) — 3M, daily 07:00 IL = 04:00 UTC. Auto-sends Morning daily summary to **owner** via WhatsApp (not customers). See §10.39.
+  - `/api/cron/approvals-reminder` (0 14 * * 0-4) — **NEW** Sprint 3J, daily 17:00 IL = 14:00 UTC Sun-Thu. **Fourth Iron-Rule §15.25 carve-out** (joins Morning + Watcher + Manager). Pings owner via WhatsApp when ≥5 pending drafts have been waiting >1h; 6h dedupe window via `events.event_type='approvals_reminder_sent'`. Reuses ALL helpers from §10.39 — zero new shared code. See §10.51.
 - **Inngest (event-driven cron, was Vercel cron before Sprint 3Z):**
   - `weeklyManagerCron` (Inngest cron `TZ=Asia/Jerusalem 0 8 * * 0`) — Sunday 08:00 IL discovers eligible tenants, fans out `manager/run.tenant` events
   - `runManagerForTenant` (Inngest event consumer, `concurrency.limit: 5`) — per-tenant Manager run with own 60s Node budget. Same auto-send-to-owner Iron-Rule carve-out as the previous Vercel-cron path. See §10.47.
@@ -1839,6 +1840,90 @@ The lesson: when reducing wall time on a Sonnet agent, ALSO verify the page runt
 
 ---
 
+### 10.50 Sprint 3F — Spike Impact Owner-Facing ROI Widget (DONE in 2 phases) — 2026-05-17
+
+**The bridge from "Spike is doing things" to "Spike is earning its keep."** Per §10.41/§10.42, the owner gets operational pings (Morning daily, Watcher alerts, Manager weekly digest), but nothing surfaces the **aggregate weekly impact** as a tangible number. Sprint 3F adds a single 4-stat-card widget rendered on `/dashboard` and `/dashboard/agents` that tells the owner what Spike did this week in 4 seconds of visual scan — drafts created, drafts approved+sent (owner sign-off rate), hot leads classified, and estimated hours saved.
+
+**Why this matters operationally.** The widget revealed a real production data signal: on the demo tenant, the last 7 days had **19 drafts created, 1 approved and sent** — a 5% approval rate. That number directly motivated Sprint 3J (§10.51) because the bottleneck to Spike's value delivery is NOT draft quality (§10.40 confirmed native-voice drafts on first generation), it's owners forgetting to visit `/approvals`. The widget made the gap visible; Sprint 3J closes it.
+
+**Why the 4 specific metrics.** Each is a direct fact from `drafts` + `hot_leads` tables (no derivation chains), each works for every vertical (salon/restaurant/retail/clinic equally), and together they tell the "Spike is earning its keep this week" story:
+- **טיוטות נוצרו** (drafts created) — Spike's output volume
+- **אישרת ושלחנו** (approved+sent) — owner sign-off rate, the most honest signal of perceived quality
+- **לידים חמים** (hot leads classified) — sales surface
+- **שעות שחסכת** (estimated hours saved) — `(approvedOrSent × 2.5 min) / 60`, conservative 2.5-min-per-draft assumption
+
+**Phase 1 — Widget on `/dashboard/agents` (Sprint 3F Phase 1).** Three files shipped:
+- **NEW** `src/lib/dashboard/spike-impact.ts` — server-only data loader. 2 queries in parallel via `Promise.all` (drafts + hot_leads, both filtered by `tenant_id + created_at >= windowStart`). Returns `SpikeImpactStats { windowStartIso, windowDays, draftsCreated, draftsApprovedOrSent, draftsRejected, hotLeadsCount, hoursSaved, hasMeaningfulActivity }`. Constant `MINUTES_PER_DRAFT_SAVED = 2.5` is product policy and lives inline (not env var); change requires a code edit + commit so the assumption is auditable. Defensive `console.error` on query errors but never throws — empty data is preferable to a broken widget.
+- **NEW** `src/components/dashboard/spike-impact-widget.tsx` — RSC component (no client interactivity needed). 4-cell grid with 2-up on mobile (`grid-cols-2`) and 4-wide on `sm:` and up (`sm:grid-cols-4`). Each cell: small icon chip with `accentSoft` background tint, large tabular-nums number, Hebrew label. RTL via the parent `dir="rtl"`. Icons: Sparkles (purple `#8B5CF6`), CheckCheck (`var(--color-sys-green)`), Flame (`#F59E0B` amber), Clock (`var(--color-sys-blue)`). The purple and amber are HEX because no `--color-sys-purple` / `--color-sys-orange` CSS variables exist; the others use canonical sys-color variables. Empty state (`!stats.hasMeaningfulActivity`): single centered card with "Spike בעבודה — נסה ללחוץ הרץ עכשיו" copy instead of a row of zeros (avoids the "product looks broken" first impression for new tenants).
+- **MODIFIED** `src/app/dashboard/agents/page.tsx` — added `getSpikeImpactStats(tenantId, 7)` to the existing `Promise.all` fan-out, mounted `<SpikeImpactWidget stats={impactStats} />` between the page title and the first category section.
+
+**Phase 1 verification.** Dean's screenshot post-deploy showed all 4 cells rendered correctly on `/dashboard/agents`: 19 / 1 / 5 / ~0. RTL alignment correct, icons in colored chips, footer note ("שעות שחסכת" מוערך על בסיס 2.5 דקות) visible.
+
+**Phase 2 — Widget on `/dashboard` (commit `9fc2f2b`).** Mount on the main dashboard page where the daily attention sits. Three edits:
+- **ADDED imports** `SpikeImpactWidget` + `getSpikeImpactStats`
+- **PARALLELIZED** the existing `const draftsResult = await listPendingDrafts()` into a `Promise.all([listPendingDrafts(), getSpikeImpactStats(tenantId, 7)])` join. Zero added wall time because both queries are 2-query reads of similar size — `getSpikeImpactStats` finishes well before the slowest other in-flight read.
+- **MOUNTED** `<SpikeImpactWidget stats={impactStats} />` between the `ApprovalBanner` block (which only renders when `pendingCount > 0`) and the agent category sections. The choice of placement: ApprovalBanner is an urgent CTA → stays above; Spike Impact is the "what Spike did this week" narrative that segues naturally into "and here are the agents that did it." On tenants with no pending approvals (ApprovalBanner hidden), Spike Impact becomes the first content card after the KpiStrip — even better attention placement.
+
+**Why `Promise.all` not a separate `Suspense` boundary.** The existing dashboard page uses `Suspense` for streaming-in slow data (KpiStrip, OnboardingBanner, manager lock). But Spike Impact's data is small (2 small queries on indexed columns), is needed for the FIRST paint of the agent-category section's neighborhood, and bundling it into the blocking `listPendingDrafts` Promise.all is faster than a separate streaming boundary (no extra round-trip, no JS-rendering cost for an extra Suspense fallback).
+
+**Why the widget header reads "השבוע ב-Spike" not "השבוע שלך ב-Spike".** Tested in scratch: "השבוע ב-Spike" reads cleaner in Hebrew. "השבוע שלך ב-Spike" sounds slightly stilted, like translated marketing copy. The shorter form is also better for the small space and keeps the focus on Spike's contribution.
+
+**Naming clash with §19.7 backlog.** Sprint 3F was the placeholder name for "Google Calendar 2-way sync" in §19.7. That backlog item is now renamed to **Sprint 3K** (next free letter after 3J) to avoid collision with this shipped widget. The commits + this section retain "Sprint 3F" because changing committed history is worse than the naming inconsistency.
+
+**Files & sizes.** spike-impact.ts ~75 lines (interface + loader). spike-impact-widget.tsx ~150 lines (widget + stat-cell sub-component). dashboard-agents/page.tsx +5 net lines. dashboard/page.tsx +21 net lines (imports + Promise.all + mount + comments).
+
+**Commit (Phase 2):** `9fc2f2b`. (Phase 1's hash was not captured in the local logs but is the immediate predecessor of `9fc2f2b`.)
+
+---
+
+### 10.51 Sprint 3J — Approvals Pile-Up WhatsApp Reminder (DONE, commit `67476c0`) — 2026-05-17
+
+**The FOURTH Iron-Rule §15.25 owner-self loopback carve-out** — joins Morning daily (3M, §10.39), Watcher real-time alerts (3X, §10.41), and Manager weekly digest (3Y, §10.42; now via Inngest in 3Z). When the demo tenant's `/dashboard/agents` Spike Impact widget (§10.50) revealed a 1/19 approval rate over the last 7 days, the diagnosis was clear: drafts are good (§10.40 + §10.48 native-voice verification), they're just sitting in `/approvals` because owners forget to visit. A daily afternoon ping fixes that.
+
+**Schedule decision (17:00 IL Sun-Thu).** Late afternoon when an Israeli SMB owner is winding down the workday, before the dinner/family window closes their attention. Mon-Fri is wrong (Friday is a weekend); Sun-Thu (`0 14 * * 0-4` UTC = 17:00 IL DST) is Israeli business week. Considered: 12:00 IL (lunchtime) — rejected as too disruptive to the active shift; 09:00 IL — rejected because Morning auto-send already lands at 07:00 IL and 2 owner-side WhatsApp pings within 3 hours would feel spammy.
+
+**Threshold + dedupe choices.**
+- **≥5 pending drafts older than 1h** → fires the ping. 1-2 pending is normal Spike background activity; below 5 isn't urgent. The 1h age filter prevents pinging when the owner is actively reviewing right now (drafts <1h old are likely being looked at as they appear).
+- **6h dedupe window via `events` table** → no duplicate reminder within 6h. The cron fires once per day so dedupe protects against retry storms and edge-case clock skew, not against intentional double-fires. Could theoretically be 24h, but 6h preserves the option to add a midday cron later without re-doing the dedupe logic.
+
+**Iron Rule §15.25 compliance.** The reminder message goes from Spike TO the owner. It is NOT customer-facing. No `[אשר]` approval step. Same carve-out logic as the prior three — `lookupWhatsAppIntegration` finds the tenant's Meta credentials, `wasContactedInLast24h(db, tenantId, ownerPhone)` verifies the 24h Meta window is open against the owner's own phone, `sendWhatsAppMessage({ toPhone, messageBody, phoneNumberId, accessToken })` does the send via the existing transport, `mapSendErrorToHebrew(failResult)` translates errors. **Zero new shared code** — entire send pipeline reuses the helpers extracted in Sprint 3B/3M (§10.39).
+
+**Implementation.** Single new file `src/app/api/cron/approvals-reminder/route.ts` (~300 lines including comments). `vercel.json` cron count 8 → 9 (entry appended after `/api/cron/morning`).
+
+The route handler is `GET` (per §15.34 — Vercel Cron sends GET; exporting POST is silent 405). `runtime = "nodejs"` + `maxDuration = 60` (per §15.28 — Edge 25s cap would risk killing a multi-tenant fan-out). Bearer auth via `CRON_SECRET` (standard pattern).
+
+`processTenant` runs the 6-step pipeline per tenant: (1) count pending drafts older than `MIN_AGE_MINUTES = 60`; (2) dedupe check on `events` table for `event_type = 'approvals_reminder_sent'` with `received_at >= dedupeWindowStart` and `provider = 'whatsapp'`; (3) `lookupWhatsAppIntegration` (returns discriminated union — narrow on `.ok` before reading credentials, per §15.38 lesson); (4) read owner phone from `tenants.config.owner_phone` (NOT from integration result — that only holds WABA creds, per §15.38) + `wasContactedInLast24h`; (5) compose Hebrew message + `sendWhatsAppMessage`; (6) log the `approvals_reminder_sent` event with synthesized natural-idempotency id (`approvals_reminder_${tenantId}_${ms}`, per §15.39 — `events.id` is `text NOT NULL` with no default).
+
+Chunked `Promise.allSettled(5)` over tenants for parallelism with isolated failures (one tenant's bad data doesn't block the rest), mirroring §10.39 + §10.41 patterns.
+
+**Hebrew message (singular + plural).** Grammar matters even in a quick ping:
+- `"שלום! ${pendingCount} טיוטות מחכות לאישור שלך.\nלאישור והעברה ללקוחות:\n${APPROVALS_URL}"` (plural)
+- `"שלום! טיוטה אחת מחכה לאישור שלך.\nלאישור והעברה ללקוחות:\n${APPROVALS_URL}"` (singular, count 1)
+
+No emoji preamble, no "Hi {name}, hope you're well" filler — owners scan WhatsApp in 2-3 seconds while doing other things.
+
+**Type-error debugging journey** (4 rounds of `tsc --noEmit`, ~20 min wasted by guessing at helper signatures instead of reading the actual source). Lessons captured in §15.38 (helper type signature discovery) + §15.39 (events.id schema). Net code change after all 4 corrections:
+- Round 1 → fixed `IntegrationLookupResult` discriminated union narrowing (must check `.ok` before reading `.phoneNumberId`/`.accessToken`); fixed `sendResult` field names (`whatsappMessageId` not `messageId`); removed nonexistent `ownerPhone` on integration result.
+- Round 2 → `sendWhatsAppMessage` parameter `to` doesn't exist (the actual field is `toPhone`); `mapSendErrorToHebrew` accepts the full fail object, not just the category string.
+- Round 3 → `customerPhone` also doesn't exist on `SendWhatsAppMessageInput`; only after asking Dean to upload `src/lib/whatsapp/{send,types,helpers}.ts` was the canonical type visible: `{ toPhone, messageBody, phoneNumberId, accessToken }`.
+- Round 4 → final schema discovery: `events.id` is `text NOT NULL` with NO default per §5.1, so caller must supply; events uses `received_at` not `occurred_at`; `provider` field is required for consistency with `wasContactedInLast24h` helper which filters on it.
+
+After round 4, `tsc --noEmit` was silent (clean). `npm run build` green. Route visible in build output (`├ ƒ /api/cron/approvals-reminder`).
+
+**Manual test command** (post-deploy):
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://app.spikeai.co.il/api/cron/approvals-reminder
+```
+Expected response shape:
+```json
+{ "ok": true, "tenantsProcessed": 1, "sent": 1, "skippedNoIntegration": 0, "skippedBelowThreshold": 0, "skippedOutside24h": 0, "skippedDeduped": 0, "errors": 0, "durationMs": 487 }
+```
+If `skippedOutside24h: 1`, the owner needs to message Spike's WhatsApp once to reopen the 24h Meta session window, then the next cron fire will succeed.
+
+**Why this matters strategically.** Pre-Sprint-3J, Spike's value delivery was theoretical for any tenant with low approvals discipline. Post-Sprint-3J, the owner gets daily reminded of waiting work the moment it accumulates — closing the loop between "Spike drafts" and "draft becomes a customer message." Combined with Sprint 3F (§10.50), the owner now has both a passive surface (the dashboard widget shows what HAS happened) AND an active surface (WhatsApp ping when something needs to happen). The Iron Rule §15.25 owner-facing trinity becomes a quartet: Morning (daily summary) + Watcher (critical alerts) + Manager (weekly digest) + **Approvals Reminder** (pending-work ping).
+
+---
+
 ## 11. Current Status
 
 ### 11.1 What Works ✅ — STAGE 1 COMPLETE + POST-STAGE-1 POLISH
@@ -3189,6 +3274,80 @@ After this, refresh `/dashboard/agents` and the "currently running" warning clea
 
 ---
 
+### 15.38 Read Helper Type Signatures Before Calling — Especially Discriminated Unions (Sprint 3J lesson) ⚠️
+
+**The pattern.** When writing a new route/action that calls into `src/lib/whatsapp/*` (or any other helper module with its own type system), READ the actual `*.ts` source — `types.ts` first, then the helper file — BEFORE writing the call site. Don't guess at field names or return shapes from naming conventions.
+
+**The cost.** Sprint 3J burned 4 rounds of `tsc --noEmit` (~20 minutes total) because the route was written against guessed signatures:
+- Guessed `integration.ownerPhone` → real type: `IntegrationLookupResult` is a discriminated union of `{ ok: true; phoneNumberId; accessToken } | { ok: false; reason }`. No `ownerPhone` field anywhere. Owner phone lives in `tenants.config.owner_phone`, not on the integration row.
+- Guessed `sendWhatsAppMessage({ tenantId, to, text, ... })` → real type: `SendWhatsAppMessageInput = { toPhone, messageBody, phoneNumberId, accessToken }`. None of the guessed field names were correct.
+- Guessed `mapSendErrorToHebrew(sendResult.error)` → real signature: `mapSendErrorToHebrew(result: Extract<SendWhatsAppMessageResult, { ok: false }>)`. Takes the WHOLE narrowed fail-variant object, not a single field.
+- Guessed `sendResult.messageId` → real field: `whatsappMessageId` (success variant only).
+
+Each guess cost a build cycle. Reading the 3 source files upfront would have caught all 4 at once.
+
+**The rule.** Before writing a call to `sendWhatsAppMessage`, `lookupWhatsAppIntegration`, `mapSendErrorToHebrew`, or any other helper that exposes discriminated unions, run:
+```bash
+cat src/lib/whatsapp/types.ts
+cat src/lib/whatsapp/helpers.ts
+cat src/lib/whatsapp/send.ts
+```
+And copy the exact field names + types into the new code. The helpers are well-commented at signature level — the cost of reading is ~30 seconds; the cost of guessing is ~20 minutes per cycle.
+
+**Discriminated union narrowing — the specific gotcha.** When a helper returns `{ ok: true; ... } | { ok: false; ... }`, the caller MUST narrow with `if (!result.ok) { handle fail; return; }` before accessing success-variant fields. Without narrowing, TypeScript can't tell which variant you're holding, so EVERY field access produces an error like:
+```
+Property 'phoneNumberId' does not exist on type '{ ok: false; reason: ... }'.
+```
+The fix is structural, not a property rename. This pattern repeats across `lookupWhatsAppIntegration` (3-way union via `reason`), `sendWhatsAppMessage` (success/fail union), and any future helper that adopts the discriminated-union return convention.
+
+**Sibling lessons.** §15.33 (type extraction pattern for `"use server"` modules — different problem, related preventive practice).
+
+---
+
+### 15.39 `events.id` Is `text NOT NULL` With No Default; Caller MUST Supply (Sprint 3J schema lesson) ⚠️
+
+**The schema reality.** Per §5.1:
+```
+id            text         NOT NULL    (none — must be supplied)
+tenant_id     uuid         (nullable)
+provider      text         (nullable)
+event_type    text         (nullable)
+payload       jsonb        (nullable)
+received_at   timestamptz  default now()
+```
+
+The `id` column has **no default and no auto-increment**. INSERTs that omit it will fail with `null value in column "id"` at runtime, NOT at compile time. PostgREST will surface this as a generic error string; you'll only see it when the cron actually fires.
+
+**The convention for `id`.**
+- **Webhook-originated events** use Meta's natural identifier (e.g. `wamid.HBgM...`). This is the original intent — natural idempotency for inbound replay protection.
+- **Internal Spike-originated events** (like `approvals_reminder_sent`, `growth_outcome`, etc.) need a synthesized natural-uniqueness key. Sprint 3J uses `${event_type}_${tenantId}_${ms}`:
+  ```typescript
+  const eventId = `approvals_reminder_${tenantId}_${now.getTime()}`;
+  ```
+  This is sufficient because (a) PK uniqueness only requires collision avoidance, not semantic meaning; (b) the synthesized ID is greppable in logs ("which tenant got pinged at what time?"); (c) two cron invocations within the same millisecond for the same tenant is impossible in practice, and the dedupe check (Step 2 of the route handler) already prevents intentional double-fires within the 6h window.
+- Avoid `crypto.randomUUID()` for INSERT IDs unless there's a reason not to embed semantics — the natural-key approach is debuggable; UUIDs are opaque.
+
+**Related schema gotcha — column names are `received_at` + `provider`, NOT `occurred_at`.** First-draft Sprint 3J used `occurred_at` (a column that doesn't exist) for both the dedupe query and the INSERT. The dedupe query would have errored silently (empty rows always returned), causing the cron to send the same reminder every fire — and the INSERT would have failed with the same column-not-found error. The fix: copy the EXACT column names from `src/lib/whatsapp/helpers.ts`'s `wasContactedInLast24h` (which is the canonical existing reader of the events table) and use those. The helper's query is the source of truth for "what columns does events have."
+
+```typescript
+// Right — matches helpers.ts wasContactedInLast24h
+.eq("tenant_id", tenantId)
+.eq("provider", "whatsapp")
+.eq("event_type", "approvals_reminder_sent")
+.gte("received_at", dedupeWindowStart)
+
+// Wrong — `occurred_at` doesn't exist; missing provider filter
+.eq("tenant_id", tenantId)
+.eq("event_type", "approvals_reminder_sent")
+.gte("occurred_at", dedupeWindowStart)
+```
+
+**The systemic rule.** When INSERTing into a table you haven't touched in this sprint, run `\d events` in psql OR check §5.1 of CLAUDE.md OR grep `from("events")` to find an existing SELECT and copy its WHERE clause column names. The events table has specifically been a source of column-name drift over previous sprints; checking is cheap, debugging silent inserts in production is not.
+
+**Sibling lessons.** §5.1 (events schema reference), §15.38 (read helper type signatures — same prevention strategy applied to TypeScript types instead of SQL columns).
+
+---
+
 ## 16. Commit Conventions
 
 Conventional commits, English subject, Hebrew body OK.
@@ -3231,7 +3390,11 @@ Note: 009 was skipped during initial scaffold; not a gap to fill.
 
 | Hash | What |
 |---|---|
-| TBD | docs(claude): post-session sweep capturing Sprint 3 Inv + Sprint 3Z + Sprint 3G (4 phases) + Sprint 3α (3 phases) — 11 commits / 7 sprints in one day; new §10.46-§10.49 sections + §15.34-§15.37 lessons + §15.28 addendum + §3.5 cron count 9→8 + header refresh |
+| TBD | docs(claude): post-session sweep capturing Sprint 3F (Spike Impact widget, 2 phases) + Sprint 3J (approvals pile-up reminder, 4th Iron-Rule §15.25 carve-out); new §10.50 + §10.51 sections; new §15.38 (helper type signature discovery) + §15.39 (events.id schema requirements) lessons; §3.5 cron count 8→9; header refresh; §19.7 backlog updates (3F + 3J marked DONE; future calendar work renamed 3F→3K to avoid collision with shipped ROI-widget naming) |
+| `67476c0` | feat(cron): Sprint 3J — approvals pile-up WhatsApp reminder (4th Iron-Rule §15.25 owner-self loopback carve-out); daily 14:00 UTC = 17:00 IL Sun-Thu; threshold ≥5 pending drafts older than 1h, 6h dedupe window via events table; reuses lookupWhatsAppIntegration + wasContactedInLast24h + sendWhatsAppMessage + mapSendErrorToHebrew helpers (zero new shared code); vercel.json cron count 8→9 — see §10.51 + §15.38 + §15.39 |
+| `9fc2f2b` | feat(dashboard): Sprint 3F Phase 2 — mount Spike Impact widget on `/dashboard` main page via Promise.all join with listPendingDrafts (zero added wall time, both are 2-query reads); widget renders between ApprovalBanner (urgent CTA) and agent category sections (narrative segue); empty-state-aware for new tenants — see §10.50 |
+| TBD Phase 1 | feat(dashboard): Sprint 3F Phase 1 — Spike Impact owner-facing ROI widget (4 stat cells: drafts created, approved+sent, hot leads, hours saved); new server-only data loader src/lib/dashboard/spike-impact.ts (2-query parallel via Promise.all on drafts + hot_leads); new RSC src/components/dashboard/spike-impact-widget.tsx (Glass card, mobile responsive grid-cols-2 sm:grid-cols-4, RTL, Hebrew labels, empty state); mounted on /dashboard/agents above category sections — see §10.50 |
+| `91ddb9d` | docs(claude): post-session sweep — 7 sprints / 11 commits in one day — §10.46-§10.49 + §15.34-§15.37 + §15.28 addendum + §3.5 cron 9→8 + §18.2 backfill + §19.7 mark sprints done + header refresh (CLAUDE.md 3220→3535 lines, +315) |
 | `4ae9cf7` | fix(dashboard-agents): Sprint 3α Phase C — `/dashboard/agents` runtime edge→nodejs (Edge Hobby 25s init cap killed long Sales runs at FUNCTION_INVOCATION_TIMEOUT even after Phase B; nodejs 60s on Hobby has comfortable margin) — see §10.49 + §15.28 addendum |
 | `e15b305` | fix(agents): Sprint 3α Phase B — reduce thinking_budget + max_tokens for Sales (2048/4096 → 1024/2500) and Social (max_tokens 3000 → 2000); same root cause as Manager 3Z timeouts (§10.47); fits Hobby 60s cap with margin — see §10.49 |
 | `6e2396c` | fix(cron): Sprint 3α Phase A — Sales + Social cron routes POST→GET (silent 405 on scheduled triggers for weeks; same root cause as Inventory `1f4f1fd`; manual + webhook triggers unaffected) — see §10.49 + §15.34 |
@@ -3494,10 +3657,12 @@ Each is a separate session / batch. Don't combine.
 - **Sprint 3Z — Manager Vercel cron → Inngest async + thinking reduction** ✅ **DONE 2026-05-16** — fixes recurrent 77% Manager error rate (7/9 failures over 30 days, all hitting Hobby Node 60s cap). Two-pronged fix: (1) reduce `thinking_budget` 8000→3000 + `max_tokens` 16000→6000 in `src/lib/agents/manager/run.ts` (~55s → ~25s wall time); (2) split Vercel cron handler into two Inngest functions (`weeklyManagerCron` Inngest cron + `runManagerForTenant` event consumer with `concurrency.limit: 5`) — each tenant now gets its own 60s budget, scaling linearly with N tenants. NEW file `src/lib/agents/manager/owner-send.ts` extracted (the per-tenant flow: idempotency → runManagerAgent → render → integration lookup → 24h window → WhatsApp send). DELETED `src/app/api/cron/manager/route.ts`. `vercel.json` cron count: 9 → **8** (§3.5 updated). Iron Rule §15.25 carve-out preserved (Manager weekly digest still auto-sends to owner). Pattern documented as §15.35 (Sonnet+thinking timeout calculus). See §10.47. Commit `032a18c`.
 - **Sprint 3G — AI-driven brief auto-extractor (URL → Hebrew brief)** ✅ **DONE 2026-05-16** (4 phases: 1a + 1b + 1d + 1c) — the killer-feature wedge. Both `/dashboard/settings` (existing tenants) and `/onboarding` (new tenants) now have a "🪄 צור brief" button: paste URL → 20-25s wait → Hebrew brief lands in the textarea → owner reviews/edits → clicks save. Sonnet 4.6 reads the website HTML (SSRF-safe fetch, regex strip, 20K char truncate), Hebrew system prompt with anti-translation-feel rules + bad-examples section, returns 100-400 char brief in native Hebrew owner-voice. Validated on `spikeai.co.il`: produced "פונים ללקוחות בגוף שני רגיל" + "ישיר ועניני, בלי מינוח מסורבל" + "עשרים וארבע שעות ביממה" — native Hebrew throughout, no translation feel, no English mixing. Per §15.36, extract → textarea (form state) → owner reviews → existing save button persists; never single-click auto-save. Phase 1c (onboarding) uses LIGHT auth (`auth.getUser()`) instead of `requireOnboarded()` because user is mid-onboarding. **New wedge — design partner #1 will see the brief auto-fill on the FIRST screen of their first signup.** See §10.48. Commits `6845582` (1a core) → `9c4d243` (1b settings) → `8a72591` (1d quality pass) → `4ab6f96` (1c onboarding).
 - **Sprint 3α — Sales/Social manual-trigger timeout three-layer fix** ✅ **DONE 2026-05-16** (3 phases: A + B + C) — multi-layered debugging saga that uncovered three separate bugs in one symptom. Phase A (`6e2396c`): Sales+Social cron routes POST→GET (same as Inventory; scheduled triggers were silent-405-ing for weeks). Phase B (`e15b305`): reduce Sales `thinking_budget` 2048→1024 + `max_tokens` 4096→2500; reduce Social `max_tokens` 3000→2000 (Sprint 3Z playbook applied to non-Manager agents). Phase C (`4ae9cf7`): `/dashboard/agents` runtime edge→nodejs + maxDuration=60 — the §15.28 lesson from 2026-05-13 had been applied to `/dashboard/page.tsx` (`7539dcd`) but the agents-overview page was missed, so Sales' post-Phase-B 25-35s runs still died at Edge 25s cap. End-to-end validation: clicked Run on Sales via `/dashboard/agents`, watched ~28s spinner, completed cleanly, `/dashboard/approvals` showed 5 personalized followup drafts; clicked Run on Social, ~24s, produced 3 timed posts. Lessons added: §15.28 addendum (audit ALL pages with heavy-action buttons), §15.34 (Vercel cron GET not POST), §15.35 (Sonnet+thinking budget calculus), §15.37 (stuck-running cleanup procedure for post-timeout state). See §10.49. Commits `6e2396c` + `e15b305` + `4ae9cf7`.
+- **Sprint 3F — Spike Impact owner-facing ROI widget** ✅ **DONE 2026-05-17** (2 phases) — adds a 4-stat-card widget to `/dashboard/agents` (Phase 1) and `/dashboard` main page (Phase 2, commit `9fc2f2b`) showing drafts created, approved+sent, hot leads classified, and estimated hours saved over the last 7 days. New server-only loader `src/lib/dashboard/spike-impact.ts` (2-query parallel `Promise.all` on drafts + hot_leads, 1-decimal rounded hours saved via 2.5-min-per-draft assumption). New RSC `src/components/dashboard/spike-impact-widget.tsx` (Glass card, 4 stat cells with icon chips, mobile responsive `grid-cols-2 sm:grid-cols-4`, empty-state-aware for new tenants). Phase 2 mount uses `Promise.all` join with existing `listPendingDrafts()` — zero added wall time. **Production data signal revealed**: demo tenant showed 19 drafts created / 1 approved (5% rate) over 7 days — motivated the subsequent Sprint 3J that pings owners when drafts pile up. See §10.50. (Note: name collision with the original §19.7 "Sprint 3F — Google Calendar 2-way sync" backlog entry — that future work is now renamed Sprint 3K below.)
+- **Sprint 3J — Approvals pile-up WhatsApp reminder** ✅ **DONE 2026-05-17**, commit `67476c0` — FOURTH Iron-Rule §15.25 owner-self loopback carve-out (joins Morning daily 3M + Watcher real-time 3X + Manager weekly 3Y; previously a trinity, now a quartet). New route `src/app/api/cron/approvals-reminder/route.ts` daily 14:00 UTC = 17:00 IL Sun-Thu (`0 14 * * 0-4`). Threshold ≥5 pending drafts older than 1h; 6h dedupe window via `events.event_type='approvals_reminder_sent'`. Reuses ALL helpers from §10.39 (`lookupWhatsAppIntegration` + `wasContactedInLast24h` + `mapSendErrorToHebrew` + `sendWhatsAppMessage`) — zero new shared code. `vercel.json` cron count 8 → **9**. **Two new lessons** distilled from the 4-round tsc-error debug cycle: §15.38 (read helper type signatures before calling — especially discriminated unions) + §15.39 (`events.id` is `text NOT NULL` with no default; column is `received_at` + `provider` NOT `occurred_at`). See §10.51.
 - **Sprint 3C — Voice-note-to-Hebrew-draft pipeline** — ElevenLabs Scribe ingestion + Haiku post-pass for code-switching + draft generation (~3 weeks, the highest-ROI feature on the remaining backlog).
-- **Sprint 3D — Smart Waitlist Agent** — auto-fill from waitlist when cancellation detected (~2 weeks).
+- **Sprint 3D — Smart Waitlist Agent** — auto-fill from waitlist when cancellation detected (~2 weeks). **Tabled 2026-05-17** as too vertical-specific (service businesses with booking dependencies only); revisit if a salon design-partner asks for it.
 - **Sprint 3E — GreenInvoice integration** — most Israeli עוסק use it (~1 week).
-- **Sprint 3F — Google Calendar 2-way sync** — table stakes for service businesses (~2 weeks).
+- **Sprint 3K — Google Calendar 2-way sync** — table stakes for service businesses (~2 weeks). **Renamed from 3F on 2026-05-17** after Sprint 3F was used for the Spike Impact ROI widget (§10.50). Choose next available letter so commits + section names don't collide.
 - ~~**Sprint 3G — Hebrew brand-voice extractor**~~ ✅ DONE 2026-05-16 — see new entry above.
 - **Sprint 3H — Self-service WhatsApp connection UI** — `/dashboard/integrations/whatsapp` with Meta Embedded Signup (post-Tech Provider enrollment, ~2 weeks).
 
