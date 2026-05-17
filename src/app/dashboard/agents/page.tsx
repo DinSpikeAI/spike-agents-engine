@@ -11,7 +11,8 @@
 //
 // No cost/quota display — see overview.ts header comment.
 //
-// Layout: same 3 categories as dashboard (routine / content / insight).
+// Layout: same 3 categories as dashboard (routine / content / insight),
+// with the Sprint 3F Spike Impact widget mounted at the top.
 //
 // ─────────────────────────────────────────────────────────────
 // Sprint 3α Phase C (2026-05-16) — RUNTIME: edge → nodejs
@@ -45,8 +46,10 @@ import { BottomNav } from "@/components/dashboard/bottom-nav";
 import { WhatsAppFab } from "@/components/dashboard/whatsapp-fab";
 import { AppleBg } from "@/components/ui/apple-bg";
 import { AgentOverviewCard } from "@/components/dashboard/agent-overview-card";
+import { SpikeImpactWidget } from "@/components/dashboard/spike-impact-widget";
 import { listPendingDrafts, getManagerLockState } from "@/app/dashboard/actions";
 import { getAgentsOverview } from "@/lib/agents/overview";
+import { getSpikeImpactStats } from "@/lib/dashboard/spike-impact";
 import type { AgentId } from "@/lib/agents/types";
 
 export const dynamic = "force-dynamic";
@@ -108,12 +111,16 @@ export default async function AgentsOverviewPage() {
       ? tenantConfig.business_name
       : (tenantRow?.name as string | undefined) ?? null;
 
-  // Fetch overview + drafts + manager lock in parallel.
-  const [overview, draftsResult, managerLockResult] = await Promise.all([
-    getAgentsOverview(tenantId),
-    listPendingDrafts(),
-    getManagerLockState(),
-  ]);
+  // Fetch overview + drafts + manager lock + impact stats in parallel.
+  // Sprint 3F: getSpikeImpactStats joins the fan-out (it's a 2-query
+  // read on drafts + hot_leads, well under any of the others' wall time).
+  const [overview, draftsResult, managerLockResult, impactStats] =
+    await Promise.all([
+      getAgentsOverview(tenantId),
+      listPendingDrafts(),
+      getManagerLockState(),
+      getSpikeImpactStats(tenantId, 7),
+    ]);
 
   const pendingCount = draftsResult.success
     ? draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0
@@ -174,6 +181,11 @@ export default async function AgentsOverviewPage() {
             סקירה של כל הסוכנים שעובדים בעסק שלך, מתי רצו לאחרונה, וכמה פעמים
             רצו החודש.
           </p>
+
+          {/* Sprint 3F — Spike Impact ROI widget. Empty-state-aware:
+              tenants with no recent activity see a "Spike is working" card
+              instead of a row of zeros. */}
+          <SpikeImpactWidget stats={impactStats} />
 
           {(["routine", "content", "insight"] as AgentCategory[]).map(
             (cat, catIdx) => {
