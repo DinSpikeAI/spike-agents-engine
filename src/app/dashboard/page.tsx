@@ -13,6 +13,8 @@ import { OnboardingBanner } from "@/components/dashboard/onboarding-banner";
 import { WhatsAppFab } from "@/components/dashboard/whatsapp-fab";
 import { AppleBg } from "@/components/ui/apple-bg";
 import { Glass } from "@/components/ui/glass";
+import { SpikeImpactWidget } from "@/components/dashboard/spike-impact-widget";
+import { getSpikeImpactStats } from "@/lib/dashboard/spike-impact";
 import { RunMorningButton } from "@/components/dashboard/run-morning-button";
 import { RunWatcherButton } from "@/components/dashboard/run-watcher-button";
 import { RunReviewsButton } from "@/components/dashboard/run-reviews-button";
@@ -272,7 +274,16 @@ export default async function DashboardPage() {
   // lock, onboarding status) stream in via Suspense boundaries below,
   // so the shell + agent grid are visible the moment listPendingDrafts
   // resolves — no longer waiting on the slowest of 4 parallel queries.
-  const draftsResult = await listPendingDrafts();
+  //
+  // Sprint 3F (2026-05-17): getSpikeImpactStats joins the blocking
+  // round-trip. It's a 2-query read (drafts + hot_leads) — same shape
+  // as listPendingDrafts itself — so Promise.all adds zero wall time vs
+  // running listPendingDrafts alone. The widget mounts above the agent
+  // category sections, so we want its data ready before paint.
+  const [draftsResult, impactStats] = await Promise.all([
+    listPendingDrafts(),
+    getSpikeImpactStats(tenantId, 7),
+  ]);
 
   const pendingCount = draftsResult.success
     ? draftsResult.drafts?.filter((d) => d.status === "pending").length ?? 0
@@ -427,6 +438,16 @@ export default async function DashboardPage() {
               <ApprovalBanner count={pendingCount} summary={pendingSummary} />
             </Link>
           )}
+
+          {/* Sprint 3F — Spike Impact ROI widget. Sits between the
+              urgent-action ApprovalBanner (which only renders when
+              pendingCount > 0) and the agent category sections. On a
+              tenant with no pending approvals, this becomes the first
+              content card after the KpiStrip — the "what Spike did for
+              you this week" narrative. Empty-state-aware: if a new
+              tenant has no drafts/leads in the window, the widget shows
+              a friendly "Spike is working" card instead of zeros. */}
+          <SpikeImpactWidget stats={impactStats} />
 
           {/* Agents by category — three logical groups */}
           {(["routine", "content", "insight"] as AgentCategory[]).map(
